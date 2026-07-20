@@ -1,0 +1,12 @@
+build/bin
+build/*.dmg
+node_modules
+frontend/dist
+frontend/wailsjs
+aling
+aling-go
+.superpowers/
+sidecar/.whisper-cpp
+sidecar/whisper-sidecar
+sidecar/ffmpeg
+sidecar/ggml-*.bin
