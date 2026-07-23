@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - run: brew install create-dmg
+      - run: make sidecar
+      - run: make dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aling-go-macos
+          path: build/bin/aling-go.dmg
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - run: choco install mingw -y
+
+      - name: Build whisper-sidecar
+        run: |
+          cd sidecar
+          if [ ! -f "whisper-sidecar.exe" ]; then
+            git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git .whisper-cpp
+            cd .whisper-cpp
+            cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+            cmake --build build --target whisper-cli --config Release
+            cp build/bin/Release/whisper-cli.exe ../whisper-sidecar.exe
+          fi
+
+      - name: Build minimal ffmpeg
+        run: |
+          cd sidecar
+          if [ ! -f "ffmpeg.exe" ]; then
+            if [ ! -d ".ffmpeg-src" ]; then
+              curl -fSL "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz" -o /tmp/ffmpeg.tar.xz
+              tar xf /tmp/ffmpeg.tar.xz -C /tmp
+              mv /tmp/ffmpeg-8.1.2 .ffmpeg-src
+            fi
+            cd .ffmpeg-src
+            ./configure \
+              --disable-everything \
+              --enable-ffmpeg \
+              --enable-avformat --enable-avcodec --enable-avutil \
+              --enable-swresample --enable-swscale \
+              --enable-protocol=file \
+              --enable-demuxer='mov,mp4,matroska,avi,wav,aac,mp3,flac,ogg' \
+              --enable-decoder='h264,hevc,aac,mp3,vorbis,opus,pcm_s16le,pcm_f32le,flac' \
+              --enable-encoder='mjpeg,pcm_s16le' \
+              --enable-muxer='image2,wav' \
+              --enable-parser='h264,hevc,aac,mp3' \
+              --enable-filter='scale,format,aresample' \
+              --disable-autodetect \
+              --enable-small
+            make -j$(nproc)
+            cp ffmpeg.exe ../ffmpeg.exe
+            cd ..
+            rm -rf .ffmpeg-src
+          fi
+
+      - run: wails build -platform windows/amd64 -clean
+
+      - name: Package Windows build
+        run: |
+          mkdir -p dist-windows
+          cp build/bin/aling-go.exe dist-windows/
+          cp sidecar/whisper-sidecar.exe dist-windows/
+          cp sidecar/ffmpeg.exe dist-windows/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aling-go-windows
+          path: dist-windows/*
+
+  release:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            aling-go-macos/aling-go.dmg
+            aling-go-windows/*
+          generate_release_notes: true
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
