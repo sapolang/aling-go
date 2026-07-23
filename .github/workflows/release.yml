@@ -116,4 +116,4 @@ jobs:
             aling-go-macos/aling-go.dmg
             aling-go-windows/*
           generate_release_notes: true
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          draft: ${{ github.event_name!= 'workflow_dispatch' }}
