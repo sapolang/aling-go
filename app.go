@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	goRuntime "runtime"
 	"sync"
+
+	"aling-go/internal/dict"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -33,6 +36,9 @@ func (a *App) startup(ctx context.Context) {
 	a.loadWhisperModel()
 	if err := initDB(a.dataDir); err != nil {
 		println("DB init error:", err.Error())
+	}
+	if err := dict.OpenDictDB(a.dataDir, db); err != nil {
+		println("Dict DB init error:", err.Error())
 	}
 	a.migrateIfNeeded()
 	a.startMediaServer()
@@ -133,4 +139,56 @@ func (a *App) GetPlatform() string {
 
 func (a *App) GetMediaPort() int {
 	return a.mediaPort
+}
+
+// --- Dictionary ---
+
+func (a *App) DbDictTags() []dict.DictTag {
+	tags, err := dict.GetTags()
+	if err != nil {
+		println("DbDictTags error:", err.Error())
+		return []dict.DictTag{}
+	}
+	return tags
+}
+
+func (a *App) DbDictWords(tag string) []dict.DictWord {
+	words, err := dict.GetWordsByTag(tag)
+	if err != nil {
+		println("DbDictWords error:", err.Error())
+		return []dict.DictWord{}
+	}
+	return words
+}
+
+type DictAddResult struct {
+	Added   int `json:"added"`
+	Skipped int `json:"skipped"`
+}
+
+func (a *App) DbDictSaveProgress(tag string, index int) {
+	if err := dict.SaveProgress(tag, index); err != nil {
+		println("DbDictSaveProgress error:", err.Error())
+	}
+}
+
+func (a *App) DbDictGetProgress(tag string) int {
+	index, err := dict.GetProgress(tag)
+	if err != nil {
+		println("DbDictGetProgress error:", err.Error())
+		return 0
+	}
+	return index
+}
+
+func (a *App) DbDictAddToWordList(jsonStr string) DictAddResult {
+	var words []dict.DictWord
+	if err := json.Unmarshal([]byte(jsonStr), &words); err != nil {
+		return DictAddResult{}
+	}
+	added, skipped, err := dict.AddWordsToList(words)
+	if err != nil {
+		println("DbDictAddToWordList error:", err.Error())
+	}
+	return DictAddResult{Added: added, Skipped: skipped}
 }

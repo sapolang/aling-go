@@ -35,6 +35,25 @@ export interface WhisperStatus {
   model: string
 }
 
+export interface DictTag {
+  tag: string
+  count: number
+}
+
+export interface DictWord {
+  word: string
+  phonetic: string
+  translation: string
+  definition: string
+  pos: string
+  tag: string
+}
+
+export interface DictAddResult {
+  added: number
+  skipped: number
+}
+
 export interface ElectronAPI {
   openFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
   saveFile: (defaultName: string) => Promise<string | null>
@@ -77,6 +96,13 @@ export interface ElectronAPI {
 
   getPlatform: () => string
   getMediaPort: () => Promise<number>
+
+  // Dictionary
+  dbDictTags: () => Promise<DictTag[]>
+  dbDictWords: (tag: string) => Promise<DictWord[]>
+  dbDictAddToWordList: (words: DictWord[]) => Promise<DictAddResult>
+  dbDictSaveProgress: (tag: string, index: number) => Promise<void>
+  dbDictGetProgress: (tag: string) => Promise<number>
 }
 
 declare global {

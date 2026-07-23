@@ -42,7 +42,7 @@ if [ ! -f "ffmpeg" ]; then
         --enable-parser='h264,hevc,aac,mp3' \
         --enable-filter='scale,format,aresample' \
         --disable-autodetect --disable-asm \
-        --enable-small --cc=clang
+        --enable-small
     make -j "$JOBS"
     cp ffmpeg ../ffmpeg
     strip ../ffmpeg

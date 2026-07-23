@@ -18,6 +18,7 @@ dmg: sidecar build
 	install -d "build/bin/$(APP_NAME).app/Contents/Resources"
 	install "$(SIDECAR_BIN)" "build/bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "build/bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f dict.db ] || install dict.db "build/bin/$(APP_NAME).app/Contents/Resources/"
 	@if ! command -v create-dmg >/dev/null 2>&1; then \
 		echo "Installing create-dmg..."; \
 		brew install create-dmg; \
@@ -44,6 +45,7 @@ dist: sidecar build
 	install -d "build/bin/$(APP_NAME).app/Contents/Resources"
 	install "$(SIDECAR_BIN)" "build/bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "build/bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f dict.db ] || install dict.db "build/bin/$(APP_NAME).app/Contents/Resources/"
 	du -sh "build/bin/$(APP_NAME).app"
 
 sidecar:

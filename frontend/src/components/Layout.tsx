@@ -3,12 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePlayerStore } from '@/stores/playerStore'
-import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X } from 'lucide-react'
+import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library } from 'lucide-react'
 
 const navItems = [
   { path: '/player', label: '精听播放', icon: Play },
   { path: '/home', label: '今日复习', icon: Home },
   { path: '/words', label: '生词库', icon: BookOpen },
+  { path: '/dict', label: '单词书', icon: Library },
   { path: '/card', label: '卡片背诵', icon: FlipVertical },
   { path: '/settings', label: '设置', icon: Settings }
 ]

@@ -1,5 +1,60 @@
+export namespace dict {
+	
+	export class DictTag {
+	    tag: string;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DictTag(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tag = source["tag"];
+	        this.count = source["count"];
+	    }
+	}
+	export class DictWord {
+	    word: string;
+	    phonetic: string;
+	    translation: string;
+	    definition: string;
+	    pos: string;
+	    tag: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DictWord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.word = source["word"];
+	        this.phonetic = source["phonetic"];
+	        this.translation = source["translation"];
+	        this.definition = source["definition"];
+	        this.pos = source["pos"];
+	        this.tag = source["tag"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
+	export class DictAddResult {
+	    added: number;
+	    skipped: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DictAddResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.added = source["added"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class ImportResult {
 	    imported: number;
 	    skipped: number;

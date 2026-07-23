@@ -10,6 +10,26 @@ export function DbClear() {
   return window['go']['main']['App']['DbClear']();
 }
 
+export function DbDictAddToWordList(arg1) {
+  return window['go']['main']['App']['DbDictAddToWordList'](arg1);
+}
+
+export function DbDictGetProgress(arg1) {
+  return window['go']['main']['App']['DbDictGetProgress'](arg1);
+}
+
+export function DbDictSaveProgress(arg1, arg2) {
+  return window['go']['main']['App']['DbDictSaveProgress'](arg1, arg2);
+}
+
+export function DbDictTags() {
+  return window['go']['main']['App']['DbDictTags']();
+}
+
+export function DbDictWords(arg1) {
+  return window['go']['main']['App']['DbDictWords'](arg1);
+}
+
 export function DbExport() {
   return window['go']['main']['App']['DbExport']();
 }

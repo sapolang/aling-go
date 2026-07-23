@@ -56,5 +56,12 @@ export function initBridge(): void {
     getVideoThumbnail: (filePath: string) => app.GetVideoThumbnail(filePath),
     getPlatform: () => app.GetPlatform(),
     getMediaPort: () => app.GetMediaPort(),
+
+    // Dictionary
+    dbDictTags: () => app.DbDictTags(),
+    dbDictWords: (tag: string) => app.DbDictWords(tag),
+    dbDictAddToWordList: (words: any[]) => app.DbDictAddToWordList(JSON.stringify(words)),
+    dbDictSaveProgress: (tag: string, index: number) => app.DbDictSaveProgress(tag, index),
+    dbDictGetProgress: (tag: string) => app.DbDictGetProgress(tag),
   } as any
 }
