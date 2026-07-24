@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Aling",
+    "slug": "aling",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "aling",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aling.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "用于导入视频文件",
+        "NSMicrophoneUsageDescription": "用于语音转录"
+      }
+    },
+    "android": {
+      "package": "com.aling.mobile",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-document-picker",
+      "expo-video",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "允许访问相册以导入视频",
+          "savePhotosPermission": "允许保存视频到相册"
+        }
+      ],
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
