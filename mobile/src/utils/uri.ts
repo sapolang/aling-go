@@ -1,28 +1,29 @@
 import { Paths, File, Directory } from 'expo-file-system'
 
-export async function copyToCache(uri: string): Promise<string> {
-  try {
-    const ext = uri.split('.').pop() || 'mp4'
-    const cacheDir = new Directory(Paths.cache, 'aling')
-    cacheDir.create({ intermediates: true, idempotent: true })
-    const dest = new File(cacheDir, `${Date.now()}.${ext}`)
-    const src = new File(uri)
-    await src.copy(dest)
-    return dest.uri
-  } catch (error) {
-    console.error('copyToCache failed:', error)
-    throw error
-  }
+function appDir(): Directory {
+  const dir = new Directory(Paths.document, 'aling')
+  dir.create({ intermediates: true, idempotent: true })
+  return dir
 }
 
-export async function resolveUri(uri: string): Promise<string> {
+export async function copyToCache(uri: string): Promise<string> {
+  const ext = uri.split('.').pop() || 'mp4'
+  const dir = appDir()
+  const dest = new File(dir, `${Date.now()}.${ext}`)
   try {
-    if (uri.startsWith('file://')) return uri
-    if (uri.startsWith('content://') || uri.startsWith('ph://')) {
-      return await copyToCache(uri)
-    }
-    return uri
-  } catch (error) {
-    throw new Error(`Failed to resolve URI: ${uri}, error: ${error}`)
+    const src = new File(uri)
+    const bytes = await src.bytes()
+    dest.write(bytes)
+  } catch {
+    throw new Error('copyToCache failed')
   }
+  return dest.uri
+}
+
+export async function ensureCached(uri: string): Promise<string> {
+  const dir = appDir()
+  if (uri.startsWith(dir.uri)) {
+    return uri
+  }
+  return await copyToCache(uri)
 }

@@ -10,6 +10,9 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     for (const sql of ALL_SCHEMAS) {
       await db.execAsync(sql)
     }
+    try {
+      await db.execAsync(`ALTER TABLE files ADD COLUMN folder_id INTEGER DEFAULT 0`)
+    } catch {}
     return db
   } catch (error) {
     console.error('Database init failed:', error)

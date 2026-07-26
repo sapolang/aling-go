@@ -10,20 +10,12 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="player"
+        name="home"
         options={{
-          title: '精听',
+          title: '首页',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="headset" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="review"
-        options={{
-          title: '复习',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="refresh" size={size} color={color} />
+            <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />

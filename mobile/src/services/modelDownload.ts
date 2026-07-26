@@ -11,16 +11,30 @@ export interface WhisperModel {
 }
 
 export const WHISPER_MODELS: WhisperModel[] = [
-  { name: 'tiny', url: `${MIRROR}ggml-tiny.bin`, size: '75MB' },
-  { name: 'small', url: `${MIRROR}ggml-small.bin`, size: '466MB' },
-  { name: 'large-v3', url: `${MIRROR}ggml-large-v3.bin`, size: '3.1GB' },
+  { name: 'tiny.en', url: `${MIRROR}ggml-tiny.en-q5_1.bin`, size: '32MB' },
+  { name: 'tiny', url: `${MIRROR}ggml-tiny-q5_1.bin`, size: '32MB' },
+  { name: 'base', url: `${MIRROR}ggml-base-q5_1.bin`, size: '60MB' },
+  { name: 'small', url: `${MIRROR}ggml-small-q5_1.bin`, size: '190MB' },
+  { name: 'large-v3', url: `${MIRROR}ggml-large-v3-q5_0.bin`, size: '1.1GB' },
 ]
+
+const QUANT_SUFFIX: Record<string, string> = {
+  'tiny.en': 'q5_1',
+  tiny: 'q5_1',
+  base: 'q5_1',
+  small: 'q5_1',
+  'large-v3': 'q5_0',
+}
+
+function modelFilename(name: string): string {
+  return `ggml-${name}-${QUANT_SUFFIX[name]}.bin`
+}
 
 const downloadQueue = new TaskQueue(1)
 
 export async function getModelPath(name: string): Promise<string | null> {
   try {
-    const file = new File(MODELS_DIR, `ggml-${name}.bin`)
+    const file = new File(MODELS_DIR, modelFilename(name))
     return file.exists ? file.uri : null
   } catch {
     return null
@@ -35,7 +49,7 @@ export async function downloadModel(
   if (!model) throw new Error(`Unknown model: ${name}`)
 
   MODELS_DIR.create({ intermediates: true, idempotent: true })
-  const dest = new File(MODELS_DIR, `ggml-${name}.bin`)
+  const dest = new File(MODELS_DIR, modelFilename(name))
 
   return downloadQueue.enqueue(async () => {
     const task = File.createDownloadTask(model.url, dest, {
@@ -52,7 +66,7 @@ export async function downloadModel(
 
 export async function deleteModel(name: string): Promise<void> {
   try {
-    const file = new File(MODELS_DIR, `ggml-${name}.bin`)
+    const file = new File(MODELS_DIR, modelFilename(name))
     if (file.exists) file.delete()
   } catch (error) {
     console.error('Failed to delete model:', error)
@@ -72,12 +86,17 @@ export async function getFirstModelPath(): Promise<string | null> {
 
 export async function listDownloadedModels(): Promise<string[]> {
   try {
-  MODELS_DIR.create({ intermediates: true, idempotent: true })
+    MODELS_DIR.create({ intermediates: true, idempotent: true })
     const entries = MODELS_DIR.list()
+    const suffixMap = Object.entries(QUANT_SUFFIX)
     return entries
       .filter((e): e is File => e instanceof File)
-      .filter((f) => f.name.startsWith('ggml-') && f.name.endsWith('.bin'))
-      .map((f) => f.name.replace('ggml-', '').replace('.bin', ''))
+      .flatMap((f) => {
+        for (const [name, suffix] of suffixMap) {
+          if (f.name === `ggml-${name}-${suffix}.bin`) return [name]
+        }
+        return []
+      })
   } catch {
     return []
   }
