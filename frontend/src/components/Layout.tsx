@@ -1,9 +1,9 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePlayerStore } from '@/stores/playerStore'
-import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library } from 'lucide-react'
+import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library, PanelLeftClose, PanelLeft } from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '文件库', icon: Home },
@@ -22,13 +22,33 @@ export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPla
   const progress = usePlayerStore((s) => s.transcriptionProgress)
   const setPlaying = usePlayerStore((s) => s.setPlaying)
   const closeFile = usePlayerStore((s) => s.closeFile)
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (isPlayerRoute) setCollapsed(true)
+  }, [isPlayerRoute])
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className="w-56 border-r bg-muted/30 flex flex-col">
-        <div className="p-4 border-b">
-          <h1 className="text-lg font-bold">Aling</h1>
-          <p className="text-xs text-muted-foreground">Aling</p>
+      <aside className={`border-r bg-muted/30 flex flex-col shrink-0 transition-all duration-200 ${collapsed ? 'w-14' : 'w-56'}`}>
+        <div className="p-4 border-b flex items-center justify-between">
+          {collapsed ? (
+            <h1 className="text-sm font-bold">A</h1>
+          ) : (
+            <div>
+              <h1 className="text-lg font-bold">Aling</h1>
+              <p className="text-xs text-muted-foreground">小诺语伴</p>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? '展开侧栏' : '收起侧栏'}
+          >
+            {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </Button>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {navItems.map((item) => {
@@ -38,17 +58,18 @@ export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPla
               <Button
                 key={item.path}
                 variant={active ? 'secondary' : 'ghost'}
-                className="w-full justify-start gap-3"
+                className={`w-full justify-start gap-3 ${collapsed ? 'px-0 justify-center' : ''}`}
                 onClick={() => navigate(item.path)}
+                title={collapsed ? item.label : undefined}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                {!collapsed && item.label}
               </Button>
             )
           })}
         </nav>
         <div className="p-3 border-t flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">v1.0.0</span>
+          <span className="text-xs text-muted-foreground">{collapsed ? '' : 'v1.0.0'}</span>
           <ThemeToggle />
         </div>
       </aside>

@@ -8,7 +8,7 @@ import { speak } from '@/lib/tts'
 import Waveform from '@/components/Waveform'
 import {
   Play, Pause, Repeat,
-  FileUp, Subtitles, Loader2, BookmarkPlus, Volume2 as Speaker,
+  Subtitles, Loader2, BookmarkPlus, Volume2 as Speaker,
   MoreHorizontal, Download, RotateCcw, X as XIcon, FileDown, ArrowLeft,
   Globe
 } from 'lucide-react'
@@ -274,7 +274,10 @@ export default function PlayerPage() {
   const renderPlayer = () => (
     <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
       <div className="flex-1 flex flex-col gap-2">
-        <div className={`bg-black rounded-lg overflow-hidden relative flex items-center justify-center ${isAudio ? 'h-20' : 'aspect-video'}`}>
+        <div
+          className={`bg-black rounded-lg overflow-hidden relative flex items-center justify-center ${isAudio ? 'h-20' : 'aspect-video'}`}
+          onClick={() => store.setPlaying(!store.playing)}
+        >
           {isAudio
             ? <audio ref={mediaRef as any} src={mediaUrl} controls style={{ width: '90%', height: 50 }} />
             : <video ref={mediaRef as any} src={mediaUrl} className="w-full h-full absolute inset-0 object-contain" playsInline />
@@ -283,8 +286,8 @@ export default function PlayerPage() {
           {!isAudio && (() => {
             const sub = store.subtitles.find(s => store.played >= s.startTime - 0.08 && store.played <= s.endTime)
             return sub ? (
-              <div className="absolute bottom-0 left-0 right-0 p-4 pb-6 flex justify-center">
-                <span className="bg-black/70 text-white px-4 py-2 rounded text-lg text-center max-w-[90%] leading-relaxed">
+              <div className="absolute bottom-0 left-0 right-0 p-4 pb-6 flex justify-center" onClick={(e) => e.stopPropagation()}>
+                <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed">
                   {sub.text}
                 </span>
               </div>
@@ -396,7 +399,7 @@ export default function PlayerPage() {
             const isPast = store.played > sub.endTime
             return (
               <div key={sub.id}
-                className={`p-2 rounded text-sm cursor-pointer transition-colors mb-1 ${isActive ? 'bg-primary/10 border-l-2 border-primary font-medium' : isPast ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}
+                className={`p-2 rounded text-lg cursor-pointer transition-colors mb-1 ${isActive ? 'bg-primary/10 border-l-2 border-primary font-medium' : isPast ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}
                 onClick={() => store.requestSeek(sub.startTime)}>
                 <span className="text-xs text-muted-foreground mr-2">{formatTime(sub.startTime)}</span>
                 {sub.text.split(/(\s+)/).map((part, i) => {
@@ -424,9 +427,6 @@ export default function PlayerPage() {
     <div className={`${isActive ? 'h-full' : 'hidden'}`}>
       <div className="h-full flex flex-col gap-4">
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          <Button onClick={handleOpenFile} size="sm">
-            <FileUp className="h-4 w-4 mr-1" /> 导入音视频
-          </Button>
           {store.filePath && (
               <Button variant="ghost" size="sm" onClick={() => { store.closeFile(); navigate('/') }}>
                 <ArrowLeft className="h-4 w-4 mr-1" /> 返回列表
@@ -445,10 +445,7 @@ export default function PlayerPage() {
         {store.filePath ? renderPlayer() : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
             <p className="text-lg">打开一个文件开始播放</p>
-            <p className="text-sm">前往「文件库」页面导入文件，或直接拖入音视频</p>
-            <Button size="sm" onClick={handleOpenFile}>
-              <FileUp className="h-4 w-4 mr-1" /> 导入音视频
-            </Button>
+            <p className="text-sm">前往「文件库」页面导入文件</p>
           </div>
         )}
 
