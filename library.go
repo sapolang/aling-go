@@ -92,14 +92,15 @@ func (a *App) LibraryImport(category, folderID string) string {
 		return string(b)
 	}
 	lib := a.readLibrary()
-	var imported, skipped int
+	var imported, skipped, dropped int
 	for _, file := range files {
 		if containsFile(lib.Files, file) {
 			skipped++
 			continue
 		}
 		if len(lib.Files) >= 200 {
-			break
+			dropped++
+			continue
 		}
 		ftype := detectFileType(file)
 		if ftype == "" {
@@ -116,7 +117,7 @@ func (a *App) LibraryImport(category, folderID string) string {
 		imported++
 	}
 	a.writeLibrary(lib)
-	b, _ := json.Marshal(LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped})
+	b, _ := json.Marshal(LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped, Dropped: dropped})
 	return string(b)
 }
 
@@ -184,6 +185,11 @@ func (a *App) LibraryMove(pathsJSON, folderID string) string {
 	for i := range lib.Files {
 		if pathSet[lib.Files[i].Path] {
 			lib.Files[i].FolderID = folderID
+		}
+	}
+	for i := range lib.Folders {
+		if pathSet[lib.Folders[i].ID] {
+			lib.Folders[i].ParentID = folderID
 		}
 	}
 	a.writeLibrary(lib)

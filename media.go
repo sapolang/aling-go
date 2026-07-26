@@ -47,6 +47,11 @@ func (a *App) handleMediaStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(filePath, "..") || !filepath.IsAbs(filePath) {
+		http.Error(w, "forbidden", 403)
+		return
+	}
+
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		http.Error(w, "file not found", 404)
@@ -64,16 +69,34 @@ func (a *App) handleMediaStream(w http.ResponseWriter, r *http.Request) {
 	fileSize := stat.Size()
 
 	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
-		var start, end int64
-		fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end)
-		if end == 0 || end >= fileSize {
-			end = fileSize - 1
+		var start, end int64 = 0, fileSize - 1
+		if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end); err == nil {
+			if end == 0 || end >= fileSize {
+				end = fileSize - 1
+			}
+		} else {
+			if strings.HasPrefix(rangeHeader, "bytes=") {
+				parts := strings.SplitN(rangeHeader[6:], "-", 2)
+				if len(parts) == 2 && parts[0] == "" {
+					suffix, _ := strconv.ParseInt(parts[1], 10, 64)
+					if suffix > 0 && suffix <= fileSize {
+						start = fileSize - suffix
+					}
+				}
+			}
+		}
+		if start < 0 {
+			start = 0
 		}
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.WriteHeader(206)
 
-		f, _ := os.Open(filePath)
+		f, err := os.Open(filePath)
+		if err != nil {
+			http.Error(w, "file not found", 404)
+			return
+		}
 		defer f.Close()
 		f.Seek(start, 0)
 		io.CopyN(w, f, end-start+1)
@@ -82,7 +105,11 @@ func (a *App) handleMediaStream(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Length", strconv.FormatInt(fileSize, 10))
 	w.WriteHeader(200)
-	f, _ := os.Open(filePath)
+	f, err := os.Open(filePath)
+	if err != nil {
+		http.Error(w, "file not found", 404)
+		return
+	}
 	defer f.Close()
 	io.Copy(w, f)
 }

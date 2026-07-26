@@ -11,6 +11,9 @@ interface Word {
   next_review: string
   created_at: string
   updated_at: string
+  repetitions: number
+  efactor: number
+  interval: number
 }
 
 interface Tag {
@@ -23,6 +26,8 @@ interface WordStore {
   words: Word[]
   tags: Tag[]
   reviewWords: Word[]
+  reviewTotal: number
+  reviewCompleted: number
   searchQuery: string
   selectedTag: string
   loading: boolean
@@ -30,18 +35,22 @@ interface WordStore {
   loadWords: () => Promise<void>
   loadTags: () => Promise<void>
   loadReview: () => Promise<void>
+  loadReviewCount: () => Promise<void>
   addWord: (word: any) => Promise<void>
   updateWord: (id: number, data: Partial<Word>) => Promise<void>
   deleteWord: (id: number) => Promise<void>
   deleteBatch: (ids: number[]) => Promise<void>
   setSearchQuery: (q: string) => void
   setSelectedTag: (tag: string) => void
+  incrementCompleted: () => void
 }
 
 export const useWordStore = create<WordStore>((set, get) => ({
   words: [],
   tags: [],
   reviewWords: [],
+  reviewTotal: 0,
+  reviewCompleted: 0,
   searchQuery: '',
   selectedTag: '',
   loading: false,
@@ -57,7 +66,11 @@ export const useWordStore = create<WordStore>((set, get) => ({
   },
   loadReview: async () => {
     const reviewWords = await window.api.dbWordsGetReview()
-    set({ reviewWords })
+    set({ reviewWords, reviewTotal: reviewWords.length, reviewCompleted: 0 })
+  },
+  loadReviewCount: async () => {
+    const count = await window.api.dbWordsGetReviewCount()
+    set({ reviewTotal: count })
   },
   addWord: async (word) => {
     await window.api.dbWordsAdd(word)
@@ -65,7 +78,6 @@ export const useWordStore = create<WordStore>((set, get) => ({
   },
   updateWord: async (id, data) => {
     await window.api.dbWordsUpdate(id, data)
-    get().loadWords()
   },
   deleteWord: async (id) => {
     await window.api.dbWordsDelete(id)
@@ -76,5 +88,6 @@ export const useWordStore = create<WordStore>((set, get) => ({
     get().loadWords()
   },
   setSearchQuery: (searchQuery) => set({ searchQuery }),
-  setSelectedTag: (selectedTag) => set({ selectedTag })
+  setSelectedTag: (selectedTag) => set({ selectedTag }),
+  incrementCompleted: () => set((s) => ({ reviewCompleted: s.reviewCompleted + 1 })),
 }))

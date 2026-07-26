@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -37,12 +38,35 @@ func createTables() error {
 			level INTEGER DEFAULT 1,
 			next_review TEXT DEFAULT (date('now')),
 			created_at TEXT DEFAULT (datetime('now','localtime')),
-			updated_at TEXT DEFAULT (datetime('now','localtime'))
+			updated_at TEXT DEFAULT (datetime('now','localtime')),
+			repetitions INTEGER DEFAULT 0,
+			efactor REAL DEFAULT 2.5,
+			interval INTEGER DEFAULT 0
 		);
 		CREATE TABLE IF NOT EXISTS tags (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL UNIQUE,
 			color TEXT NOT NULL DEFAULT '#3b82f6'
+		);
+		CREATE TABLE IF NOT EXISTS typing_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			article_id INTEGER NOT NULL,
+			mode TEXT NOT NULL,
+			accuracy REAL DEFAULT 0,
+			wpm REAL DEFAULT 0,
+			duration INTEGER DEFAULT 0,
+			mistakes TEXT DEFAULT '[]',
+			created_at TEXT DEFAULT (datetime('now','localtime'))
+		);
+		CREATE TABLE IF NOT EXISTS typing_progress (
+			article_id INTEGER NOT NULL,
+			mode TEXT NOT NULL,
+			position INTEGER DEFAULT 0,
+			completed INTEGER DEFAULT 0,
+			best_accuracy REAL DEFAULT 0,
+			best_wpm REAL DEFAULT 0,
+			updated_at TEXT DEFAULT (datetime('now','localtime')),
+			PRIMARY KEY (article_id, mode)
 		);
 	`)
 	return err
@@ -65,8 +89,8 @@ func dbWordsAdd(wordJSON string) int {
 		return 0
 	}
 	res, err := db.Exec(
-		"INSERT INTO words (word, definition, phonetic, example, tags, level, next_review) VALUES (?,?,?,?,?,?,?)",
-		w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview,
+		"INSERT INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
+		w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
 	)
 	if err != nil {
 		return 0
@@ -80,31 +104,47 @@ func dbWordsUpdate(id int, dataJSON string) {
 	if err := json.Unmarshal([]byte(dataJSON), &data); err != nil {
 		return
 	}
-	db.Exec(
-		"UPDATE words SET word=?, definition=?, phonetic=?, example=?, tags=?, level=?, next_review=?, updated_at=datetime('now','localtime') WHERE id=?",
+	if _, err := db.Exec(
+		"UPDATE words SET word=?, definition=?, phonetic=?, example=?, tags=?, level=?, next_review=?, repetitions=?, efactor=?, interval=?, updated_at=datetime('now','localtime') WHERE id=?",
 		data["word"], data["definition"], data["phonetic"], data["example"],
-		data["tags"], data["level"], data["next_review"], id,
-	)
+		data["tags"], data["level"], data["next_review"],
+		data["repetitions"], data["efactor"], data["interval"], id,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "dbWordsUpdate: %v\n", err)
+	}
 }
 
 func dbWordsDelete(id int) {
-	db.Exec("DELETE FROM words WHERE id=?", id)
+	if _, err := db.Exec("DELETE FROM words WHERE id=?", id); err != nil {
+		fmt.Fprintf(os.Stderr, "dbWordsDelete: %v\n", err)
+	}
 }
 
 func dbWordsDeleteBatch(ids []int) {
 	for _, id := range ids {
-		db.Exec("DELETE FROM words WHERE id=?", id)
+		if _, err := db.Exec("DELETE FROM words WHERE id=?", id); err != nil {
+			fmt.Fprintf(os.Stderr, "dbWordsDeleteBatch id=%d: %v\n", id, err)
+		}
 	}
 }
 
 func dbWordsGetReview() []Word {
 	today := time.Now().Format("2006-01-02")
-	rows, err := db.Query("SELECT * FROM words WHERE next_review <= ? ORDER BY next_review ASC LIMIT 20", today)
+	rows, err := db.Query("SELECT * FROM words WHERE next_review <= ? ORDER BY next_review ASC", today)
 	if err != nil {
 		return []Word{}
 	}
 	defer rows.Close()
 	return scanWords(rows)
+}
+
+func dbWordsGetReviewCount() int {
+	today := time.Now().Format("2006-01-02")
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM words WHERE next_review <= ?", today).Scan(&count); err != nil {
+		return 0
+	}
+	return count
 }
 
 func dbWordsSearch(query string) []Word {
@@ -138,7 +178,9 @@ func dbTagsAdd(name, color string) int {
 }
 
 func dbTagsDelete(id int) {
-	db.Exec("DELETE FROM tags WHERE id=?", id)
+	if _, err := db.Exec("DELETE FROM tags WHERE id=?", id); err != nil {
+		fmt.Fprintf(os.Stderr, "dbTagsDelete: %v\n", err)
+	}
 }
 
 // --- Export / Import / Clear ---
@@ -156,7 +198,10 @@ func dbImport(jsonStr string) ImportResult {
 		Words []Word `json:"words"`
 		Tags  []Tag  `json:"tags"`
 	}
-	json.Unmarshal([]byte(jsonStr), &data)
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		fmt.Fprintf(os.Stderr, "dbImport: unmarshal error: %v\n", err)
+		return ImportResult{}
+	}
 	result := ImportResult{}
 	for _, t := range data.Tags {
 		_, err := db.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
@@ -168,8 +213,8 @@ func dbImport(jsonStr string) ImportResult {
 	}
 	for _, w := range data.Words {
 		_, err := db.Exec(
-			"INSERT OR IGNORE INTO words (word, definition, phonetic, example, tags, level, next_review) VALUES (?,?,?,?,?,?,?)",
-			w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview,
+			"INSERT OR IGNORE INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
+			w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
 		)
 		if err == nil {
 			result.Imported++
@@ -181,8 +226,12 @@ func dbImport(jsonStr string) ImportResult {
 }
 
 func dbClear() {
-	db.Exec("DELETE FROM words")
-	db.Exec("DELETE FROM tags")
+	if _, err := db.Exec("DELETE FROM words"); err != nil {
+		fmt.Fprintf(os.Stderr, "dbClear words: %v\n", err)
+	}
+	if _, err := db.Exec("DELETE FROM tags"); err != nil {
+		fmt.Fprintf(os.Stderr, "dbClear tags: %v\n", err)
+	}
 }
 
 // --- Helpers ---
@@ -191,8 +240,11 @@ func scanWords(rows *sql.Rows) []Word {
 	words := make([]Word, 0)
 	for rows.Next() {
 		var w Word
-		rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Phonetic, &w.Example,
-			&w.Tags, &w.Level, &w.NextReview, &w.CreatedAt, &w.UpdatedAt)
+		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Phonetic, &w.Example,
+			&w.Tags, &w.Level, &w.NextReview, &w.CreatedAt, &w.UpdatedAt,
+			&w.Repetitions, &w.EFactor, &w.Interval); err != nil {
+			continue
+		}
 		words = append(words, w)
 	}
 	return words
@@ -202,7 +254,9 @@ func scanTags(rows *sql.Rows) []Tag {
 	tags := make([]Tag, 0)
 	for rows.Next() {
 		var t Tag
-		rows.Scan(&t.ID, &t.Name, &t.Color)
+		if err := rows.Scan(&t.ID, &t.Name, &t.Color); err != nil {
+			continue
+		}
 		tags = append(tags, t)
 	}
 	return tags

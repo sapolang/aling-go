@@ -3,13 +3,14 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePlayerStore } from '@/stores/playerStore'
-import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library, PanelLeftClose, PanelLeft, Type } from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '文件库', icon: Home },
   { path: '/words', label: '生词库', icon: BookOpen },
   { path: '/dict', label: '单词书', icon: Library },
   { path: '/card', label: '卡片背诵', icon: FlipVertical },
+  { path: '/articles', label: '文章打字', icon: Type },
   { path: '/settings', label: '设置', icon: Settings }
 ]
 
@@ -37,7 +38,7 @@ export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPla
           ) : (
             <div>
               <h1 className="text-lg font-bold">Aling</h1>
-              <p className="text-xs text-muted-foreground">小诺语伴</p>
+              <p className="text-xs text-muted-foreground">语练</p>
             </div>
           )}
           <Button

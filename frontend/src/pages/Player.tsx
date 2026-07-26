@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -24,6 +25,7 @@ export default function PlayerPage() {
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const store = usePlayerStore()
+  const dark = useThemeStore((s) => s.dark)
   const [selectedWord, setSelectedWord] = useState('')
   const [wordDefinition, setWordDefinition] = useState('')
   const [wordPhonetic, setWordPhonetic] = useState('')
@@ -166,8 +168,8 @@ export default function PlayerPage() {
         const cached = await window.api.getCachedSubtitles(filePath)
         if (cached && cached.length > 0) { store.setSubtitles(cached); return }
         const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
-        try { await window.api.readTextFile(srtPath); loadSrtFile(srtPath) } catch {}
-      } catch {}
+        try { await window.api.readTextFile(srtPath); loadSrtFile(srtPath) } catch (e) { console.error('Failed to load SRT:', e) }
+      } catch (e) { console.error('Failed to load cached subtitles:', e) }
     }
   }
 
@@ -256,7 +258,7 @@ export default function PlayerPage() {
   const handleAddWord = async () => {
     if (!selectedWord) return
     const today = new Date().toISOString().split('T')[0]
-    await window.api.dbWordsAdd({ word: selectedWord, definition: wordDefinition, phonetic: wordPhonetic, example: currentSentence, tags: '', level: 1, next_review: today })
+    await window.api.dbWordsAdd({ word: selectedWord, definition: wordDefinition, phonetic: wordPhonetic, example: currentSentence, tags: '', level: 1, next_review: today, repetitions: 0, efactor: 2.5, interval: 0 })
     setShowAddWord(false); setSelectedWord('')
   }
 
@@ -303,6 +305,7 @@ export default function PlayerPage() {
               currentTime={store.played}
               subtitles={store.subtitles}
               loading={store.waveformLoading}
+              dark={dark}
               onSeek={(t) => store.requestSeek(t)}
             />
           </div>

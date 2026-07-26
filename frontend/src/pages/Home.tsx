@@ -71,12 +71,17 @@ export default function HomePage() {
 
   const handleImport = async () => {
     const result = await window.api.libraryImport(store.category, store.currentFolderId || '')
-    if (result.imported === 0 && result.skipped === 0) return
+    if (result.imported === 0 && result.skipped === 0 && (result.dropped || 0) === 0) return
     await store.load()
-    if (result.imported > 0 && result.skipped > 0) {
-      showToast(`导入成功 ${result.imported} 个，跳过 ${result.skipped} 个（已存在）`, 'success')
-    } else if (result.imported > 0) {
-      showToast(`导入成功 ${result.imported} 个`, 'success')
+    const parts: string[] = []
+    if (result.imported > 0) parts.push(`导入成功 ${result.imported} 个`)
+    if (result.skipped > 0) parts.push(`跳过 ${result.skipped} 个（已存在）`)
+    if (result.dropped > 0) parts.push(`已达上限，丢弃 ${result.dropped} 个`)
+    const msg = parts.join('，')
+    if (result.imported > 0) {
+      showToast(msg, 'success')
+    } else if (result.dropped > 0) {
+      showToast(msg, 'warning')
     } else {
       showToast('所选文件均已导入过', 'warning')
     }
@@ -242,7 +247,7 @@ export default function HomePage() {
     if (isAllSelected) {
       store.clearSelection()
     } else {
-      store.selectAll()
+      store.selectAll(visibleFolders.map(f => f.id), visibleFiles.map(f => f.path))
     }
   }
 
@@ -488,6 +493,7 @@ export default function HomePage() {
                 const itemName = contextMenu.isFolder
                   ? store.folders.find(f => f.id === contextMenu.itemPath)?.name || ''
                   : store.files.find(f => f.path === contextMenu.itemPath)?.name || ''
+                closeContextMenu()
                 setRenameDialog({ visible: true, name: itemName, itemPath: contextMenu.itemPath, isFolder: contextMenu.isFolder })
               }}>
               <Pencil className="h-3.5 w-3.5" /> 重命名

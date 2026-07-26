@@ -36,7 +36,7 @@ interface LibraryState {
   setSortBy: (s: SortBy) => void
   toggleEditing: () => void
   toggleSelect: (path: string) => void
-  selectAll: () => void
+  selectAll: (visibleFolderIds: string[], visibleFilePaths: string[]) => void
   clearSelection: () => void
   setCurrentFolder: (id: string | null) => void
 }
@@ -76,11 +76,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ selectedPaths: next })
   },
 
-  selectAll: () => {
-    const { files, folders } = get()
+  selectAll: (visibleFolderIds: string[], visibleFilePaths: string[]) => {
     const all = new Set<string>()
-    folders.forEach(f => all.add(f.id))
-    files.forEach(f => all.add(f.path))
+    visibleFolderIds.forEach(id => all.add(id))
+    visibleFilePaths.forEach(path => all.add(path))
     set({ selectedPaths: all })
   },
 

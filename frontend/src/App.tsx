@@ -11,6 +11,8 @@ const WordCard = lazy(() => import('@/pages/WordCard'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const Dict = lazy(() => import('@/pages/DictPage'))
 const Review = lazy(() => import('@/pages/ReviewPage'))
+const ArticleList = lazy(() => import('@/pages/ArticleList'))
+const ArticleTyping = lazy(() => import('@/pages/ArticleTyping'))
 
 function Loading() {
   return <div className="flex items-center justify-center h-64 text-muted-foreground">加载中...</div>
@@ -35,6 +37,8 @@ function AppContent() {
           <Route path="/dict" element={<Dict />} />
           <Route path="/dict/:tag" element={<Review />} />
           <Route path="/card" element={<WordCard />} />
+          <Route path="/articles" element={<ArticleList />} />
+          <Route path="/articles/:id" element={<ArticleTyping />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Suspense>

@@ -112,6 +112,9 @@ export namespace main {
 	    next_review: string;
 	    created_at: string;
 	    updated_at: string;
+	    repetitions: number;
+	    efactor: number;
+	    interval: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Word(source);
@@ -129,6 +132,9 @@ export namespace main {
 	        this.next_review = source["next_review"];
 	        this.created_at = source["created_at"];
 	        this.updated_at = source["updated_at"];
+	        this.repetitions = source["repetitions"];
+	        this.efactor = source["efactor"];
+	        this.interval = source["interval"];
 	    }
 	}
 

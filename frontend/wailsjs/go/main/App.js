@@ -66,6 +66,10 @@ export function DbWordsGetReview() {
   return window['go']['main']['App']['DbWordsGetReview']();
 }
 
+export function DbWordsGetReviewCount() {
+  return window['go']['main']['App']['DbWordsGetReviewCount']();
+}
+
 export function DbWordsList() {
   return window['go']['main']['App']['DbWordsList']();
 }

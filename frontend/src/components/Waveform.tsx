@@ -11,10 +11,11 @@ interface WaveformProps {
   currentTime: number
   subtitles?: SubtitleSegment[]
   loading?: boolean
+  dark?: boolean
   onSeek: (time: number) => void
 }
 
-export default function Waveform({ data, duration, currentTime, subtitles, loading, onSeek }: WaveformProps) {
+export default function Waveform({ data, duration, currentTime, subtitles, loading, dark, onSeek }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
@@ -58,7 +59,7 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
     canvas.height = logicalH * dpr
     ctx.scale(dpr, dpr)
 
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = dark ? '#1a1a2e' : '#ffffff'
     ctx.fillRect(0, 0, logicalW, logicalH)
 
     if (!data || data.length === 0) return
@@ -81,10 +82,10 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
         const boxX = Math.max(0, x1)
         const boxW = Math.min(logicalW, x2) - boxX
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.03)'
+        ctx.fillStyle = dark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)'
         ctx.fillRect(boxX, 0, boxW, logicalH)
 
-        ctx.strokeStyle = 'rgba(156, 163, 175, 0.4)'
+        ctx.strokeStyle = dark ? 'rgba(156, 163, 175, 0.2)' : 'rgba(156, 163, 175, 0.4)'
         ctx.lineWidth = 1
         ctx.beginPath()
         ctx.moveTo(boxX + 0.5, 0)
@@ -160,7 +161,7 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
 
   if (loading) {
     return (
-      <div className="w-full h-full bg-white rounded flex items-center justify-center">
+      <div className={`w-full h-full rounded flex items-center justify-center ${dark ? 'bg-[#1a1a2e]' : 'bg-white'}`}>
         <div className="h-2 bg-gray-200 rounded w-3/4 animate-pulse" />
       </div>
     )
@@ -171,7 +172,7 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
   return (
     <div
       ref={containerRef}
-      className="w-full h-full relative bg-white rounded overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      className={`w-full h-full relative rounded overflow-hidden cursor-grab active:cursor-grabbing select-none ${dark ? 'bg-[#1a1a2e]' : 'bg-white'}`}
       onMouseDown={handleMouseDown}
     >
       <canvas ref={canvasRef} className="w-full h-full block" />

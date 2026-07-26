@@ -14,6 +14,7 @@ export function initBridge(): void {
     dbWordsDelete: (id: number) => app.DbWordsDelete(id),
     dbWordsDeleteBatch: (ids: number[]) => app.DbWordsDeleteBatch(ids),
     dbWordsGetReview: () => app.DbWordsGetReview(),
+    dbWordsGetReviewCount: () => app.DbWordsGetReviewCount(),
     dbWordsSearch: (query: string) => app.DbWordsSearch(query),
 
     dbTagsList: () => app.DbTagsList(),
@@ -76,5 +77,15 @@ export function initBridge(): void {
     folderRename: (id: string, name: string) => app.FolderRename(id, name).then((s: string) => JSON.parse(s)),
 
     openExternal: (path: string) => app.OpenExternal(path),
+
+    // Articles
+    getCategories: () => app.GetCategories(),
+    getArticles: (categoryEnName: string) => app.GetArticles(categoryEnName),
+    getArticle: (id: number) => app.GetArticle(id).then((s: string) => JSON.parse(s)),
+    getTypingProgress: (articleId: number, mode: string) => app.GetTypingProgress(articleId, mode).then((s: string) => JSON.parse(s)),
+    saveTypingProgress: (progressJson: string) => app.SaveTypingProgress(progressJson),
+    getTypingRecords: (articleId: number) => app.GetTypingRecords(articleId).then((s: string) => JSON.parse(s)),
+    saveTypingRecord: (recordJson: string) => app.SaveTypingRecord(recordJson),
+    addWordsBatch: (wordsJson: string) => app.AddWordsBatch(wordsJson),
   } as any
 }

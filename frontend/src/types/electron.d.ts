@@ -9,6 +9,9 @@ export interface Word {
   next_review: string
   created_at: string
   updated_at: string
+  repetitions: number
+  efactor: number
+  interval: number
 }
 
 export interface Tag {
@@ -78,10 +81,54 @@ export interface LibraryImportResult {
   files: LibraryFile[]
   imported: number
   skipped: number
+  dropped: number
+}
+
+export interface ArticleCategory {
+  id: number
+  enName: string
+  name: string
+  description: string
+  cover: string
+  length: number
+}
+
+export interface ArticleItem {
+  id: number
+  categoryEnName: string
+  title: string
+  titleTranslate: string
+  text: string
+  textTranslate: string
+  audioSrc: string
+  lrcPosition: string
+  questionJson: string
+  indexOrder: number
+}
+
+export interface TypingProgress {
+  articleId: number
+  mode: string
+  position: number
+  completed: boolean
+  bestAccuracy: number
+  bestWpm: number
+  updatedAt: string
+}
+
+export interface TypingRecord {
+  id: number
+  articleId: number
+  mode: string
+  accuracy: number
+  wpm: number
+  duration: number
+  mistakes: string
+  createdAt: string
 }
 
 export interface ElectronAPI {
-  openFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
+  openFile: (filters?: string | { name: string; extensions: string[] }[]) => Promise<string | null>
   saveFile: (defaultName: string) => Promise<string | null>
   openSubtitle: () => Promise<string | null>
   readTextFile: (path: string) => Promise<string>
@@ -93,6 +140,7 @@ export interface ElectronAPI {
   dbWordsDelete: (id: number) => Promise<void>
   dbWordsDeleteBatch: (ids: number[]) => Promise<void>
   dbWordsGetReview: () => Promise<Word[]>
+  dbWordsGetReviewCount: () => Promise<number>
   dbWordsSearch: (query: string) => Promise<Word[]>
 
   dbTagsList: () => Promise<Tag[]>
@@ -141,6 +189,16 @@ export interface ElectronAPI {
   folderRename: (id: string, name: string) => Promise<Folder[]>
 
   openExternal: (path: string) => Promise<void>
+
+  // Articles
+  getCategories: () => Promise<ArticleCategory[]>
+  getArticles: (categoryEnName: string) => Promise<ArticleItem[]>
+  getArticle: (id: number) => Promise<ArticleItem | null>
+  getTypingProgress: (articleId: number, mode: string) => Promise<TypingProgress | null>
+  saveTypingProgress: (progressJson: string) => Promise<void>
+  getTypingRecords: (articleId: number) => Promise<TypingRecord[]>
+  saveTypingRecord: (recordJson: string) => Promise<void>
+  addWordsBatch: (wordsJson: string) => Promise<number>
 }
 
 declare global {

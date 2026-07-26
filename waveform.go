@@ -55,13 +55,14 @@ func (a *App) GetWaveformData(filePath string) []float64 {
 		return nil
 	}
 
+	go io.Copy(io.Discard, stderr)
+
 	rawBytes, err := io.ReadAll(stdout)
 	if err != nil {
 		fmt.Println("GetWaveformData: read error:", err)
 		return nil
 	}
 
-	go io.Copy(io.Discard, stderr)
 	cmd.Wait()
 
 	if len(rawBytes) == 0 {

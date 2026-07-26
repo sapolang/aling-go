@@ -8,6 +8,8 @@ import (
 )
 
 func (a *App) migrateIfNeeded() {
+	migrateSRS()
+
 	migrateFlag := filepath.Join(a.dataDir, ".migrated")
 	if _, err := os.Stat(migrateFlag); err == nil {
 		return
@@ -49,7 +51,8 @@ func (a *App) migrateIfNeeded() {
 		rows.Close()
 	}
 
-	oldDB.Close()
+	migrateSRS()
+
 	os.WriteFile(migrateFlag, []byte("done"), 0644)
 }
 
@@ -67,4 +70,15 @@ func (a *App) findOldDatabase() string {
 		}
 	}
 	return ""
+}
+
+func migrateSRS() {
+	cols := []struct{ name, def string }{
+		{"repetitions", "INTEGER DEFAULT 0"},
+		{"efactor", "REAL DEFAULT 2.5"},
+		{"interval", "INTEGER DEFAULT 0"},
+	}
+	for _, c := range cols {
+		db.Exec("ALTER TABLE words ADD COLUMN " + c.name + " " + c.def)
+	}
 }

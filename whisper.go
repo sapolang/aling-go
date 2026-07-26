@@ -99,7 +99,10 @@ func (a *App) Transcribe(filePath string) string {
 			Text string `json:"text"`
 		} `json:"transcription"`
 	}
-	json.Unmarshal(data, &whisperOutput)
+	if err := json.Unmarshal(data, &whisperOutput); err != nil {
+		fmt.Println("DEBUG Transcribe: unmarshal error:", err)
+		return "[]"
+	}
 
 	result := make([]SubtitleItem, 0, len(whisperOutput.Transcription))
 	for i, s := range whisperOutput.Transcription {
@@ -228,7 +231,8 @@ func (a *App) DownloadWhisperModel(mirrorURL, modelName string) error {
 	os.Remove(tmpPath)
 
 	url := mirrorURL + "/ggerganov/whisper.cpp/resolve/main/" + a.modelFile
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 30 * 60 * 1e9}
+	resp, err := client.Get(url)
 	if err != nil {
 		os.Remove(tmpPath)
 		return err
@@ -248,7 +252,11 @@ func (a *App) DownloadWhisperModel(mirrorURL, modelName string) error {
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			out.Write(buf[:n])
+			if _, err := out.Write(buf[:n]); err != nil {
+				out.Close()
+				os.Remove(tmpPath)
+				return fmt.Errorf("write error: %w", err)
+			}
 			downloaded += int64(n)
 			if total > 0 {
 				pct := int(downloaded * 100 / total)

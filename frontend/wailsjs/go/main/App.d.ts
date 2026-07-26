@@ -35,6 +35,8 @@ export function DbWordsDeleteBatch(arg1:Array<number>):Promise<void>;
 
 export function DbWordsGetReview():Promise<Array<main.Word>>;
 
+export function DbWordsGetReviewCount():Promise<number>;
+
 export function DbWordsList():Promise<Array<main.Word>>;
 
 export function DbWordsSearch(arg1:string):Promise<Array<main.Word>>;

@@ -6,6 +6,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
 //go:embed all:frontend/dist
@@ -15,7 +16,7 @@ func main() {
 	app := &App{}
 
 	err := wails.Run(&options.App{
-		Title:  "Aling",
+		Title:  "语练",
 		Width:    1200,
 		Height:   720,
 		MinWidth: 800,
@@ -23,7 +24,9 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		HideWindowOnClose: true,
+		Mac:               &mac.Options{},
+		BackgroundColour:  &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,

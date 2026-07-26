@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 func (a *App) RecentList() string {
@@ -33,6 +34,7 @@ func (a *App) RecentAdd(filePath string) string {
 		}
 	}
 	if !found {
+		now := time.Now().Format(time.RFC3339)
 		ftype := detectFileType(filePath)
 		if ftype != "" {
 			if len(lib.Files) >= 200 {
@@ -43,6 +45,7 @@ func (a *App) RecentAdd(filePath string) string {
 				Name:     filepath.Base(filePath),
 				Type:     ftype,
 				FolderID: "",
+				AddedAt:  now,
 			}}, lib.Files...)
 		} else {
 			if len(lib.Files) >= 200 {
@@ -53,6 +56,7 @@ func (a *App) RecentAdd(filePath string) string {
 				Name:     filepath.Base(filePath),
 				Type:     "",
 				FolderID: "",
+				AddedAt:  now,
 			}}, lib.Files...)
 		}
 	}

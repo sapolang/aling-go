@@ -11,7 +11,6 @@ export default function SettingsPage() {
   const [whisperStatus, setWhisperStatus] = useState<{ loaded: boolean; loading: boolean; model: string } | null>(null)
   const [whisperModels, setWhisperModels] = useState<{ name: string; file: string; size: string; downloaded: boolean }[]>([])
   const [selectedModel, setSelectedModel] = useState('base')
-  const [whisperLang, setWhisperLang] = useState('auto')
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
 
@@ -30,7 +29,7 @@ export default function SettingsPage() {
 
   const handleImport = async () => {
     try {
-      const filePath = await window.api.openFile([{ name: 'JSON', extensions: ['json'] }])
+      const filePath = await window.api.openFile('*.json')
       if (!filePath) return
       const content = await window.api.readTextFile(filePath)
       const result = await window.api.dbImport(content)
@@ -47,7 +46,6 @@ export default function SettingsPage() {
       setSelectedModel(current)
     })
     window.api.listWhisperModels().then(setWhisperModels)
-    window.api.getWhisperLang().then(setWhisperLang)
 
     let resumeCleanup: (() => void) | null = null
     window.api.getDownloadProgress().then((d: string) => {
@@ -149,24 +147,6 @@ export default function SettingsPage() {
                 </div>
               )
             })}
-          <div className="flex items-center justify-between pt-3 border-t">
-            <div>
-              <p className="text-sm font-medium">识别语言</p>
-              <p className="text-xs text-muted-foreground">指定音频语言，auto 为自动检测</p>
-            </div>
-            <select className="bg-background border rounded px-2 py-1 text-sm"
-              value={whisperLang} onChange={(e) => { setWhisperLang(e.target.value); window.api.setWhisperLang(e.target.value) }}>
-              <option value="auto">自动检测</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-              <option value="ja">日本語</option>
-              <option value="ko">한국어</option>
-              <option value="fr">Français</option>
-              <option value="de">Deutsch</option>
-              <option value="es">Español</option>
-              <option value="ru">Русский</option>
-            </select>
-          </div>
         </CardContent>
       </Card>
 

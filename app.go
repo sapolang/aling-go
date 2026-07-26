@@ -42,6 +42,9 @@ func (a *App) startup(ctx context.Context) {
 	if err := dict.OpenDictDB(a.dataDir, db); err != nil {
 		println("Dict DB init error:", err.Error())
 	}
+	if err := openArticleDB(a.dataDir); err != nil {
+		println("Article DB init error:", err.Error())
+	}
 	a.migrateIfNeeded()
 	a.startMediaServer()
 }
@@ -99,6 +102,10 @@ func (a *App) DbWordsGetReview() []Word {
 	return dbWordsGetReview()
 }
 
+func (a *App) DbWordsGetReviewCount() int {
+	return dbWordsGetReviewCount()
+}
+
 func (a *App) DbWordsSearch(query string) []Word {
 	return dbWordsSearch(query)
 }
@@ -137,7 +144,7 @@ func (a *App) OpenExternal(filePath string) {
 	var cmd *exec.Cmd
 	switch goRuntime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", filePath)
+		cmd = exec.Command("open", "--", filePath)
 	case "windows":
 		cmd = exec.Command("cmd", "/c", "start", "", filePath)
 	default:
@@ -208,4 +215,43 @@ func (a *App) DbDictAddToWordList(jsonStr string) DictAddResult {
 		println("DbDictAddToWordList error:", err.Error())
 	}
 	return DictAddResult{Added: added, Skipped: skipped}
+}
+
+// --- Articles ---
+
+func (a *App) GetCategories() []ArticleCategory {
+	return dbGetCategories()
+}
+
+func (a *App) GetArticles(categoryEnName string) []ArticleItem {
+	return dbGetArticles(categoryEnName)
+}
+
+func (a *App) GetArticle(id int) string {
+	item := dbGetArticle(id)
+	if item == nil {
+		return ""
+	}
+	b, _ := json.Marshal(item)
+	return string(b)
+}
+
+func (a *App) GetTypingProgress(articleID int, mode string) string {
+	return dbGetTypingProgress(articleID, mode)
+}
+
+func (a *App) SaveTypingProgress(progressJSON string) {
+	dbSaveTypingProgress(progressJSON)
+}
+
+func (a *App) GetTypingRecords(articleID int) string {
+	return dbGetTypingRecords(articleID)
+}
+
+func (a *App) SaveTypingRecord(recordJSON string) {
+	dbSaveTypingRecord(recordJSON)
+}
+
+func (a *App) AddWordsBatch(wordsJSON string) int {
+	return dbAddWordsBatch(wordsJSON)
 }
