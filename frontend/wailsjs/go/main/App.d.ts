@@ -43,6 +43,12 @@ export function DbWordsUpdate(arg1:number,arg2:string):Promise<void>;
 
 export function DownloadWhisperModel(arg1:string,arg2:string):Promise<void>;
 
+export function FolderCreate(arg1:string,arg2:string):Promise<string>;
+
+export function FolderDelete(arg1:string):Promise<string>;
+
+export function FolderRename(arg1:string,arg2:string):Promise<string>;
+
 export function GetCachedSubtitles(arg1:string):Promise<string>;
 
 export function GetDownloadProgress():Promise<string>;
@@ -55,7 +61,19 @@ export function GetVideoThumbnail(arg1:string):Promise<string>;
 
 export function GetWhisperLang():Promise<string>;
 
+export function LibraryImport(arg1:string,arg2:string):Promise<string>;
+
+export function LibraryList():Promise<string>;
+
+export function LibraryMove(arg1:string,arg2:string):Promise<string>;
+
+export function LibraryRemove(arg1:string):Promise<string>;
+
+export function LibraryRename(arg1:string,arg2:string):Promise<string>;
+
 export function ListWhisperModels():Promise<string>;
+
+export function OpenExternal(arg1:string):Promise<void>;
 
 export function OpenFile(arg1:string):Promise<string>;
 

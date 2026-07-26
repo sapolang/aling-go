@@ -63,5 +63,17 @@ export function initBridge(): void {
     dbDictAddToWordList: (words: any[]) => app.DbDictAddToWordList(JSON.stringify(words)),
     dbDictSaveProgress: (tag: string, index: number) => app.DbDictSaveProgress(tag, index),
     dbDictGetProgress: (tag: string) => app.DbDictGetProgress(tag),
+
+    // Library
+    libraryList: () => app.LibraryList().then((s: string) => JSON.parse(s)),
+    libraryImport: (category: string, folderId: string) => app.LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
+    libraryRemove: (paths: string[]) => app.LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
+    libraryRename: (path: string, newName: string) => app.LibraryRename(path, newName).then((s: string) => JSON.parse(s)),
+    libraryMove: (paths: string[], folderId: string) => app.LibraryMove(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
+    folderCreate: (name: string, parentId: string) => app.FolderCreate(name, parentId).then((s: string) => JSON.parse(s)),
+    folderDelete: (id: string) => app.FolderDelete(id).then((s: string) => JSON.parse(s)),
+    folderRename: (id: string, name: string) => app.FolderRename(id, name).then((s: string) => JSON.parse(s)),
+
+    openExternal: (path: string) => app.OpenExternal(path),
   } as any
 }

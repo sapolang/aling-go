@@ -8,38 +8,56 @@ import (
 	"path/filepath"
 )
 
-func (a *App) recentFilePath() string {
-	return filepath.Join(a.dataDir, "recent.json")
-}
-
 func (a *App) RecentList() string {
-	data, err := os.ReadFile(a.recentFilePath())
-	if err != nil {
-		return "[]"
+	lib := a.readLibrary()
+	type recentEntry struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
 	}
-	return string(data)
+	entries := make([]recentEntry, 0, len(lib.Files))
+	for _, f := range lib.Files {
+		entries = append(entries, recentEntry{Path: f.Path, Name: f.Name})
+	}
+	b, _ := json.Marshal(entries)
+	return string(b)
 }
 
 func (a *App) RecentAdd(filePath string) string {
-	var files []RecentFile
-	data, err := os.ReadFile(a.recentFilePath())
-	if err == nil {
-		json.Unmarshal(data, &files)
-	}
-
-	updated := []RecentFile{{Path: filePath, Name: filepath.Base(filePath)}}
-	for _, f := range files {
-		if f.Path != filePath {
-			updated = append(updated, f)
+	lib := a.readLibrary()
+	found := false
+	for i, f := range lib.Files {
+		if f.Path == filePath {
+			lib.Files = append([]LibraryFile{lib.Files[i]}, append(lib.Files[:i], lib.Files[i+1:]...)...)
+			found = true
+			break
 		}
 	}
-	if len(updated) > 50 {
-		updated = updated[:50]
+	if !found {
+		ftype := detectFileType(filePath)
+		if ftype != "" {
+			if len(lib.Files) >= 200 {
+				lib.Files = lib.Files[:199]
+			}
+			lib.Files = append([]LibraryFile{{
+				Path:     filePath,
+				Name:     filepath.Base(filePath),
+				Type:     ftype,
+				FolderID: "",
+			}}, lib.Files...)
+		} else {
+			if len(lib.Files) >= 200 {
+				lib.Files = lib.Files[:199]
+			}
+			lib.Files = append([]LibraryFile{{
+				Path:     filePath,
+				Name:     filepath.Base(filePath),
+				Type:     "",
+				FolderID: "",
+			}}, lib.Files...)
+		}
 	}
-
-	b, _ := json.Marshal(updated)
-	os.WriteFile(a.recentFilePath(), b, 0644)
-	return string(b)
+	a.writeLibrary(lib)
+	return a.RecentList()
 }
 
 func (a *App) CacheSubtitles(filePath, subsJSON string) {

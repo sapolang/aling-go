@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goRuntime "runtime"
 	"sync"
@@ -130,6 +132,21 @@ func (a *App) DbClear() {
 }
 
 // --- Platform ---
+
+func (a *App) OpenExternal(filePath string) {
+	var cmd *exec.Cmd
+	switch goRuntime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", filePath)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", filePath)
+	default:
+		cmd = exec.Command("xdg-open", filePath)
+	}
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "OpenExternal: start error: %v\n", err)
+	}
+}
 
 func (a *App) GetPlatform() string {
 	return goRuntime.GOOS

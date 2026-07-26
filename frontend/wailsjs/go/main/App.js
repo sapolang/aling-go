@@ -82,6 +82,18 @@ export function DownloadWhisperModel(arg1, arg2) {
   return window['go']['main']['App']['DownloadWhisperModel'](arg1, arg2);
 }
 
+export function FolderCreate(arg1, arg2) {
+  return window['go']['main']['App']['FolderCreate'](arg1, arg2);
+}
+
+export function FolderDelete(arg1) {
+  return window['go']['main']['App']['FolderDelete'](arg1);
+}
+
+export function FolderRename(arg1, arg2) {
+  return window['go']['main']['App']['FolderRename'](arg1, arg2);
+}
+
 export function GetCachedSubtitles(arg1) {
   return window['go']['main']['App']['GetCachedSubtitles'](arg1);
 }
@@ -106,8 +118,32 @@ export function GetWhisperLang() {
   return window['go']['main']['App']['GetWhisperLang']();
 }
 
+export function LibraryImport(arg1, arg2) {
+  return window['go']['main']['App']['LibraryImport'](arg1, arg2);
+}
+
+export function LibraryList() {
+  return window['go']['main']['App']['LibraryList']();
+}
+
+export function LibraryMove(arg1, arg2) {
+  return window['go']['main']['App']['LibraryMove'](arg1, arg2);
+}
+
+export function LibraryRemove(arg1) {
+  return window['go']['main']['App']['LibraryRemove'](arg1);
+}
+
+export function LibraryRename(arg1, arg2) {
+  return window['go']['main']['App']['LibraryRename'](arg1, arg2);
+}
+
 export function ListWhisperModels() {
   return window['go']['main']['App']['ListWhisperModels']();
+}
+
+export function OpenExternal(arg1) {
+  return window['go']['main']['App']['OpenExternal'](arg1);
 }
 
 export function OpenFile(arg1) {

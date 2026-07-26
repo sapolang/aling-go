@@ -6,8 +6,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library } from 'lucide-react'
 
 const navItems = [
-  { path: '/player', label: '精听播放', icon: Play },
-  { path: '/home', label: '今日复习', icon: Home },
+  { path: '/', label: '文件库', icon: Home },
   { path: '/words', label: '生词库', icon: BookOpen },
   { path: '/dict', label: '单词书', icon: Library },
   { path: '/card', label: '卡片背诵', icon: FlipVertical },

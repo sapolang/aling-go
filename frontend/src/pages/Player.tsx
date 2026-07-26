@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -9,14 +9,16 @@ import {
   Play, Pause, Repeat,
   FileUp, Subtitles, Loader2, BookmarkPlus, Volume2 as Speaker,
   MoreHorizontal, Download, RotateCcw, X as XIcon, FileDown, ArrowLeft,
-  Film, Music
+  Globe
 } from 'lucide-react'
 import SrtParser from 'srt-parser-2'
+import { timeToSeconds } from '@/lib/srt'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 export default function PlayerPage() {
   const location = useLocation()
+  const navigate = useNavigate()
   const isActive = location.pathname === '/player'
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -26,31 +28,17 @@ export default function PlayerPage() {
   const [wordPhonetic, setWordPhonetic] = useState('')
   const [showAddWord, setShowAddWord] = useState(false)
   const [currentSentence, setCurrentSentence] = useState('')
-  const [recentFiles, setRecentFiles] = useState<{ path: string; name: string }[]>([])
   const [playError, setPlayError] = useState<string | null>(null)
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
   const [mediaPort, setMediaPort] = useState(0)
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
+  const [showTranscribeLangModal, setShowTranscribeLangModal] = useState(false)
+  const [transcribeLang, setTranscribeLang] = useState('auto')
 
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
   const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
 
-  useEffect(() => { window.api.recentList().then(setRecentFiles) }, [])
-
-  useEffect(() => {
-    const load = async () => {
-      const map: Record<string, string> = {}
-      for (const f of recentFiles) {
-        const ext = f.name.toLowerCase().match(/\.(\w+)$/)?.[1]
-        if (!ext || ['mp3','wav','m4a','ogg','flac','aac'].includes(ext)) continue
-        const dataUrl = await window.api.getVideoThumbnail(f.path)
-        if (dataUrl) map[f.path] = dataUrl
-      }
-      setThumbnails(map)
-    }
-    if (recentFiles.length > 0) load()
-  }, [recentFiles])
+  useEffect(() => { window.api.getWhisperLang().then(setTranscribeLang) }, [])
 
   // --- Refs for event handlers (avoid stale closures) ---
   const onTimeUpdateRef = useRef<() => void>(() => {})
@@ -162,19 +150,19 @@ export default function PlayerPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [isActive, store.playing])
 
-  // --- File operations ---
-  const openFile = async (filePath: string) => {
-    store.setFilePath(filePath)
-    setPlayError(null)
-    const cached = await window.api.getCachedSubtitles(filePath)
-    if (cached && cached.length > 0) { store.setSubtitles(cached); return }
-    const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
-    try { await window.api.readTextFile(srtPath); loadSrtFile(srtPath) } catch {}
-  }
-
   const handleOpenFile = async () => {
     const filePath = await window.api.openFile()
-    if (filePath) { openFile(filePath); window.api.recentAdd(filePath).then(setRecentFiles) }
+    if (filePath) {
+      store.setFilePath(filePath)
+      setPlayError(null)
+      window.api.recentAdd(filePath)
+      try {
+        const cached = await window.api.getCachedSubtitles(filePath)
+        if (cached && cached.length > 0) { store.setSubtitles(cached); return }
+        const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
+        try { await window.api.readTextFile(srtPath); loadSrtFile(srtPath) } catch {}
+      } catch {}
+    }
   }
 
   const handleLoadSrt = async () => {
@@ -198,7 +186,7 @@ export default function PlayerPage() {
     } catch (err) { console.error(err) }
   }
 
-  const startTranscription = async (filePath: string) => {
+  const startTranscription = async (filePath: string, lang?: string) => {
     const status = await window.api.whisperStatus()
     if (!status.loaded) {
       store.setTranscribing(true); store.setTranscriptionProgress(0)
@@ -220,6 +208,7 @@ export default function PlayerPage() {
     setTranscribingLabel('转录中')
     const cleanup = window.api.onWhisperProgress((d) => store.setTranscriptionProgress(d.progress))
     try {
+      if (lang) { window.api.setWhisperLang(lang) }
       const subs = await window.api.whisperTranscribe(filePath)
       if (subs.length === 0) {
         alert('转录完成，但未识别到语音。请在设置页检查模型和语言设置是否正确')
@@ -250,7 +239,7 @@ export default function PlayerPage() {
     if (filePath) { await window.api.writeTextFile(filePath, srt) }
   }
 
-  const retranscribe = () => { if (store.filePath) startTranscription(store.filePath) }
+  const retranscribe = () => { if (store.filePath) setShowTranscribeLangModal(true) }
   const closeSubtitles = () => { store.setSubtitles([]) }
 
   const handleWordClick = (word: string, sentence: string) => {
@@ -274,70 +263,6 @@ export default function PlayerPage() {
   const mediaUrl = store.filePath && mediaPort
     ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
     : ''
-
-  // --- Library view ---
-  const renderLibrary = () => {
-    const audioExts = ['mp3','wav','m4a','ogg','flac','aac']
-    const isAudioFile = (name: string) => audioExts.includes(name.toLowerCase().match(/\.(\w+)$/)?.[1] || '')
-    const videos = recentFiles.filter(f => !isAudioFile(f.name))
-    const audios = recentFiles.filter(f => isAudioFile(f.name))
-
-    const MediaCard = ({ f, isAudio: ia }: { f: { path: string; name: string }; isAudio: boolean }) => {
-      const thumb = thumbnails[f.path]
-      return (
-        <button className="group rounded-lg border bg-card hover:bg-accent transition-colors overflow-hidden text-left"
-          onClick={() => { openFile(f.path); window.api.recentAdd(f.path).then(setRecentFiles) }}>
-          <div className={`h-24 flex items-center justify-center overflow-hidden ${thumb ? '' : ia ? 'bg-blue-50 dark:bg-blue-950/30' : 'bg-purple-50 dark:bg-purple-950/30'}`}>
-            {thumb
-              ? <img src={thumb} alt="" className="w-full h-full object-cover" />
-              : ia ? <Music className="h-10 w-10 text-blue-400" /> : <Film className="h-10 w-10 text-purple-400" />
-            }
-          </div>
-          <div className="p-2">
-            <p className="text-xs truncate">{f.name}</p>
-          </div>
-        </button>
-      )
-    }
-
-    return (
-      <div className="flex-1 overflow-y-auto">
-        <p className="text-sm text-muted-foreground mb-4">点击上方「导入音视频」或从下面列表选择</p>
-
-        {videos.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Film className="h-3.5 w-3.5" /> 视频 ({videos.length})
-            </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {videos.map(f => <MediaCard key={f.path} f={f} isAudio={false} />)}
-            </div>
-          </div>
-        )}
-
-        {audios.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Music className="h-3.5 w-3.5" /> 音频 ({audios.length})
-            </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {audios.map(f => <MediaCard key={f.path} f={f} isAudio={true} />)}
-            </div>
-          </div>
-        )}
-
-        {recentFiles.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground">
-            <p className="text-lg mb-2">还没有导入过文件</p>
-            <p className="text-sm">点击上方「导入音视频」开始学习</p>
-            <Button className="mt-4" size="sm" onClick={handleOpenFile}>
-            <FileUp className="h-4 w-4 mr-1" /> 导入音视频
-            </Button>
-          </div>
-        )}
-      </div>
-    )
-  }
 
   // --- Player view ---
   const renderPlayer = () => (
@@ -442,7 +367,7 @@ export default function PlayerPage() {
                 <Button size="sm" variant="outline" onClick={handleLoadSrt}>
                   <Subtitles className="h-4 w-4 mr-1" /> 导入字幕
                 </Button>
-                <Button size="sm" onClick={() => store.filePath && startTranscription(store.filePath)}>
+                <Button size="sm" onClick={() => store.filePath && setShowTranscribeLangModal(true)}>
                   <Loader2 className="h-4 w-4 mr-1" /> 转录字幕
                 </Button>
               </div>
@@ -484,9 +409,9 @@ export default function PlayerPage() {
             <FileUp className="h-4 w-4 mr-1" /> 导入音视频
           </Button>
           {store.filePath && (
-            <Button variant="ghost" size="sm" onClick={() => store.closeFile()}>
-              <ArrowLeft className="h-4 w-4 mr-1" /> 返回列表
-            </Button>
+              <Button variant="ghost" size="sm" onClick={() => { store.closeFile(); navigate('/') }}>
+                <ArrowLeft className="h-4 w-4 mr-1" /> 返回列表
+              </Button>
           )}
           <Button onClick={handleLoadSrt} variant="outline" size="sm">
             <Subtitles className="h-4 w-4 mr-1" /> 加载SRT字幕
@@ -496,16 +421,17 @@ export default function PlayerPage() {
               {store.filePath.split('/').pop()}
             </span>
           )}
-          {recentFiles.length > 0 && (
-            <select className="bg-background border rounded px-2 py-1 text-xs max-w-[200px]" value=""
-              onChange={(e) => { if (e.target.value) { openFile(e.target.value); window.api.recentAdd(e.target.value).then(setRecentFiles) } }}>
-              <option value="">最近文件...</option>
-              {recentFiles.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
-            </select>
-          )}
         </div>
 
-        {store.filePath ? renderPlayer() : renderLibrary()}
+        {store.filePath ? renderPlayer() : (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+            <p className="text-lg">打开一个文件开始播放</p>
+            <p className="text-sm">前往「文件库」页面导入文件，或直接拖入音视频</p>
+            <Button size="sm" onClick={handleOpenFile}>
+              <FileUp className="h-4 w-4 mr-1" /> 导入音视频
+            </Button>
+          </div>
+        )}
 
         {showAddWord && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAddWord(false)}>
@@ -524,13 +450,42 @@ export default function PlayerPage() {
             </Card>
           </div>
         )}
+
+        {showTranscribeLangModal && store.filePath && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTranscribeLangModal(false)}>
+            <Card className="w-80 p-6" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Globe className="h-5 w-5" /> 选择识别语言
+              </h3>
+              <div className="mb-1">
+                <label className="text-sm font-medium">音频语言</label>
+                <p className="text-xs text-muted-foreground mb-3">指定音频语言可提高识别准确率，auto 为自动检测</p>
+              </div>
+              <select className="w-full bg-background border rounded px-3 py-2 text-sm mb-4"
+                value={transcribeLang} onChange={(e) => setTranscribeLang(e.target.value)}>
+                <option value="auto">自动检测</option>
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+                <option value="es">Español</option>
+                <option value="ru">Русский</option>
+              </select>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowTranscribeLangModal(false)}>取消</Button>
+                <Button onClick={() => {
+                  setShowTranscribeLangModal(false)
+                  startTranscription(store.filePath!, transcribeLang)
+                }}>开始转录</Button>
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function timeToSeconds(time: string): number {
-  const [h, m, s] = time.split(':')
-  const [sec, ms] = s.split(',')
-  return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms || '0') / 1000
-}
+

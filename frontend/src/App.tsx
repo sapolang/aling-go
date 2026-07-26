@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect } from 'react'
 import { Layout } from '@/components/Layout'
 import { useThemeStore } from '@/stores/themeStore'
@@ -29,7 +29,7 @@ function AppContent() {
     <Layout isPlayerRoute={isPlayer}>
       <Suspense fallback={<Loading />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/player" replace />} />
+          <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/words" element={<WordList />} />
           <Route path="/dict" element={<Dict />} />

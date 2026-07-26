@@ -54,6 +54,32 @@ export interface DictAddResult {
   skipped: number
 }
 
+export interface LibraryFile {
+  path: string
+  name: string
+  type: 'video' | 'audio' | 'pdf'
+  folderId: string
+  addedAt: string
+}
+
+export interface Folder {
+  id: string
+  name: string
+  createdAt: string
+  parentId: string
+}
+
+export interface LibraryData {
+  folders: Folder[]
+  files: LibraryFile[]
+}
+
+export interface LibraryImportResult {
+  files: LibraryFile[]
+  imported: number
+  skipped: number
+}
+
 export interface ElectronAPI {
   openFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
   saveFile: (defaultName: string) => Promise<string | null>
@@ -103,6 +129,17 @@ export interface ElectronAPI {
   dbDictAddToWordList: (words: DictWord[]) => Promise<DictAddResult>
   dbDictSaveProgress: (tag: string, index: number) => Promise<void>
   dbDictGetProgress: (tag: string) => Promise<number>
+
+  libraryList: () => Promise<LibraryData>
+  libraryImport: (category: string, folderId: string) => Promise<LibraryImportResult>
+  libraryRemove: (paths: string[]) => Promise<LibraryFile[]>
+  libraryRename: (path: string, newName: string) => Promise<LibraryData>
+  libraryMove: (paths: string[], folderId: string) => Promise<LibraryFile[]>
+  folderCreate: (name: string, parentId: string) => Promise<Folder[]>
+  folderDelete: (id: string) => Promise<Folder[]>
+  folderRename: (id: string, name: string) => Promise<Folder[]>
+
+  openExternal: (path: string) => Promise<void>
 }
 
 declare global {

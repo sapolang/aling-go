@@ -41,3 +41,29 @@ type ImportResult struct {
 	Imported int `json:"imported"`
 	Skipped  int `json:"skipped"`
 }
+
+type LibraryImportResult struct {
+	Files    []LibraryFile `json:"files"`
+	Imported int           `json:"imported"`
+	Skipped  int           `json:"skipped"`
+}
+
+type LibraryFile struct {
+	Path     string `json:"path"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	FolderID string `json:"folderId"`
+	AddedAt  string `json:"addedAt"`
+}
+
+type Folder struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"createdAt"`
+	ParentID  string `json:"parentId"`
+}
+
+type LibraryData struct {
+	Folders []Folder      `json:"folders"`
+	Files   []LibraryFile `json:"files"`
+}
