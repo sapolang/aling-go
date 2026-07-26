@@ -20,7 +20,9 @@ interface PlayerStore {
   loopEnd: number | null
   transcribing: boolean
   transcriptionProgress: number
-  seekTo: number | null         // Layout 消费后置 null
+  seekTo: number | null
+  waveformData: number[]
+  waveformLoading: boolean
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -35,6 +37,8 @@ interface PlayerStore {
   setTranscriptionProgress: (p: number) => void
   requestSeek: (time: number) => void
   closeFile: () => void
+  setWaveformData: (data: number[]) => void
+  setWaveformLoading: (loading: boolean) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -51,11 +55,14 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   transcribing: false,
   transcriptionProgress: 0,
   seekTo: null,
+  waveformData: [],
+  waveformLoading: false,
 
   setFilePath: (filePath) => set({
     filePath, playing: false, played: 0, duration: 0, playbackRate: 1,
     subtitles: [], subtitlePath: null, currentSubtitleIndex: -1,
-    loopStart: null, loopEnd: null, seekTo: null
+    loopStart: null, loopEnd: null, seekTo: null,
+    waveformData: [], waveformLoading: false
   }),
   setPlaying: (playing) => set({ playing }),
   setPlayed: (played) => set({ played }),
@@ -71,6 +78,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   closeFile: () => set({
     filePath: null, playing: false, played: 0, duration: 0, playbackRate: 1,
     subtitles: [], subtitlePath: null, currentSubtitleIndex: -1,
-    loopStart: null, loopEnd: null, transcribing: false, transcriptionProgress: 0, seekTo: null
-  })
+    loopStart: null, loopEnd: null, transcribing: false, transcriptionProgress: 0, seekTo: null,
+    waveformData: [], waveformLoading: false
+  }),
+  setWaveformData: (waveformData) => set({ waveformData, waveformLoading: false }),
+  setWaveformLoading: (waveformLoading) => set({ waveformLoading }),
 }))

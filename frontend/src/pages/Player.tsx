@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { speak } from '@/lib/tts'
+import Waveform from '@/components/Waveform'
 import {
   Play, Pause, Repeat,
   FileUp, Subtitles, Loader2, BookmarkPlus, Volume2 as Speaker,
@@ -156,6 +157,11 @@ export default function PlayerPage() {
       store.setFilePath(filePath)
       setPlayError(null)
       window.api.recentAdd(filePath)
+      store.setWaveformLoading(true)
+      window.api.getWaveformData(filePath).then((data) => {
+        if (data && data.length > 0) store.setWaveformData(data)
+        else store.setWaveformLoading(false)
+      }).catch(() => store.setWaveformLoading(false))
       try {
         const cached = await window.api.getCachedSubtitles(filePath)
         if (cached && cached.length > 0) { store.setSubtitles(cached); return }
@@ -285,6 +291,19 @@ export default function PlayerPage() {
             ) : null
           })()}
         </div>
+
+        {store.filePath && (
+          <div className={isAudio ? 'h-[100px] shrink-0' : 'h-[48px] shrink-0'}>
+            <Waveform
+              data={store.waveformData}
+              duration={store.duration}
+              currentTime={store.played}
+              subtitles={store.subtitles}
+              loading={store.waveformLoading}
+              onSeek={(t) => store.requestSeek(t)}
+            />
+          </div>
+        )}
 
         {store.filePath && (
           <div className="flex items-center gap-2">

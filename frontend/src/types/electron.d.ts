@@ -119,6 +119,7 @@ export interface ElectronAPI {
   cacheSubtitles: (filePath: string, subtitles: any[]) => Promise<void>
   getCachedSubtitles: (filePath: string) => Promise<any[] | null>
   getVideoThumbnail: (filePath: string) => Promise<string | null>
+  getWaveformData: (filePath: string) => Promise<number[]>
 
   getPlatform: () => string
   getMediaPort: () => Promise<number>

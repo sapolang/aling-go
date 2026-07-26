@@ -164,6 +164,11 @@ export default function HomePage() {
     }
     player.setFilePath(file.path)
     navigate('/player')
+    player.setWaveformLoading(true)
+    window.api.getWaveformData(file.path).then((data) => {
+      if (data && data.length > 0) player.setWaveformData(data)
+      else player.setWaveformLoading(false)
+    }).catch(() => player.setWaveformLoading(false))
     try {
       const cached = await window.api.getCachedSubtitles(file.path)
       if (cached && cached.length > 0) {

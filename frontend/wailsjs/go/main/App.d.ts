@@ -59,6 +59,8 @@ export function GetPlatform():Promise<string>;
 
 export function GetVideoThumbnail(arg1:string):Promise<string>;
 
+export function GetWaveformData(arg1:string):Promise<Array<number>>;
+
 export function GetWhisperLang():Promise<string>;
 
 export function LibraryImport(arg1:string,arg2:string):Promise<string>;

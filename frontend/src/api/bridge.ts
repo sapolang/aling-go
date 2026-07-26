@@ -54,6 +54,7 @@ export function initBridge(): void {
     }),
 
     getVideoThumbnail: (filePath: string) => app.GetVideoThumbnail(filePath),
+    getWaveformData: (filePath: string) => app.GetWaveformData(filePath),
     getPlatform: () => app.GetPlatform(),
     getMediaPort: () => app.GetMediaPort(),
 

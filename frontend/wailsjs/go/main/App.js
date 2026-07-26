@@ -114,6 +114,10 @@ export function GetVideoThumbnail(arg1) {
   return window['go']['main']['App']['GetVideoThumbnail'](arg1);
 }
 
+export function GetWaveformData(arg1) {
+  return window['go']['main']['App']['GetWaveformData'](arg1);
+}
+
 export function GetWhisperLang() {
   return window['go']['main']['App']['GetWhisperLang']();
 }
