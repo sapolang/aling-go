@@ -198,6 +198,7 @@ export interface ElectronAPI {
   saveTypingProgress: (progressJson: string) => Promise<void>
   getTypingRecords: (articleId: number) => Promise<TypingRecord[]>
   saveTypingRecord: (recordJson: string) => Promise<void>
+  getAllTypingProgress: () => Promise<TypingProgress[]>
   addWordsBatch: (wordsJson: string) => Promise<number>
 }
 

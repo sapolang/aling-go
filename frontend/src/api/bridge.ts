@@ -86,6 +86,7 @@ export function initBridge(): void {
     saveTypingProgress: (progressJson: string) => app.SaveTypingProgress(progressJson),
     getTypingRecords: (articleId: number) => app.GetTypingRecords(articleId).then((s: string) => JSON.parse(s)),
     saveTypingRecord: (recordJson: string) => app.SaveTypingRecord(recordJson),
+    getAllTypingProgress: () => app.GetAllTypingProgress().then((s: string) => JSON.parse(s)),
     addWordsBatch: (wordsJson: string) => app.AddWordsBatch(wordsJson),
   } as any
 }

@@ -159,6 +159,24 @@ func dbSaveTypingRecord(recordJSON string) {
 	)
 }
 
+func dbGetAllTypingProgress() string {
+	rows, err := db.Query(`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at FROM typing_progress`)
+	if err != nil {
+		return "[]"
+	}
+	defer rows.Close()
+	var results []TypingProgress
+	for rows.Next() {
+		var p TypingProgress
+		if err := rows.Scan(&p.ArticleID, &p.Mode, &p.Position, &p.Completed, &p.BestAccuracy, &p.BestWPM, &p.UpdatedAt); err != nil {
+			continue
+		}
+		results = append(results, p)
+	}
+	b, _ := json.Marshal(results)
+	return string(b)
+}
+
 func dbAddWordsBatch(wordsJSON string) int {
 	var words []Word
 	if err := json.Unmarshal([]byte(wordsJSON), &words); err != nil {

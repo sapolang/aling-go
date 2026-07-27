@@ -252,6 +252,10 @@ func (a *App) SaveTypingRecord(recordJSON string) {
 	dbSaveTypingRecord(recordJSON)
 }
 
+func (a *App) GetAllTypingProgress() string {
+	return dbGetAllTypingProgress()
+}
+
 func (a *App) AddWordsBatch(wordsJSON string) int {
 	return dbAddWordsBatch(wordsJSON)
 }

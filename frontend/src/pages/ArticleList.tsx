@@ -2,21 +2,29 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useArticleStore } from '@/stores/articleStore'
 import { Card, CardContent } from '@/components/ui/card'
-import { BookOpen, Check } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 
 export default function ArticleListPage() {
   const navigate = useNavigate()
-  const { categories, articles, currentCategory, loading, loadCategories, loadArticles } = useArticleStore()
+  const { categories, articles, currentCategory, allProgress, loading, loadCategories, loadArticles, loadAllProgress } = useArticleStore()
 
   useEffect(() => { loadCategories() }, [])
 
+  useEffect(() => {
+    if (categories.length > 0 && !currentCategory) {
+      loadArticles(categories[0].enName).then(() => loadAllProgress())
+    }
+  }, [categories, currentCategory, loadArticles, loadAllProgress])
+
   const handleCategoryClick = (enName: string) => {
-    loadArticles(enName)
+    loadArticles(enName).then(() => loadAllProgress())
   }
 
   const handleArticleClick = (id: number) => {
     navigate(`/articles/${id}`)
   }
+
+  const getProgress = (articleId: number) => allProgress[`${articleId}_follow`]
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pt-4">
@@ -56,25 +64,37 @@ export default function ArticleListPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {articles.map((a, i) => (
-            <Card
-              key={a.id}
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => handleArticleClick(a.id)}
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <span className="text-sm text-muted-foreground w-8 shrink-0">
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium truncate">{a.title}</h3>
-                  {a.titleTranslate && (
-                    <p className="text-sm text-muted-foreground truncate">{a.titleTranslate}</p>
+          {articles.map((a, i) => {
+            const progress = getProgress(a.id)
+            return (
+              <Card
+                key={a.id}
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => handleArticleClick(a.id)}
+              >
+                <CardContent className="p-4 flex items-center gap-4">
+                  <span className="text-sm text-muted-foreground w-8 shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium truncate">
+                      {progress?.completed ? '✓ ' : ''}{a.title}
+                    </h3>
+                    {a.titleTranslate && (
+                      <p className="text-sm text-muted-foreground truncate">{a.titleTranslate}</p>
+                    )}
+                  </div>
+                  {progress?.completed && (
+                    <div className="text-xs text-muted-foreground shrink-0 text-right">
+                      <span className="text-green-600 dark:text-green-400">{Math.round(progress.bestAccuracy * 100)}%</span>
+                      {' · '}
+                      <span>{Math.round(progress.bestWpm)} WPM</span>
+                    </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

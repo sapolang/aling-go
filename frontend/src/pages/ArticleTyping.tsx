@@ -7,6 +7,15 @@ import { Speaker, ArrowLeft, Pencil, Eye, Check } from 'lucide-react'
 
 const CDN_BASE = 'https://files.typewords.cc'
 
+const AUTO_SKIP_CHARS = new Set([
+  '\n', ' ', '.', ',', '!', '?', ';', ':', '"', '(', ')', '[', ']', '{', '}',
+  '—', '–', '…',
+])
+
+function isAutoSkipChar(char: string): boolean {
+  return AUTO_SKIP_CHARS.has(char)
+}
+
 type Mode = 'follow' | 'dictation'
 
 interface CharState {
@@ -48,18 +57,19 @@ export default function ArticleTypingPage() {
   }, [currentArticle, mode, articleId])
 
   useEffect(() => {
-    if (typingProgress && typingProgress.position > 0 && !started) {
+    if (typingProgress && typingProgress.position > 0 && !started
+      && typingProgress.articleId === articleId && typingProgress.mode === mode) {
       setTyped(currentArticle?.text.slice(0, typingProgress.position) || '')
     }
-  }, [typingProgress, currentArticle])
+  }, [typingProgress, currentArticle, articleId, mode])
 
   useEffect(() => {
-    if (!started) return
+    if (!started || finished) return
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTime) / 1000))
     }, 1000)
     return () => clearInterval(interval)
-  }, [started, startTime])
+  }, [started, startTime, finished])
 
   const text = currentArticle?.text || ''
   const totalChars = text.length
@@ -97,10 +107,30 @@ export default function ArticleTypingPage() {
         setStartTime(Date.now())
       }
       if (typed.length < text.length) {
-        setTyped(prev => prev + e.key)
-        if (typed.length + 1 >= text.length) {
-          setFinished(true)
-          setShowResult(true)
+        if (mode === 'follow') {
+          setTyped(prev => {
+            let newTyped = prev
+            while (newTyped.length < text.length && isAutoSkipChar(text[newTyped.length])) {
+              newTyped += text[newTyped.length]
+            }
+            if (newTyped.length < text.length) {
+              newTyped += e.key
+            }
+            while (newTyped.length < text.length && isAutoSkipChar(text[newTyped.length])) {
+              newTyped += text[newTyped.length]
+            }
+            if (newTyped.length >= text.length) {
+              setFinished(true)
+              setShowResult(true)
+            }
+            return newTyped
+          })
+        } else {
+          setTyped(prev => prev + e.key)
+          if (typed.length + 1 >= text.length) {
+            setFinished(true)
+            setShowResult(true)
+          }
         }
       }
       return
@@ -190,6 +220,25 @@ export default function ArticleTypingPage() {
       handleComplete()
     }
   }, [finished])
+
+  // Save current position on unmount (using refs to avoid stale closure)
+  const saveOnUnmountRef = useRef(() => {})
+  saveOnUnmountRef.current = () => {
+    if (started && !finished && typed.length > 0) {
+      saveTypingProgress({
+        articleId,
+        mode,
+        position: typed.length,
+        completed: false,
+        bestAccuracy: typingProgress?.bestAccuracy || accuracy,
+        bestWpm: typingProgress?.bestWpm || wpm,
+      })
+    }
+  }
+
+  useEffect(() => {
+    return () => saveOnUnmountRef.current()
+  }, [])
 
   // Render character display for follow mode
   const renderFollowText = () => (
@@ -354,7 +403,7 @@ export default function ArticleTypingPage() {
 
       {/* Mode hint */}
       <p className="text-xs text-muted-foreground text-center">
-        {mode === 'follow' ? '逐字输入，大小写和标点需完全匹配 · Backspace 回退' : '凭记忆输入每个词，空格确认 · Tab 查看提示'}
+        {mode === 'follow' ? '逐字输入，换行、空格和标点自动跳过 · Backspace 回退' : '凭记忆输入每个词，空格确认 · Tab 查看提示'}
       </p>
 
       {/* Result modal */}

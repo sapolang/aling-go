@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {dict} from '../models';
 
+export function AddWordsBatch(arg1:string):Promise<number>;
+
 export function CacheSubtitles(arg1:string,arg2:string):Promise<void>;
 
 export function DbClear():Promise<void>;
@@ -51,13 +53,25 @@ export function FolderDelete(arg1:string):Promise<string>;
 
 export function FolderRename(arg1:string,arg2:string):Promise<string>;
 
+export function GetAllTypingProgress():Promise<string>;
+
+export function GetArticle(arg1:number):Promise<string>;
+
+export function GetArticles(arg1:string):Promise<Array<main.ArticleItem>>;
+
 export function GetCachedSubtitles(arg1:string):Promise<string>;
+
+export function GetCategories():Promise<Array<main.ArticleCategory>>;
 
 export function GetDownloadProgress():Promise<string>;
 
 export function GetMediaPort():Promise<number>;
 
 export function GetPlatform():Promise<string>;
+
+export function GetTypingProgress(arg1:number,arg2:string):Promise<string>;
+
+export function GetTypingRecords(arg1:number):Promise<string>;
 
 export function GetVideoThumbnail(arg1:string):Promise<string>;
 
@@ -90,6 +104,10 @@ export function RecentAdd(arg1:string):Promise<string>;
 export function RecentList():Promise<string>;
 
 export function SaveFile(arg1:string):Promise<string>;
+
+export function SaveTypingProgress(arg1:string):Promise<void>;
+
+export function SaveTypingRecord(arg1:string):Promise<void>;
 
 export function SetWhisperLang(arg1:string):Promise<void>;
 

@@ -7,6 +7,7 @@ interface ArticleStore {
   articles: ArticleItem[]
   currentArticle: ArticleItem | null
   typingProgress: TypingProgress | null
+  allProgress: Record<string, TypingProgress>
   typingRecords: TypingRecord[]
   loading: boolean
 
@@ -14,6 +15,7 @@ interface ArticleStore {
   loadArticles: (categoryEnName: string) => Promise<void>
   loadArticle: (id: number) => Promise<void>
   loadTypingProgress: (articleId: number, mode: string) => Promise<void>
+  loadAllProgress: () => Promise<void>
   loadTypingRecords: (articleId: number) => Promise<void>
   saveTypingProgress: (p: Omit<TypingProgress, 'updatedAt'>) => Promise<void>
   saveTypingRecord: (r: Omit<TypingRecord, 'id' | 'createdAt'>) => Promise<void>
@@ -25,6 +27,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   articles: [],
   currentArticle: null,
   typingProgress: null,
+  allProgress: {},
   typingRecords: [],
   loading: false,
 
@@ -48,6 +51,15 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   loadTypingProgress: async (articleId: number, mode: string) => {
     const progress = await window.api.getTypingProgress(articleId, mode)
     set({ typingProgress: progress || null })
+  },
+
+  loadAllProgress: async () => {
+    const all = await window.api.getAllTypingProgress()
+    const map: Record<string, TypingProgress> = {}
+    for (const p of all) {
+      map[`${p.articleId}_${p.mode}`] = p
+    }
+    set({ allProgress: map })
   },
 
   loadTypingRecords: async (articleId: number) => {

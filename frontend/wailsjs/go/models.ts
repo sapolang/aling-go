@@ -41,6 +41,58 @@ export namespace dict {
 
 export namespace main {
 	
+	export class ArticleCategory {
+	    id: number;
+	    enName: string;
+	    name: string;
+	    description: string;
+	    cover: string;
+	    length: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArticleCategory(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.enName = source["enName"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.cover = source["cover"];
+	        this.length = source["length"];
+	    }
+	}
+	export class ArticleItem {
+	    id: number;
+	    categoryEnName: string;
+	    title: string;
+	    titleTranslate: string;
+	    text: string;
+	    textTranslate: string;
+	    audioSrc: string;
+	    lrcPosition: string;
+	    questionJson: string;
+	    indexOrder: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArticleItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.categoryEnName = source["categoryEnName"];
+	        this.title = source["title"];
+	        this.titleTranslate = source["titleTranslate"];
+	        this.text = source["text"];
+	        this.textTranslate = source["textTranslate"];
+	        this.audioSrc = source["audioSrc"];
+	        this.lrcPosition = source["lrcPosition"];
+	        this.questionJson = source["questionJson"];
+	        this.indexOrder = source["indexOrder"];
+	    }
+	}
 	export class DictAddResult {
 	    added: number;
 	    skipped: number;
