@@ -9,10 +9,10 @@ SIDECAR_BIN = sidecar/whisper-sidecar
 # 完整发布:        make dist          → .app + 嵌入侧车
 
 dev:
-	wails dev
+	wails3 dev
 
 build:
-	wails build -platform darwin/universal -clean
+	wails3 build
 
 dmg: sidecar build
 	install -d "build/bin/$(APP_NAME).app/Contents/Resources"
@@ -38,7 +38,7 @@ dmg: sidecar build
 	du -sh build/bin/$(APP_NAME).dmg
 
 exe:
-	wails build -platform windows/amd64 -clean
+	wails3 build
 	@echo "EXE: build/bin/$(APP_NAME).exe"
 	@echo "使用 build/windows/installer/ 下的安装程序脚本打包为 .exe 安装包"
 
@@ -54,10 +54,9 @@ sidecar:
 	bash sidecar/build.sh
 
 run:
-	open build/bin/$(APP_NAME).app
+	wails3 task run
 
 clean:
-	wails build -clean 2>/dev/null || true
 	rm -rf build/bin
 	rm -rf sidecar/.whisper-cpp
 	rm -f $(SIDECAR_BIN)

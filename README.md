@@ -29,7 +29,7 @@ A cross-platform desktop language learning application built with [Wails v2](htt
 
 - **Go** 1.25+
 - **Node.js** 18+
-- **Wails CLI**: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
+- **Wails CLI**: `go install github.com/wailsapp/wails/v3/cmd/wails3@latest`
 - **FFmpeg** (optional — a minimal build is created by the sidecar build script if needed)
 
 ### Platform-specific
@@ -49,7 +49,7 @@ make frontend-install
 
 # Run in development mode (hot reload)
 make dev
-# or: wails dev
+# or: wails3 dev
 ```
 
 ## Building

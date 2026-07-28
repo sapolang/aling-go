@@ -20,6 +20,9 @@ func OpenDictDB(dataDir string, userDataDB *sql.DB) error {
 		filepath.Join(dataDir, "dict.db"),
 		"dict.db",
 	}
+	if cwd, err := os.Getwd(); err == nil {
+		paths = append(paths, filepath.Join(cwd, "dict.db"))
+	}
 	exe, _ := os.Executable()
 	if exe != "" {
 		exeDir := filepath.Dir(exe)

@@ -2,37 +2,82 @@ package main
 
 import (
 	"embed"
+	"fmt"
+	"os"
+	"path/filepath"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"aling-go/internal/dict"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-//go:embed all:frontend/dist
+//go:embed frontend/dist
 var assets embed.FS
 
 func main() {
-	app := &App{}
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting config dir: %v\n", err)
+		os.Exit(1)
+	}
+	dataDir := filepath.Join(configDir, "aling-go")
 
-	err := wails.Run(&options.App{
-		Title:  "语练",
-		Width:    1200,
-		Height:   720,
-		MinWidth: 800,
-		MinHeight: 500,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+	if err := initDB(dataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "DB init failed: %v\n", err)
+		os.Exit(1)
+	}
+	if err := openArticleDB(dataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Article DB init failed: %v\n", err)
+		os.Exit(1)
+	}
+	if err := dict.OpenDictDB(dataDir, db); err != nil {
+		fmt.Fprintf(os.Stderr, "Dict DB init failed: %v\n", err)
+		os.Exit(1)
+	}
+	migrateIfNeeded(dataDir)
+
+	wailsApp := application.New(application.Options{
+		Name: "语练",
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 		},
-		HideWindowOnClose: true,
-		Mac:               &mac.Options{},
-		BackgroundColour:  &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
-		Bind: []interface{}{
-			app,
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
-	if err != nil {
-		println("Error:", err.Error())
+
+	wailsApp.RegisterService(application.NewService(NewWordService(wailsApp)))
+	wailsApp.RegisterService(application.NewService(NewArticleService(wailsApp)))
+	wailsApp.RegisterService(application.NewService(NewDictService(wailsApp)))
+	wailsApp.RegisterService(application.NewService(NewLibraryService(wailsApp, dataDir)))
+	wailsApp.RegisterService(application.NewService(NewMediaService(wailsApp, dataDir)))
+	wailsApp.RegisterService(application.NewService(NewWhisperService(wailsApp, dataDir)))
+	wailsApp.RegisterService(application.NewService(NewPlatformService(wailsApp)))
+
+	win := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "语练",
+		Width:            1200,
+		Height:           720,
+		MinWidth:         800,
+		MinHeight:        500,
+		BackgroundColour: application.RGBA{Red: 27, Green: 38, Blue: 54, Alpha: 255},
+	})
+
+	win.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		win.Hide()
+		event.Cancel()
+	})
+
+	if err := wailsApp.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if db != nil {
+		db.Close()
+	}
+	if articleDB != nil {
+		articleDB.Close()
 	}
 }

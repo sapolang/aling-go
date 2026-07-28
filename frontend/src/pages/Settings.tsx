@@ -40,7 +40,7 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    window.api.whisperStatus().then((s) => {
+    window.api.whisperStatus().then((s: any) => {
       setWhisperStatus(s)
       const current = s.model.replace(/\.bin$/, '').replace('ggml-', '')
       setSelectedModel(current)
@@ -66,7 +66,7 @@ export default function SettingsPage() {
     setSelectedModel(modelName)
     setDownloading(true)
     setDownloadProgress(0)
-    const cleanup = window.api.onDownloadProgress((pct) => setDownloadProgress(pct))
+    const cleanup = window.api.onDownloadProgress((pct: number) => setDownloadProgress(pct))
     try {
       await window.api.downloadWhisperModel('https://hf-mirror.com', modelName)
       await window.api.setWhisperModel(modelName)

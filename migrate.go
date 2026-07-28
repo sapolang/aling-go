@@ -7,15 +7,15 @@ import (
 	goRuntime "runtime"
 )
 
-func (a *App) migrateIfNeeded() {
+func migrateIfNeeded(dataDir string) {
 	migrateSRS()
 
-	migrateFlag := filepath.Join(a.dataDir, ".migrated")
+	migrateFlag := filepath.Join(dataDir, ".migrated")
 	if _, err := os.Stat(migrateFlag); err == nil {
 		return
 	}
 
-	oldDBPath := a.findOldDatabase()
+	oldDBPath := findOldDatabase()
 	if oldDBPath == "" {
 		os.WriteFile(migrateFlag, []byte("skipped"), 0644)
 		return
@@ -56,7 +56,7 @@ func (a *App) migrateIfNeeded() {
 	os.WriteFile(migrateFlag, []byte("done"), 0644)
 }
 
-func (a *App) findOldDatabase() string {
+func findOldDatabase() string {
 	home, _ := os.UserHomeDir()
 	if goRuntime.GOOS == "darwin" {
 		paths := []string{

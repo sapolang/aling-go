@@ -114,3 +114,8 @@ type TypingProgress struct {
 	BestWPM      float64 `json:"bestWpm"`
 	UpdatedAt    string  `json:"updatedAt"`
 }
+
+type DictAddResult struct {
+	Added   int `json:"added"`
+	Skipped int `json:"skipped"`
+}

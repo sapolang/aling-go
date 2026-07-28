@@ -1,0 +1,13 @@
+{
+  "name": "@wailsio/runtime",
+  "type": "module",
+  "version": "3.0.0-alpha2.119",
+  "main": "runtime.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./runtime.js"
+    }
+  }
+}

@@ -2,6 +2,8 @@ build/bin
 build/*.dmg
 node_modules
 frontend/dist
+frontend/bindings
+frontend/wails-runtime/*.js
 frontend/wailsjs
 aling
 aling-go
@@ -10,3 +12,10 @@ sidecar/.whisper-cpp
 sidecar/whisper-sidecar
 sidecar/ffmpeg
 sidecar/ggml-*.bin
+bin/
+whisper-models/
+whisper-model.txt
+frontend/package.json.md5
+subtitle-cache/
+library.json
+.task/

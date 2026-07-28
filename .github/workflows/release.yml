@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
       - run: brew install create-dmg
       - run: make sidecar
       - run: make dmg
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
       - run: choco install mingw -y
 
       - name: Build whisper-sidecar
@@ -88,7 +88,7 @@ jobs:
             rm -rf .ffmpeg-src
           fi
 
-      - run: wails build -platform windows/amd64 -clean
+      - run: wails3 build -platform windows/amd64 -clean
 
       - name: Package Windows build
         run: |

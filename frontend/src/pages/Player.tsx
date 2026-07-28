@@ -160,7 +160,7 @@ export default function PlayerPage() {
       setPlayError(null)
       window.api.recentAdd(filePath)
       store.setWaveformLoading(true)
-      window.api.getWaveformData(filePath).then((data) => {
+      window.api.getWaveformData(filePath).then((data: number[]) => {
         if (data && data.length > 0) store.setWaveformData(data)
         else store.setWaveformLoading(false)
       }).catch(() => store.setWaveformLoading(false))
@@ -199,7 +199,7 @@ export default function PlayerPage() {
     if (!status.loaded) {
       store.setTranscribing(true); store.setTranscriptionProgress(0)
       setTranscribingLabel('下载模型')
-      const dlCleanup = window.api.onDownloadProgress((pct) => store.setTranscriptionProgress(pct))
+      const dlCleanup = window.api.onDownloadProgress((pct: number) => store.setTranscriptionProgress(pct))
       try {
         await window.api.downloadWhisperModel('https://hf-mirror.com', 'tiny')
         await window.api.setWhisperModel('tiny')
@@ -214,7 +214,7 @@ export default function PlayerPage() {
     }
     store.setTranscribing(true); store.setTranscriptionProgress(0)
     setTranscribingLabel('转录中')
-    const cleanup = window.api.onWhisperProgress((d) => store.setTranscriptionProgress(d.progress))
+    const cleanup = window.api.onWhisperProgress((d: { progress: number }) => store.setTranscriptionProgress(d.progress))
     try {
       if (lang) { window.api.setWhisperLang(lang) }
       const subs = await window.api.whisperTranscribe(filePath)

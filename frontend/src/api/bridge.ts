@@ -1,92 +1,180 @@
+import {
+  OpenFile,
+  SaveFile,
+  OpenSubtitle,
+  ReadTextFile,
+  WriteTextFile,
+  GetPlatform,
+  OpenExternal,
+} from '../../bindings/aling-go/platformservice'
+
+import {
+  DbWordsList,
+  DbWordsAdd,
+  DbWordsUpdate,
+  DbWordsDelete,
+  DbWordsDeleteBatch,
+  DbWordsGetReview,
+  DbWordsGetReviewCount,
+  DbWordsSearch,
+  DbTagsList,
+  DbTagsAdd,
+  DbTagsDelete,
+  DbExport,
+  DbImport,
+  DbClear,
+  AddWordsBatch,
+} from '../../bindings/aling-go/wordservice'
+
+import {
+  GetCategories,
+  GetArticles,
+  GetArticle,
+  GetTypingProgress,
+  SaveTypingProgress,
+  GetTypingRecords,
+  SaveTypingRecord,
+  GetAllTypingProgress,
+} from '../../bindings/aling-go/articleservice'
+
+import {
+  DbDictTags,
+  DbDictWords,
+  DbDictAddToWordList,
+  DbDictSaveProgress,
+  DbDictGetProgress,
+} from '../../bindings/aling-go/dictservice'
+
+import {
+  LibraryList,
+  LibraryImport,
+  LibraryRemove,
+  LibraryRename,
+  LibraryMove,
+  FolderCreate,
+  FolderDelete,
+  FolderRename,
+  RecentList,
+  RecentAdd,
+  CacheSubtitles,
+  GetCachedSubtitles,
+} from '../../bindings/aling-go/libraryservice'
+
+import {
+  GetVideoThumbnail,
+  GetWaveformData,
+  GetMediaPort,
+} from '../../bindings/aling-go/mediaservice'
+
+import {
+  Transcribe,
+  WhisperStatus,
+  DownloadWhisperModel,
+  SetWhisperModel,
+  ListWhisperModels,
+  GetWhisperLang,
+  SetWhisperLang,
+  GetDownloadProgress,
+} from '../../bindings/aling-go/whisperservice'
+import { Events } from '@wailsio/runtime'
+
 export function initBridge(): void {
-  const app = (window as any).go.main.App
-
   window.api = {
-    openFile: (filters?: any) => app.OpenFile(filters || ''),
-    saveFile: (name: string) => app.SaveFile(name),
-    openSubtitle: () => app.OpenSubtitle(),
-    readTextFile: (path: string) => app.ReadTextFile(path),
-    writeTextFile: (path: string, content: string) => app.WriteTextFile(path, content),
 
-    dbWordsList: () => app.DbWordsList(),
-    dbWordsAdd: (word: any) => app.DbWordsAdd(JSON.stringify(word)),
-    dbWordsUpdate: (id: number, data: any) => app.DbWordsUpdate(id, JSON.stringify(data)),
-    dbWordsDelete: (id: number) => app.DbWordsDelete(id),
-    dbWordsDeleteBatch: (ids: number[]) => app.DbWordsDeleteBatch(ids),
-    dbWordsGetReview: () => app.DbWordsGetReview(),
-    dbWordsGetReviewCount: () => app.DbWordsGetReviewCount(),
-    dbWordsSearch: (query: string) => app.DbWordsSearch(query),
+    openFile: (filters?: any) => OpenFile(filters || ''),
+    saveFile: (name: string) => SaveFile(name),
+    openSubtitle: () => OpenSubtitle(),
+    readTextFile: (path: string) => ReadTextFile(path),
+    writeTextFile: (path: string, content: string) => WriteTextFile(path, content),
 
-    dbTagsList: () => app.DbTagsList(),
-    dbTagsAdd: (name: string, color: string) => app.DbTagsAdd(name, color),
-    dbTagsDelete: (id: number) => app.DbTagsDelete(id),
+    dbWordsList: () => DbWordsList(),
+    dbWordsAdd: (word: any) => DbWordsAdd(JSON.stringify(word)),
+    dbWordsUpdate: (id: number, data: any) => DbWordsUpdate(id, JSON.stringify(data)),
+    dbWordsDelete: (id: number) => DbWordsDelete(id),
+    dbWordsDeleteBatch: (ids: number[]) => DbWordsDeleteBatch(ids),
+    dbWordsGetReview: () => DbWordsGetReview(),
+    dbWordsGetReviewCount: () => DbWordsGetReviewCount(),
+    dbWordsSearch: (query: string) => DbWordsSearch(query),
 
-    dbExport: () => app.DbExport(),
-    dbImport: (jsonStr: string) => app.DbImport(jsonStr),
-    dbClear: () => app.DbClear(),
+    dbTagsList: () => DbTagsList(),
+    dbTagsAdd: (name: string, color: string) => DbTagsAdd(name, color),
+    dbTagsDelete: (id: number) => DbTagsDelete(id),
 
-    whisperTranscribe: (filePath: string) => app.Transcribe(filePath).then((s: string) => {
+    dbExport: () => DbExport(),
+    dbImport: (jsonStr: string) => DbImport(jsonStr),
+    dbClear: () => DbClear(),
+
+    whisperTranscribe: (filePath: string) => Transcribe(filePath).then((s: string) => {
       const parsed = JSON.parse(s)
       return Array.isArray(parsed) ? parsed : []
     }),
-    whisperStatus: () => app.WhisperStatus(),
-    downloadWhisperModel: (mirrorURL: string, modelName: string) => app.DownloadWhisperModel(mirrorURL, modelName),
-    setWhisperModel: (name: string) => app.SetWhisperModel(name),
-    listWhisperModels: () => app.ListWhisperModels().then((s: string) => JSON.parse(s)),
-    getWhisperLang: () => app.GetWhisperLang().then((s: string) => s),
-    setWhisperLang: (lang: string) => app.SetWhisperLang(lang),
+    whisperStatus: () => WhisperStatus(),
+    downloadWhisperModel: (mirrorURL: string, modelName: string) => DownloadWhisperModel(mirrorURL, modelName),
+    setWhisperModel: (name: string) => SetWhisperModel(name),
+    listWhisperModels: () => ListWhisperModels().then((s: string) => JSON.parse(s)),
+    getWhisperLang: () => GetWhisperLang(),
+    setWhisperLang: (lang: string) => SetWhisperLang(lang),
     onWhisperProgress: (cb: (data: any) => void) => {
-      window.runtime.EventsOn('whisper:progress', cb)
-      return () => window.runtime.EventsOff('whisper:progress')
+      Events.On('whisper:progress', (e: any) => cb(e.data))
+      return () => Events.Off('whisper:progress')
     },
     onDownloadProgress: (cb: (pct: number) => void) => {
-      window.runtime.EventsOn('whisper:download-progress', cb)
-      return () => window.runtime.EventsOff('whisper:download-progress')
+      Events.On('whisper:download-progress', (e: any) => cb(e.data))
+      return () => Events.Off('whisper:download-progress')
     },
-    getDownloadProgress: () => app.GetDownloadProgress(),
+    getDownloadProgress: () => GetDownloadProgress(),
 
-    recentList: () => app.RecentList().then((s: string) => JSON.parse(s)),
-    recentAdd: (filePath: string) => app.RecentAdd(filePath).then((s: string) => JSON.parse(s)),
-    cacheSubtitles: (filePath: string, subs: any[]) => app.CacheSubtitles(filePath, JSON.stringify(subs)),
-    getCachedSubtitles: (filePath: string) => app.GetCachedSubtitles(filePath).then((s: string) => {
+    recentList: () => RecentList().then((s: string) => JSON.parse(s)),
+    recentAdd: (filePath: string) => RecentAdd(filePath).then((s: string) => JSON.parse(s)),
+    cacheSubtitles: (filePath: string, subs: any[]) => CacheSubtitles(filePath, JSON.stringify(subs)),
+    getCachedSubtitles: (filePath: string) => GetCachedSubtitles(filePath).then((s: string) => {
       if (!s) return null
       const parsed = JSON.parse(s)
       return Array.isArray(parsed) ? parsed : null
     }),
 
-    getVideoThumbnail: (filePath: string) => app.GetVideoThumbnail(filePath),
-    getWaveformData: (filePath: string) => app.GetWaveformData(filePath),
-    getPlatform: () => app.GetPlatform(),
-    getMediaPort: () => app.GetMediaPort(),
+    getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
+    getWaveformData: (filePath: string) => GetWaveformData(filePath),
+    getPlatform: () => GetPlatform(),
+    getMediaPort: () => GetMediaPort(),
 
-    // Dictionary
-    dbDictTags: () => app.DbDictTags(),
-    dbDictWords: (tag: string) => app.DbDictWords(tag),
-    dbDictAddToWordList: (words: any[]) => app.DbDictAddToWordList(JSON.stringify(words)),
-    dbDictSaveProgress: (tag: string, index: number) => app.DbDictSaveProgress(tag, index),
-    dbDictGetProgress: (tag: string) => app.DbDictGetProgress(tag),
+    dbDictTags: () => DbDictTags(),
+    dbDictWords: (tag: string) => DbDictWords(tag),
+    dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(JSON.stringify(words)),
+    dbDictSaveProgress: (tag: string, index: number) => DbDictSaveProgress(tag, index),
+    dbDictGetProgress: (tag: string) => DbDictGetProgress(tag),
 
-    // Library
-    libraryList: () => app.LibraryList().then((s: string) => JSON.parse(s)),
-    libraryImport: (category: string, folderId: string) => app.LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
-    libraryRemove: (paths: string[]) => app.LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
-    libraryRename: (path: string, newName: string) => app.LibraryRename(path, newName).then((s: string) => JSON.parse(s)),
-    libraryMove: (paths: string[], folderId: string) => app.LibraryMove(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
-    folderCreate: (name: string, parentId: string) => app.FolderCreate(name, parentId).then((s: string) => JSON.parse(s)),
-    folderDelete: (id: string) => app.FolderDelete(id).then((s: string) => JSON.parse(s)),
-    folderRename: (id: string, name: string) => app.FolderRename(id, name).then((s: string) => JSON.parse(s)),
+    libraryList: () => LibraryList().then((s: string) => JSON.parse(s)),
+    libraryImport: (category: string, folderId: string) => LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
+    libraryRemove: (paths: string[]) => LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
+    libraryRename: (path: string, newName: string) => LibraryRename(path, newName).then((s: string) => JSON.parse(s)),
+    libraryMove: (paths: string[], folderId: string) => LibraryMove(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
+    folderCreate: (name: string, parentId: string) => FolderCreate(name, parentId).then((s: string) => JSON.parse(s)),
+    folderDelete: (id: string) => FolderDelete(id).then((s: string) => JSON.parse(s)),
+    folderRename: (id: string, name: string) => FolderRename(id, name).then((s: string) => JSON.parse(s)),
 
-    openExternal: (path: string) => app.OpenExternal(path),
+    openExternal: (path: string) => OpenExternal(path),
 
-    // Articles
-    getCategories: () => app.GetCategories(),
-    getArticles: (categoryEnName: string) => app.GetArticles(categoryEnName),
-    getArticle: (id: number) => app.GetArticle(id).then((s: string) => JSON.parse(s)),
-    getTypingProgress: (articleId: number, mode: string) => app.GetTypingProgress(articleId, mode).then((s: string) => JSON.parse(s)),
-    saveTypingProgress: (progressJson: string) => app.SaveTypingProgress(progressJson),
-    getTypingRecords: (articleId: number) => app.GetTypingRecords(articleId).then((s: string) => JSON.parse(s)),
-    saveTypingRecord: (recordJson: string) => app.SaveTypingRecord(recordJson),
-    getAllTypingProgress: () => app.GetAllTypingProgress().then((s: string) => JSON.parse(s)),
-    addWordsBatch: (wordsJson: string) => app.AddWordsBatch(wordsJson),
+    getCategories: () => GetCategories(),
+    getArticles: (categoryEnName: string) => GetArticles(categoryEnName),
+    getArticle: (id: number) => GetArticle(id).then((s: string) => {
+      if (!s) return null
+      return JSON.parse(s)
+    }),
+    getTypingProgress: (articleId: number, mode: string) => GetTypingProgress(articleId, mode).then((s: string) => {
+      if (!s) return null
+      return JSON.parse(s)
+    }),
+    saveTypingProgress: (progressJson: string) => SaveTypingProgress(progressJson),
+    getTypingRecords: (articleId: number) => GetTypingRecords(articleId).then((s: string) => {
+      if (!s) return []
+      return JSON.parse(s)
+    }),
+    saveTypingRecord: (recordJson: string) => SaveTypingRecord(recordJson),
+    getAllTypingProgress: () => GetAllTypingProgress().then((s: string) => {
+      if (!s) return []
+      return JSON.parse(s)
+    }),
+    addWordsBatch: (wordsJson: string) => AddWordsBatch(wordsJson),
   } as any
 }

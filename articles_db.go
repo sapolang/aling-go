@@ -15,6 +15,9 @@ func openArticleDB(dataDir string) error {
 		filepath.Join(dataDir, "articles.db"),
 		"articles.db",
 	}
+	if cwd, err := os.Getwd(); err == nil {
+		paths = append(paths, filepath.Join(cwd, "articles.db"))
+	}
 	exe, _ := os.Executable()
 	if exe != "" {
 		exeDir := filepath.Dir(exe)

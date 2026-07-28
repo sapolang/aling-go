@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=语练
+Comment=语练 - Language Learning Tool
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/aling-go %u
+Terminal=false
+Type=Application
+Icon=aling-go
+Categories=Utility;
+StartupWMClass=aling-go
+
+ 

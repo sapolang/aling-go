@@ -170,7 +170,7 @@ export default function HomePage() {
     player.setFilePath(file.path)
     navigate('/player')
     player.setWaveformLoading(true)
-    window.api.getWaveformData(file.path).then((data) => {
+      window.api.getWaveformData(file.path).then((data: number[]) => {
       if (data && data.length > 0) player.setWaveformData(data)
       else player.setWaveformLoading(false)
     }).catch(() => player.setWaveformLoading(false))
