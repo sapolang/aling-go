@@ -14,17 +14,21 @@ dev:
 build:
 	wails3 build
 
-dmg: sidecar build
-	install -d "build/bin/$(APP_NAME).app/Contents/Resources"
-	install "$(SIDECAR_BIN)" "build/bin/$(APP_NAME).app/Contents/Resources/"
-	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "build/bin/$(APP_NAME).app/Contents/Resources/"
-	[ ! -f dict.db ] || install dict.db "build/bin/$(APP_NAME).app/Contents/Resources/"
-	[ ! -f articles.db ] || install articles.db "build/bin/$(APP_NAME).app/Contents/Resources/"
+# wails3 package = build + 生成 .app（输出在 bin/）
+package:
+	wails3 task package
+
+dmg: sidecar package
+	install -d "bin/$(APP_NAME).app/Contents/Resources"
+	install "$(SIDECAR_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f dict.db ] || install dict.db "bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f articles.db ] || install articles.db "bin/$(APP_NAME).app/Contents/Resources/"
 	@if ! command -v create-dmg >/dev/null 2>&1; then \
 		echo "Installing create-dmg..."; \
 		brew install create-dmg; \
 	fi
-	rm -f build/bin/$(APP_NAME).dmg
+	rm -f bin/$(APP_NAME).dmg
 	create-dmg \
 		--volname "$(APP_NAME)" \
 		--window-pos 200 120 \
@@ -32,23 +36,23 @@ dmg: sidecar build
 		--icon-size 100 \
 		--icon "$(APP_NAME).app" 150 120 \
 		--app-drop-link 450 120 \
-		build/bin/$(APP_NAME).dmg \
-		build/bin/$(APP_NAME).app
-	@echo "DMG: build/bin/$(APP_NAME).dmg"
-	du -sh build/bin/$(APP_NAME).dmg
+		bin/$(APP_NAME).dmg \
+		"bin/$(APP_NAME).app"
+	@echo "DMG: bin/$(APP_NAME).dmg"
+	du -sh bin/$(APP_NAME).dmg
 
 exe:
 	wails3 build
-	@echo "EXE: build/bin/$(APP_NAME).exe"
+	@echo "EXE: bin/$(APP_NAME).exe"
 	@echo "使用 build/windows/installer/ 下的安装程序脚本打包为 .exe 安装包"
 
-dist: sidecar build
-	install -d "build/bin/$(APP_NAME).app/Contents/Resources"
-	install "$(SIDECAR_BIN)" "build/bin/$(APP_NAME).app/Contents/Resources/"
-	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "build/bin/$(APP_NAME).app/Contents/Resources/"
-	[ ! -f dict.db ] || install dict.db "build/bin/$(APP_NAME).app/Contents/Resources/"
-	[ ! -f articles.db ] || install articles.db "build/bin/$(APP_NAME).app/Contents/Resources/"
-	du -sh "build/bin/$(APP_NAME).app"
+dist: sidecar package
+	install -d "bin/$(APP_NAME).app/Contents/Resources"
+	install "$(SIDECAR_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f dict.db ] || install dict.db "bin/$(APP_NAME).app/Contents/Resources/"
+	[ ! -f articles.db ] || install articles.db "bin/$(APP_NAME).app/Contents/Resources/"
+	du -sh "bin/$(APP_NAME).app"
 
 sidecar:
 	bash sidecar/build.sh
@@ -57,10 +61,11 @@ run:
 	wails3 task run
 
 clean:
+	rm -rf bin
 	rm -rf build/bin
 	rm -rf sidecar/.whisper-cpp
 	rm -f $(SIDECAR_BIN)
-	rm -f build/bin/$(APP_NAME).dmg
+	rm -f bin/$(APP_NAME).dmg
 	rm -rf frontend/dist
 
 vet:

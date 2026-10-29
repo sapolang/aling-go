@@ -3,8 +3,6 @@ build/*.dmg
 node_modules
 frontend/dist
 frontend/bindings
-frontend/wails-runtime/*.js
-frontend/wailsjs
 aling
 aling-go
 .superpowers/
@@ -15,7 +13,6 @@ sidecar/ggml-*.bin
 bin/
 whisper-models/
 whisper-model.txt
-frontend/package.json.md5
 subtitle-cache/
 library.json
 .task/

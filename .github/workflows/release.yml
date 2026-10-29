@@ -29,7 +29,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: aling-go-macos
-          path: build/bin/aling-go.dmg
+          path: bin/aling-go.dmg
 
   windows:
     runs-on: windows-latest
@@ -88,12 +88,12 @@ jobs:
             rm -rf .ffmpeg-src
           fi
 
-      - run: wails3 build -platform windows/amd64 -clean
+      - run: wails3 build
 
       - name: Package Windows build
         run: |
           mkdir -p dist-windows
-          cp build/bin/aling-go.exe dist-windows/
+          cp bin/aling-go.exe dist-windows/
           cp sidecar/whisper-sidecar.exe dist-windows/
           cp sidecar/ffmpeg.exe dist-windows/
 

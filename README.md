@@ -1,6 +1,6 @@
 # 语练 (aling-go)
 
-A cross-platform desktop language learning application built with [Wails v2](https://wails.io/).
+A cross-platform desktop language learning application built with [Wails v3](https://wails.io/).
 
 ## Features
 
@@ -16,7 +16,7 @@ A cross-platform desktop language learning application built with [Wails v2](htt
 | Layer | Technology |
 |-------|-----------|
 | Backend | Go |
-| GUI Framework | Wails v2 |
+| GUI Framework | Wails v3 |
 | Frontend | React 18 + TypeScript + Vite |
 | Styling | Tailwind CSS |
 | State Management | Zustand |
@@ -75,18 +75,18 @@ make clean
 
 ```
 aling-go/
-├── main.go              # Wails application entry point
-├── app.go               # Core App struct — all frontend-callable Go methods
+├── main.go              # Wails application entry point (registers services)
 ├── types.go             # Shared data types (Word, Tag, SubtitleItem, etc.)
 ├── database.go          # User data DB (words, tags, SRS review data)
 ├── articles_db.go       # English reading articles database
-├── library.go           # Media library management
-├── media.go             # Local HTTP media streaming server
-├── ffmpeg.go            # FFmpeg integration (thumbnails, audio extraction)
-├── waveform.go          # Waveform data generation for audio files
-├── whisper.go           # Whisper.cpp speech-to-text integration
-├── recent.go            # Recently opened files & subtitle caching
-├── fileops.go           # Text file read/write utilities
+├── word_service.go      # Words/tags/SRS service
+├── article_service.go   # Articles & typing progress service
+├── dict_service.go      # Dictionary service
+├── library_service.go   # Media library, folders, recent files service
+├── media_service.go     # Local HTTP media streaming & waveform service
+├── whisper_service.go   # Whisper.cpp speech-to-text service
+├── platform_service.go  # Dialogs & platform utilities service
+├── ffmpeg.go            # FFmpeg helpers shared by media/whisper services
 ├── migrate.go           # Data migration from older app versions
 ├── internal/
 │   └── dict/            # Dictionary package (dict.db queries)
@@ -98,9 +98,10 @@ aling-go/
 │       ├── pages/       # Page-level components
 │       ├── stores/      # Zustand state stores
 │       └── types/       # TypeScript type definitions
-├── build/               # Platform-specific build assets
+├── build/               # Platform-specific build assets & Taskfiles
 ├── sidecar/             # External binary build scripts
 │   └── build.sh         # Builds whisper-sidecar and minimal FFmpeg
+├── Taskfile.yml         # Wails v3 build tasks
 └── Makefile             # Build targets
 ```
 
