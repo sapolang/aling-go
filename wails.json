@@ -1,0 +1,13 @@
+{
+  "name": "aling-go",
+  "frontend": {
+    "dir": "./frontend",
+    "install": "npm install",
+    "build": "npm run build",
+    "dev": "npm run dev"
+  },
+  "author": {
+    "name": "",
+    "email": "1129103472@qq.com"
+  }
+}
