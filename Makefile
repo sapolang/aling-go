@@ -1,4 +1,4 @@
-.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install
+.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install upgrade-wails
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -80,3 +80,24 @@ frontend-install:
 
 test:
 	cd frontend && npx tsc --noEmit
+
+# 升级 Wails 版本：make upgrade-wails            → 最新稳定版
+#                 make upgrade-wails VERSION=v3.1.0
+# 依次同步 CLI、Go 依赖、前端 runtime，并重新生成绑定，最后做校验
+upgrade-wails:
+	@set -e; V="$(VERSION)"; \
+	if [ -z "$$V" ]; then CLI_ARGS="-latest"; GO_REF="latest"; NPM_REF="latest"; \
+	else CLI_ARGS="-version $$V"; GO_REF="$$V"; NPM_REF="$${V#v}"; fi; \
+	echo "==> wails3 CLI $$V"; \
+	wails3 update cli $$CLI_ARGS; \
+	echo "==> go.mod wails/v3@$$GO_REF"; \
+	go get "github.com/wailsapp/wails/v3@$$GO_REF"; \
+	echo "==> @wailsio/runtime@$$NPM_REF"; \
+	( cd frontend && npm install "@wailsio/runtime@$$NPM_REF" ); \
+	go mod tidy; \
+	echo "==> 重新生成 bindings"; \
+	wails3 generate bindings -ts; \
+	echo "==> 前端构建 + go vet"; \
+	( cd frontend && npm run build ); \
+	go vet ./...; \
+	echo "==> 完成，当前版本: $$(wails3 version 2>&1)"

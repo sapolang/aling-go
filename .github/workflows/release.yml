@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+      - name: Install Wails CLI (pinned to go.mod)
+        run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
       - run: brew install create-dmg
       - run: make sidecar
       - run: make dmg
@@ -44,7 +45,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+      - name: Install Wails CLI (pinned to go.mod)
+        run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
       - run: choco install mingw -y
 
       - name: Build whisper-sidecar
