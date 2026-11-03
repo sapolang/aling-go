@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["before 9am on monday"],
+  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 5,
+  "dependencyDashboardTitle": "Renovate 依赖更新",
+  "postUpdateOptions": ["gomodTidy"],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Wails 三件套（CLI 版本随库版本走）整体升级，合并后需本地同步 CLI 与 bindings",
+      "matchPackageNames": ["github.com/wailsapp/wails/v3", "@wailsio/runtime"],
+      "groupName": "wails",
+      "addLabels": ["wails"],
+      "prBodyNotes": [
+        "合并后请在本地执行 `make upgrade-wails VERSION=<新版本>`：Renovate 只改依赖清单，无法更新 wails3 CLI、build assets 和已生成但被 gitignore 的 bindings。"
+      ]
+    },
+    {
+      "description": "Go 次要版本与补丁更新归组",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go minor/patch"
+    },
+    {
+      "description": "前端 devDependencies 归组",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend devDeps"
+    },
+    {
+      "description": "前端运行时依赖补丁归组",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "frontend patch"
+    }
+  ]
+}
