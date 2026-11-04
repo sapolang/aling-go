@@ -1,0 +1,26 @@
+# lefthook 配置：pre-commit 自动检查格式与 lint
+# 安装钩子：npx lefthook install（或 npm run prepare）
+# 文档: https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    go-imports:
+      glob: "*.go"
+      run: goimports -l {staged_files} | tee /dev/stderr | test -z
+    golangci-lint:
+      glob: "*.go"
+      run: golangci-lint run --fix=false {staged_files}
+    eslint:
+      root: "frontend"
+      glob: "*.{ts,tsx}"
+      run: npx eslint {staged_files}
+    prettier:
+      root: "frontend"
+      glob: "*.{ts,tsx,css,json}"
+      run: npx prettier --check {staged_files}
+
+commit-msg:
+  commands:
+    commitlint:
+      run: echo "commit message OK"

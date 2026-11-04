@@ -1,4 +1,4 @@
-.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint
+.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint typecheck test
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -78,15 +78,18 @@ lint:
 	fi
 	golangci-lint run
 
+typecheck:
+	cd frontend && npx tsc --noEmit
+
+test: typecheck
+	cd frontend && npm run lint
+
 tidy:
 	go mod tidy
 	cd frontend && npm install
 
 frontend-install:
 	cd frontend && npm install
-
-test:
-	cd frontend && npx tsc --noEmit
 
 # 升级 Wails 版本：make upgrade-wails            → 最新稳定版
 #                 make upgrade-wails VERSION=v3.1.0
