@@ -5,28 +5,49 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Search, Trash2, Edit, Plus } from 'lucide-react'
 import AddWordModal from '@/components/AddWordModal'
 
 const levelLabels = ['待学习', '遗忘', '模糊', '熟悉']
 
 export default function WordListPage() {
-  const { words, tags, loadWords, loadTags, deleteWord, deleteBatch, searchQuery, setSearchQuery, selectedTag, setSelectedTag } = useWordStore()
+  const {
+    words,
+    tags,
+    loadWords,
+    loadTags,
+    deleteWord,
+    deleteBatch,
+    searchQuery,
+    setSearchQuery,
+    selectedTag,
+    setSelectedTag,
+  } = useWordStore()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [showAdd, setShowAdd] = useState(false)
   const [editWord, setEditWord] = useState<any>(null)
 
-  useEffect(() => { loadWords(); loadTags() }, [])
+  useEffect(() => {
+    loadWords()
+    loadTags()
+  }, [])
 
   const filteredWords = useMemo(() => {
     let result = words
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      result = result.filter((w) =>
-        w.word.toLowerCase().includes(q) ||
-        w.definition.toLowerCase().includes(q) ||
-        w.example.toLowerCase().includes(q)
+      result = result.filter(
+        (w) =>
+          w.word.toLowerCase().includes(q) ||
+          w.definition.toLowerCase().includes(q) ||
+          w.example.toLowerCase().includes(q),
       )
     }
     if (selectedTag) {
@@ -79,13 +100,28 @@ export default function WordListPage() {
               <p className="text-sm text-muted-foreground truncate">{w.definition}</p>
             </div>
             <div className="flex gap-1 items-center">
-              {w.tags.split(',').filter(Boolean).map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-xs">{tag.trim()}</Badge>
-              ))}
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditWord(w)}>
+              {w.tags
+                .split(',')
+                .filter(Boolean)
+                .map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag.trim()}
+                  </Badge>
+                ))}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setEditWord(w)}
+              >
                 <Edit className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteWord(w.id)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive"
+                onClick={() => deleteWord(w.id)}
+              >
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -121,7 +157,9 @@ export default function WordListPage() {
           <SelectContent>
             <SelectItem value=" ">全部标签</SelectItem>
             {tags.map((t) => (
-              <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+              <SelectItem key={t.id} value={t.name}>
+                {t.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -149,12 +187,7 @@ export default function WordListPage() {
             <p>{searchQuery ? '没有匹配结果' : '生词库为空'}</p>
           </Card>
         ) : (
-          <List
-            height={600}
-            itemCount={filteredWords.length}
-            itemSize={80}
-            width="100%"
-          >
+          <List height={600} itemCount={filteredWords.length} itemSize={80} width="100%">
             {Row}
           </List>
         )}
@@ -163,7 +196,10 @@ export default function WordListPage() {
       {(showAdd || editWord) && (
         <AddWordModal
           word={editWord}
-          onClose={() => { setShowAdd(false); setEditWord(null) }}
+          onClose={() => {
+            setShowAdd(false)
+            setEditWord(null)
+          }}
         />
       )}
     </div>

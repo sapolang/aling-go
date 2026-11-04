@@ -56,7 +56,9 @@ func NewLibraryService(app *application.App, dataDir string) *LibraryService {
 	return &LibraryService{app: app, dataDir: dataDir}
 }
 
-func (s *LibraryService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error { return nil }
+func (s *LibraryService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return nil
+}
 func (s *LibraryService) ServiceShutdown() error { return nil }
 
 func (s *LibraryService) libraryPath() string {
@@ -67,7 +69,7 @@ func (s *LibraryService) readLibrary() LibraryData {
 	var lib LibraryData
 	data, err := os.ReadFile(s.libraryPath())
 	if err == nil {
-		json.Unmarshal(data, &lib)
+		_ = json.Unmarshal(data, &lib)
 	}
 	if lib.Folders == nil {
 		lib.Folders = []Folder{}
@@ -323,10 +325,10 @@ func (s *LibraryService) RecentAdd(filePath string) string {
 
 func (s *LibraryService) CacheSubtitles(filePath, subsJSON string) {
 	cacheDir := filepath.Join(s.dataDir, "subtitle-cache")
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0755)
 	cacheKey := md5Hash(filePath)
 	cachePath := filepath.Join(cacheDir, cacheKey+".json")
-	os.WriteFile(cachePath, []byte(subsJSON), 0644)
+	_ = os.WriteFile(cachePath, []byte(subsJSON), 0644)
 }
 
 func (s *LibraryService) GetCachedSubtitles(filePath string) string {

@@ -78,8 +78,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   selectAll: (visibleFolderIds: string[], visibleFilePaths: string[]) => {
     const all = new Set<string>()
-    visibleFolderIds.forEach(id => all.add(id))
-    visibleFilePaths.forEach(path => all.add(path))
+    visibleFolderIds.forEach((id) => all.add(id))
+    visibleFilePaths.forEach((path) => all.add(path))
     set({ selectedPaths: all })
   },
 

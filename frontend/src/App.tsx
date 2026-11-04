@@ -15,7 +15,9 @@ const ArticleList = lazy(() => import('@/pages/ArticleList'))
 const ArticleTyping = lazy(() => import('@/pages/ArticleTyping'))
 
 function Loading() {
-  return <div className="flex items-center justify-center h-64 text-muted-foreground">加载中...</div>
+  return (
+    <div className="flex items-center justify-center h-64 text-muted-foreground">加载中...</div>
+  )
 }
 
 function AppContent() {
@@ -52,7 +54,9 @@ function AppContent() {
 }
 
 export default function App() {
-  useEffect(() => { initBridge() }, [])
+  useEffect(() => {
+    initBridge()
+  }, [])
 
   return (
     <HashRouter>

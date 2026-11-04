@@ -80,7 +80,6 @@ import { Events } from '@wailsio/runtime'
 
 export function initBridge(): void {
   window.api = {
-
     openFile: (filters?: any) => OpenFile(filters || ''),
     saveFile: (name: string) => SaveFile(name),
     openSubtitle: () => OpenSubtitle(),
@@ -104,12 +103,14 @@ export function initBridge(): void {
     dbImport: (jsonStr: string) => DbImport(jsonStr),
     dbClear: () => DbClear(),
 
-    whisperTranscribe: (filePath: string) => Transcribe(filePath).then((s: string) => {
-      const parsed = JSON.parse(s)
-      return Array.isArray(parsed) ? parsed : []
-    }),
+    whisperTranscribe: (filePath: string) =>
+      Transcribe(filePath).then((s: string) => {
+        const parsed = JSON.parse(s)
+        return Array.isArray(parsed) ? parsed : []
+      }),
     whisperStatus: () => WhisperStatus(),
-    downloadWhisperModel: (mirrorURL: string, modelName: string) => DownloadWhisperModel(mirrorURL, modelName),
+    downloadWhisperModel: (mirrorURL: string, modelName: string) =>
+      DownloadWhisperModel(mirrorURL, modelName),
     setWhisperModel: (name: string) => SetWhisperModel(name),
     listWhisperModels: () => ListWhisperModels().then((s: string) => JSON.parse(s)),
     getWhisperLang: () => GetWhisperLang(),
@@ -126,12 +127,14 @@ export function initBridge(): void {
 
     recentList: () => RecentList().then((s: string) => JSON.parse(s)),
     recentAdd: (filePath: string) => RecentAdd(filePath).then((s: string) => JSON.parse(s)),
-    cacheSubtitles: (filePath: string, subs: any[]) => CacheSubtitles(filePath, JSON.stringify(subs)),
-    getCachedSubtitles: (filePath: string) => GetCachedSubtitles(filePath).then((s: string) => {
-      if (!s) return null
-      const parsed = JSON.parse(s)
-      return Array.isArray(parsed) ? parsed : null
-    }),
+    cacheSubtitles: (filePath: string, subs: any[]) =>
+      CacheSubtitles(filePath, JSON.stringify(subs)),
+    getCachedSubtitles: (filePath: string) =>
+      GetCachedSubtitles(filePath).then((s: string) => {
+        if (!s) return null
+        const parsed = JSON.parse(s)
+        return Array.isArray(parsed) ? parsed : null
+      }),
 
     getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
     getWaveformData: (filePath: string) => GetWaveformData(filePath),
@@ -145,36 +148,46 @@ export function initBridge(): void {
     dbDictGetProgress: (tag: string) => DbDictGetProgress(tag),
 
     libraryList: () => LibraryList().then((s: string) => JSON.parse(s)),
-    libraryImport: (category: string, folderId: string) => LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
-    libraryRemove: (paths: string[]) => LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
-    libraryRename: (path: string, newName: string) => LibraryRename(path, newName).then((s: string) => JSON.parse(s)),
-    libraryMove: (paths: string[], folderId: string) => LibraryMove(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
-    folderCreate: (name: string, parentId: string) => FolderCreate(name, parentId).then((s: string) => JSON.parse(s)),
+    libraryImport: (category: string, folderId: string) =>
+      LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
+    libraryRemove: (paths: string[]) =>
+      LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
+    libraryRename: (path: string, newName: string) =>
+      LibraryRename(path, newName).then((s: string) => JSON.parse(s)),
+    libraryMove: (paths: string[], folderId: string) =>
+      LibraryMove(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
+    folderCreate: (name: string, parentId: string) =>
+      FolderCreate(name, parentId).then((s: string) => JSON.parse(s)),
     folderDelete: (id: string) => FolderDelete(id).then((s: string) => JSON.parse(s)),
-    folderRename: (id: string, name: string) => FolderRename(id, name).then((s: string) => JSON.parse(s)),
+    folderRename: (id: string, name: string) =>
+      FolderRename(id, name).then((s: string) => JSON.parse(s)),
 
     openExternal: (path: string) => OpenExternal(path),
 
     getCategories: () => GetCategories(),
     getArticles: (categoryEnName: string) => GetArticles(categoryEnName),
-    getArticle: (id: number) => GetArticle(id).then((s: string) => {
-      if (!s) return null
-      return JSON.parse(s)
-    }),
-    getTypingProgress: (articleId: number, mode: string) => GetTypingProgress(articleId, mode).then((s: string) => {
-      if (!s) return null
-      return JSON.parse(s)
-    }),
+    getArticle: (id: number) =>
+      GetArticle(id).then((s: string) => {
+        if (!s) return null
+        return JSON.parse(s)
+      }),
+    getTypingProgress: (articleId: number, mode: string) =>
+      GetTypingProgress(articleId, mode).then((s: string) => {
+        if (!s) return null
+        return JSON.parse(s)
+      }),
     saveTypingProgress: (progressJson: string) => SaveTypingProgress(progressJson),
-    getTypingRecords: (articleId: number) => GetTypingRecords(articleId).then((s: string) => {
-      if (!s) return []
-      return JSON.parse(s)
-    }),
+    getTypingRecords: (articleId: number) =>
+      GetTypingRecords(articleId).then((s: string) => {
+        if (!s) return []
+        return JSON.parse(s)
+      }),
     saveTypingRecord: (recordJson: string) => SaveTypingRecord(recordJson),
-    getAllTypingProgress: () => GetAllTypingProgress().then((s: string) => {
-      if (!s) return []
-      return JSON.parse(s)
-    }),
+    getAllTypingProgress: () =>
+      GetAllTypingProgress().then((s: string) => {
+        if (!s) return []
+        return JSON.parse(s)
+      }),
     addWordsBatch: (wordsJson: string) => AddWordsBatch(wordsJson),
   } as any
 }

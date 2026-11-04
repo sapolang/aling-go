@@ -15,7 +15,9 @@ func NewArticleService(app *application.App) *ArticleService {
 	return &ArticleService{app: app}
 }
 
-func (s *ArticleService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error { return nil }
+func (s *ArticleService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return nil
+}
 func (s *ArticleService) ServiceShutdown() error { return nil }
 
 func (s *ArticleService) GetCategories() []ArticleCategory {

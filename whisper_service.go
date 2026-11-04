@@ -69,7 +69,9 @@ func NewWhisperService(app *application.App, dataDir string) *WhisperService {
 	return s
 }
 
-func (s *WhisperService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error { return nil }
+func (s *WhisperService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return nil
+}
 func (s *WhisperService) ServiceShutdown() error { return nil }
 
 // --- Transcribe ---
@@ -92,7 +94,7 @@ func (s *WhisperService) Transcribe(filePath string) string {
 	modelPath := s.modelPath()
 	s.app.Logger.Debug("Transcribe modelPath", "modelPath", modelPath)
 	outDir := filepath.Join(s.dataDir, "temp-transcript")
-	os.MkdirAll(outDir, 0755)
+	_ = os.MkdirAll(outDir, 0755)
 	outFile := filepath.Join(outDir, md5Hash(filePath))
 
 	s.app.Logger.Debug("Transcribe outFile", "outFile", outFile)
@@ -190,7 +192,7 @@ func (s *WhisperService) WhisperStatus() WhisperStatus {
 
 func (s *WhisperService) SetWhisperModel(name string) {
 	s.modelFile = s.modelFileFor(name)
-	os.WriteFile(filepath.Join(s.dataDir, "whisper-model.txt"), []byte(s.modelFile), 0644)
+	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-model.txt"), []byte(s.modelFile), 0644)
 }
 
 func (s *WhisperService) loadWhisperModel() {
@@ -209,7 +211,7 @@ func (s *WhisperService) GetWhisperLang() string {
 
 func (s *WhisperService) SetWhisperLang(lang string) {
 	s.whisperLang = lang
-	os.WriteFile(filepath.Join(s.dataDir, "whisper-lang.txt"), []byte(lang), 0644)
+	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-lang.txt"), []byte(lang), 0644)
 }
 
 func (s *WhisperService) loadWhisperLang() {
@@ -263,23 +265,23 @@ func (s *WhisperService) DownloadWhisperModel(mirrorURL, modelName string) error
 
 	s.modelFile = s.modelFileFor(modelName)
 	modelDir := filepath.Join(s.dataDir, "whisper-models")
-	os.MkdirAll(modelDir, 0755)
+	_ = os.MkdirAll(modelDir, 0755)
 	modelPath := s.modelPath()
 	tmpPath := modelPath + ".tmp"
-	os.Remove(tmpPath)
+	_ = os.Remove(tmpPath)
 
 	url := mirrorURL + "/ggerganov/whisper.cpp/resolve/main/" + s.modelFile
 	client := &http.Client{Timeout: 30 * 60 * 1e9}
 	resp, err := client.Get(url)
 	if err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	defer resp.Body.Close()
 
 	out, err := os.Create(tmpPath)
 	if err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 
@@ -292,7 +294,7 @@ func (s *WhisperService) DownloadWhisperModel(mirrorURL, modelName string) error
 		if n > 0 {
 			if _, err := out.Write(buf[:n]); err != nil {
 				out.Close()
-				os.Remove(tmpPath)
+				_ = os.Remove(tmpPath)
 				return fmt.Errorf("write error: %w", err)
 			}
 			downloaded += int64(n)
@@ -309,13 +311,13 @@ func (s *WhisperService) DownloadWhisperModel(mirrorURL, modelName string) error
 		}
 		if err != nil {
 			out.Close()
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return err
 		}
 	}
 
 	out.Close()
-	os.Rename(tmpPath, modelPath)
+	_ = os.Rename(tmpPath, modelPath)
 	return nil
 }
 

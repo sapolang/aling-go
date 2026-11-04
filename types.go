@@ -1,19 +1,19 @@
 package main
 
 type Word struct {
-	ID           int     `json:"id"`
-	Word         string  `json:"word"`
-	Definition   string  `json:"definition"`
-	Phonetic     string  `json:"phonetic"`
-	Example      string  `json:"example"`
-	Tags         string  `json:"tags"`
-	Level        int     `json:"level"`
-	NextReview   string  `json:"next_review"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
-	Repetitions  int     `json:"repetitions"`
-	EFactor      float64 `json:"efactor"`
-	Interval     int     `json:"interval"`
+	ID          int     `json:"id"`
+	Word        string  `json:"word"`
+	Definition  string  `json:"definition"`
+	Phonetic    string  `json:"phonetic"`
+	Example     string  `json:"example"`
+	Tags        string  `json:"tags"`
+	Level       int     `json:"level"`
+	NextReview  string  `json:"next_review"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+	Repetitions int     `json:"repetitions"`
+	EFactor     float64 `json:"efactor"`
+	Interval    int     `json:"interval"`
 }
 
 type Tag struct {

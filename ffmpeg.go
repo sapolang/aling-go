@@ -46,7 +46,7 @@ func findFFmpeg(dataDir string, logger *slog.Logger) string {
 func extractAudio(dataDir string, logger *slog.Logger, filePath string) string {
 	logger.Debug("extractAudio start", "filePath", filePath)
 	audioDir := filepath.Join(dataDir, "aling", "temp-audio")
-	os.MkdirAll(audioDir, 0755)
+	_ = os.MkdirAll(audioDir, 0755)
 	outPath := filepath.Join(audioDir, md5Hash(filePath)+".wav")
 
 	ffmpeg := findFFmpeg(dataDir, logger)
@@ -66,14 +66,14 @@ func extractAudio(dataDir string, logger *slog.Logger, filePath string) string {
 	logger.Debug("extractAudio output", "output", string(out))
 	if err != nil {
 		logger.Debug("extractAudio error", "error", err)
-		os.Remove(outPath)
+		_ = os.Remove(outPath)
 		return ""
 	}
 
 	fi, _ := os.Stat(outPath)
 	if fi == nil || fi.Size() == 0 {
 		logger.Debug("extractAudio output file is empty after success")
-		os.Remove(outPath)
+		_ = os.Remove(outPath)
 		return ""
 	}
 	return outPath

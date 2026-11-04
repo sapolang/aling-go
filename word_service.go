@@ -14,7 +14,9 @@ func NewWordService(app *application.App) *WordService {
 	return &WordService{app: app}
 }
 
-func (s *WordService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error { return nil }
+func (s *WordService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return nil
+}
 func (s *WordService) ServiceShutdown() error { return nil }
 
 // --- Words ---

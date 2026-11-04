@@ -8,8 +8,24 @@ import { Speaker, ArrowLeft, Pencil, Eye, Check } from 'lucide-react'
 const CDN_BASE = 'https://files.typewords.cc'
 
 const AUTO_SKIP_CHARS = new Set([
-  '\n', ' ', '.', ',', '!', '?', ';', ':', '"', '(', ')', '[', ']', '{', '}',
-  '—', '–', '…',
+  '\n',
+  ' ',
+  '.',
+  ',',
+  '!',
+  '?',
+  ';',
+  ':',
+  '"',
+  '(',
+  ')',
+  '[',
+  ']',
+  '{',
+  '}',
+  '—',
+  '–',
+  '…',
 ])
 
 function isAutoSkipChar(char: string): boolean {
@@ -27,8 +43,12 @@ export default function ArticleTypingPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const {
-    currentArticle, typingProgress,
-    loadArticle, loadTypingProgress, saveTypingProgress, saveTypingRecord,
+    currentArticle,
+    typingProgress,
+    loadArticle,
+    loadTypingProgress,
+    saveTypingProgress,
+    saveTypingRecord,
   } = useArticleStore()
 
   const [mode, setMode] = useState<Mode>('follow')
@@ -40,7 +60,9 @@ export default function ArticleTypingPage() {
   const [showHint, setShowHint] = useState(false)
   const [hintWord, setHintWord] = useState('')
   const [showResult, setShowResult] = useState(false)
-  const [dictationResults, setDictationResults] = useState<{ word: string; typed: string; correct: boolean }[]>([])
+  const [dictationResults, setDictationResults] = useState<
+    { word: string; typed: string; correct: boolean }[]
+  >([])
   const audioRef = useRef<HTMLAudioElement>(null)
   const hideHintTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -57,8 +79,13 @@ export default function ArticleTypingPage() {
   }, [currentArticle, mode, articleId])
 
   useEffect(() => {
-    if (typingProgress && typingProgress.position > 0 && !started
-      && typingProgress.articleId === articleId && typingProgress.mode === mode) {
+    if (
+      typingProgress &&
+      typingProgress.position > 0 &&
+      !started &&
+      typingProgress.articleId === articleId &&
+      typingProgress.mode === mode
+    ) {
       setTyped(currentArticle?.text.slice(0, typingProgress.position) || '')
     }
   }, [typingProgress, currentArticle, articleId, mode])
@@ -95,64 +122,67 @@ export default function ArticleTypingPage() {
   }, [typed, text])
 
   const accuracy = typed.length > 0 ? correctCount / typed.length : 1
-  const wpm = elapsed > 0 ? Math.round((typedChars / 5) / (elapsed / 60)) : 0
+  const wpm = elapsed > 0 ? Math.round(typedChars / 5 / (elapsed / 60)) : 0
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (finished || showResult) return
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (finished || showResult) return
 
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault()
-      if (!started) {
-        setStarted(true)
-        setStartTime(Date.now())
-      }
-      if (typed.length < text.length) {
-        if (mode === 'follow') {
-          setTyped(prev => {
-            let newTyped = prev
-            while (newTyped.length < text.length && isAutoSkipChar(text[newTyped.length])) {
-              newTyped += text[newTyped.length]
-            }
-            if (newTyped.length < text.length) {
-              newTyped += e.key
-            }
-            while (newTyped.length < text.length && isAutoSkipChar(text[newTyped.length])) {
-              newTyped += text[newTyped.length]
-            }
-            if (newTyped.length >= text.length) {
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        if (!started) {
+          setStarted(true)
+          setStartTime(Date.now())
+        }
+        if (typed.length < text.length) {
+          if (mode === 'follow') {
+            setTyped((prev) => {
+              let newTyped = prev
+              while (newTyped.length < text.length && isAutoSkipChar(text[newTyped.length])) {
+                newTyped += text[newTyped.length]
+              }
+              if (newTyped.length < text.length) {
+                newTyped += e.key
+              }
+              while (newTyped.length < text.length && isAutoSkipChar(text[newTyped.length])) {
+                newTyped += text[newTyped.length]
+              }
+              if (newTyped.length >= text.length) {
+                setFinished(true)
+                setShowResult(true)
+              }
+              return newTyped
+            })
+          } else {
+            setTyped((prev) => prev + e.key)
+            if (typed.length + 1 >= text.length) {
               setFinished(true)
               setShowResult(true)
             }
-            return newTyped
-          })
-        } else {
-          setTyped(prev => prev + e.key)
-          if (typed.length + 1 >= text.length) {
-            setFinished(true)
-            setShowResult(true)
           }
         }
+        return
       }
-      return
-    }
 
-    if (e.key === 'Backspace') {
-      e.preventDefault()
-      setTyped(prev => prev.slice(0, -1))
-      return
-    }
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        setTyped((prev) => prev.slice(0, -1))
+        return
+      }
 
-    if (e.key === 'Tab' && mode === 'dictation') {
-      e.preventDefault()
-      const remaining = text.slice(typed.length)
-      const nextWord = remaining.match(/^\S+/)?.[0] || ''
-      setHintWord(nextWord)
-      setShowHint(true)
-      clearTimeout(hideHintTimer.current)
-      hideHintTimer.current = setTimeout(() => setShowHint(false), 3000)
-      return
-    }
-  }, [finished, showResult, started, text, typed, mode])
+      if (e.key === 'Tab' && mode === 'dictation') {
+        e.preventDefault()
+        const remaining = text.slice(typed.length)
+        const nextWord = remaining.match(/^\S+/)?.[0] || ''
+        setHintWord(nextWord)
+        setShowHint(true)
+        clearTimeout(hideHintTimer.current)
+        hideHintTimer.current = setTimeout(() => setShowHint(false), 3000)
+        return
+      }
+    },
+    [finished, showResult, started, text, typed, mode],
+  )
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -242,16 +272,21 @@ export default function ArticleTypingPage() {
 
   // Render character display for follow mode
   const renderFollowText = () => (
-    <div className="font-mono text-xl leading-relaxed whitespace-pre-wrap break-words select-none"
-      style={{ letterSpacing: '0.05em' }}>
+    <div
+      className="font-mono text-xl leading-relaxed whitespace-pre-wrap break-words select-none"
+      style={{ letterSpacing: '0.05em' }}
+    >
       {charStates.map((cs, i) => (
         <span
           key={i}
           className={
-            cs.status === 'correct' ? 'text-green-600 dark:text-green-400' :
-            cs.status === 'wrong' ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded' :
-            cs.status === 'current' ? 'border-b-2 border-blue-500 text-muted-foreground' :
-            'text-muted-foreground'
+            cs.status === 'correct'
+              ? 'text-green-600 dark:text-green-400'
+              : cs.status === 'wrong'
+                ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+                : cs.status === 'current'
+                  ? 'border-b-2 border-blue-500 text-muted-foreground'
+                  : 'text-muted-foreground'
           }
         >
           {cs.char === '\n' ? '↵\n' : cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
@@ -274,10 +309,20 @@ export default function ArticleTypingPage() {
           const ow = originalWords[i]
           const isSpace = /^\s+$/.test(tw)
           if (isSpace) return <span key={i}>{tw}</span>
-          if (!ow) return <span key={i} className="text-muted-foreground">{tw}</span>
+          if (!ow)
+            return (
+              <span key={i} className="text-muted-foreground">
+                {tw}
+              </span>
+            )
           const matched = ow.toLowerCase() === tw.toLowerCase()
           return (
-            <span key={i} className={matched ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}>
+            <span
+              key={i}
+              className={
+                matched ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+              }
+            >
               {matched ? tw : <span className="line-through mr-1">{tw}</span>}
               {!matched && <span className="text-green-600 text-xs align-super">{ow}</span>}
             </span>
@@ -310,8 +355,8 @@ export default function ArticleTypingPage() {
   })()
 
   const handleAddMistakesToWords = async () => {
-    const uniqueWords = [...new Set(mistakesFromErrors.map(m => m.word))]
-    const wordsToAdd = uniqueWords.map(word => ({
+    const uniqueWords = [...new Set(mistakesFromErrors.map((m) => m.word))]
+    const wordsToAdd = uniqueWords.map((word) => ({
       word,
       definition: '',
       phonetic: '',
@@ -322,9 +367,7 @@ export default function ArticleTypingPage() {
 
   if (!currentArticle) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        加载中...
-      </div>
+      <div className="flex items-center justify-center h-full text-muted-foreground">加载中...</div>
     )
   }
 
@@ -341,17 +384,27 @@ export default function ArticleTypingPage() {
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-0.5">
           <button
-            onClick={() => { setMode('follow'); handleRestart() }}
+            onClick={() => {
+              setMode('follow')
+              handleRestart()
+            }}
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              mode === 'follow' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+              mode === 'follow'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground'
             }`}
           >
             跟打
           </button>
           <button
-            onClick={() => { setMode('dictation'); handleRestart() }}
+            onClick={() => {
+              setMode('dictation')
+              handleRestart()
+            }}
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              mode === 'dictation' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+              mode === 'dictation'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground'
             }`}
           >
             默写
@@ -377,7 +430,9 @@ export default function ArticleTypingPage() {
           />
         </div>
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{typedChars} / {totalChars} 字符</span>
+          <span>
+            {typedChars} / {totalChars} 字符
+          </span>
           <span>{Math.round(progress)}%</span>
         </div>
       </div>
@@ -390,20 +445,26 @@ export default function ArticleTypingPage() {
       )}
 
       {/* Text display */}
-      <Card className="p-6">
-        {mode === 'follow' ? renderFollowText() : renderDictationText()}
-      </Card>
+      <Card className="p-6">{mode === 'follow' ? renderFollowText() : renderDictationText()}</Card>
 
       {/* Stats */}
       <div className="flex gap-6 justify-center text-sm text-muted-foreground">
-        <div>正确率 <span className="text-foreground font-medium">{Math.round(accuracy * 100)}%</span></div>
-        <div>速度 <span className="text-foreground font-medium">{wpm}</span> WPM</div>
-        <div>耗时 <span className="text-foreground font-medium">{elapsed}s</span></div>
+        <div>
+          正确率 <span className="text-foreground font-medium">{Math.round(accuracy * 100)}%</span>
+        </div>
+        <div>
+          速度 <span className="text-foreground font-medium">{wpm}</span> WPM
+        </div>
+        <div>
+          耗时 <span className="text-foreground font-medium">{elapsed}s</span>
+        </div>
       </div>
 
       {/* Mode hint */}
       <p className="text-xs text-muted-foreground text-center">
-        {mode === 'follow' ? '逐字输入，换行、空格和标点自动跳过 · Backspace 回退' : '凭记忆输入每个词，空格确认 · Tab 查看提示'}
+        {mode === 'follow'
+          ? '逐字输入，换行、空格和标点自动跳过 · Backspace 回退'
+          : '凭记忆输入每个词，空格确认 · Tab 查看提示'}
       </p>
 
       {/* Result modal */}
@@ -445,7 +506,9 @@ export default function ArticleTypingPage() {
 
           <div className="flex gap-3 justify-center">
             <Button onClick={handleRestart}>再来一次</Button>
-            <Button variant="outline" onClick={() => navigate('/articles')}>返回列表</Button>
+            <Button variant="outline" onClick={() => navigate('/articles')}>
+              返回列表
+            </Button>
           </div>
         </Card>
       )}

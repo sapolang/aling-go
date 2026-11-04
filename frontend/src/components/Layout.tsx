@@ -3,7 +3,20 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePlayerStore } from '@/stores/playerStore'
-import { Home, Play, BookOpen, FlipVertical, Settings, Pause, Loader2, X, Library, PanelLeftClose, PanelLeft, Type } from 'lucide-react'
+import {
+  Home,
+  Play,
+  BookOpen,
+  FlipVertical,
+  Settings,
+  Pause,
+  Loader2,
+  X,
+  Library,
+  PanelLeftClose,
+  PanelLeft,
+  Type,
+} from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '文件库', icon: Home },
@@ -11,10 +24,16 @@ const navItems = [
   { path: '/dict', label: '单词书', icon: Library },
   { path: '/card', label: '卡片背诵', icon: FlipVertical },
   { path: '/articles', label: '文章打字', icon: Type },
-  { path: '/settings', label: '设置', icon: Settings }
+  { path: '/settings', label: '设置', icon: Settings },
 ]
 
-export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPlayerRoute: boolean }) {
+export function Layout({
+  children,
+  isPlayerRoute,
+}: {
+  children: ReactNode
+  isPlayerRoute: boolean
+}) {
   const navigate = useNavigate()
   const location = useLocation()
   const filePath = usePlayerStore((s) => s.filePath)
@@ -31,7 +50,9 @@ export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPla
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className={`border-r bg-muted/30 flex flex-col shrink-0 transition-all duration-200 ${collapsed ? 'w-14' : 'w-56'}`}>
+      <aside
+        className={`border-r bg-muted/30 flex flex-col shrink-0 transition-all duration-200 ${collapsed ? 'w-14' : 'w-56'}`}
+      >
         <div className="p-4 border-b flex items-center justify-between">
           {collapsed ? (
             <h1 className="text-sm font-bold">A</h1>
@@ -76,9 +97,7 @@ export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPla
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
 
         {/* Mini 播放条 — 有文件时始终显示 */}
         {filePath && !isPlayerRoute && (
@@ -86,15 +105,18 @@ export function Layout({ children, isPlayerRoute }: { children: ReactNode; isPla
             <Button variant="ghost" size="sm" onClick={() => setPlaying(!playing)}>
               {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
-            <span className="text-sm truncate flex-1">
-              {filePath.split('/').pop()}
-            </span>
+            <span className="text-sm truncate flex-1">{filePath.split('/').pop()}</span>
             {transcribing ? (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" /> 转录中 {progress}%
               </span>
             ) : (
-              <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate('/player')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => navigate('/player')}
+              >
                 打开播放器
               </Button>
             )}

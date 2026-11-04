@@ -58,12 +58,22 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformData: [],
   waveformLoading: false,
 
-  setFilePath: (filePath) => set({
-    filePath, playing: false, played: 0, duration: 0, playbackRate: 1,
-    subtitles: [], subtitlePath: null, currentSubtitleIndex: -1,
-    loopStart: null, loopEnd: null, seekTo: null,
-    waveformData: [], waveformLoading: false
-  }),
+  setFilePath: (filePath) =>
+    set({
+      filePath,
+      playing: false,
+      played: 0,
+      duration: 0,
+      playbackRate: 1,
+      subtitles: [],
+      subtitlePath: null,
+      currentSubtitleIndex: -1,
+      loopStart: null,
+      loopEnd: null,
+      seekTo: null,
+      waveformData: [],
+      waveformLoading: false,
+    }),
   setPlaying: (playing) => set({ playing }),
   setPlayed: (played) => set({ played }),
   setDuration: (duration) => set({ duration }),
@@ -75,12 +85,24 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setTranscribing: (transcribing) => set({ transcribing }),
   setTranscriptionProgress: (transcriptionProgress) => set({ transcriptionProgress }),
   requestSeek: (time) => set({ seekTo: time }),
-  closeFile: () => set({
-    filePath: null, playing: false, played: 0, duration: 0, playbackRate: 1,
-    subtitles: [], subtitlePath: null, currentSubtitleIndex: -1,
-    loopStart: null, loopEnd: null, transcribing: false, transcriptionProgress: 0, seekTo: null,
-    waveformData: [], waveformLoading: false
-  }),
+  closeFile: () =>
+    set({
+      filePath: null,
+      playing: false,
+      played: 0,
+      duration: 0,
+      playbackRate: 1,
+      subtitles: [],
+      subtitlePath: null,
+      currentSubtitleIndex: -1,
+      loopStart: null,
+      loopEnd: null,
+      transcribing: false,
+      transcriptionProgress: 0,
+      seekTo: null,
+      waveformData: [],
+      waveformLoading: false,
+    }),
   setWaveformData: (waveformData) => set({ waveformData, waveformLoading: false }),
   setWaveformLoading: (waveformLoading) => set({ waveformLoading }),
 }))

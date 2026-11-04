@@ -22,11 +22,13 @@ export default function AddWordModal({ word, onClose }: Props) {
     phonetic: '',
     example: '',
     tags: '',
-    level: 1
+    level: 1,
   })
   const [newTag, setNewTag] = useState('')
 
-  useEffect(() => { loadTags() }, [])
+  useEffect(() => {
+    loadTags()
+  }, [])
 
   useEffect(() => {
     if (word) {
@@ -36,7 +38,7 @@ export default function AddWordModal({ word, onClose }: Props) {
         phonetic: word.phonetic,
         example: word.example,
         tags: word.tags,
-        level: word.level
+        level: word.level,
       })
     }
   }, [word])
@@ -53,7 +55,10 @@ export default function AddWordModal({ word, onClose }: Props) {
   }
 
   const removeTag = (tagName: string) => {
-    const existing = form.tags.split(',').filter(Boolean).filter((t) => t !== tagName)
+    const existing = form.tags
+      .split(',')
+      .filter(Boolean)
+      .filter((t) => t !== tagName)
     setForm({ ...form, tags: existing.join(',') })
   }
 
@@ -74,21 +79,39 @@ export default function AddWordModal({ word, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <Card
+        className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-lg font-semibold mb-4">{word ? '编辑生词' : '新增生词'}</h2>
         <div className="space-y-4">
           <div>
             <Label>原文 *</Label>
-            <Input value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} placeholder="输入单词" />
+            <Input
+              value={form.word}
+              onChange={(e) => setForm({ ...form, word: e.target.value })}
+              placeholder="输入单词"
+            />
           </div>
           <div>
             <Label>释义</Label>
-            <Input value={form.definition} onChange={(e) => setForm({ ...form, definition: e.target.value })} placeholder="输入释义" />
+            <Input
+              value={form.definition}
+              onChange={(e) => setForm({ ...form, definition: e.target.value })}
+              placeholder="输入释义"
+            />
           </div>
           <div>
             <Label>音标</Label>
-            <Input value={form.phonetic} onChange={(e) => setForm({ ...form, phonetic: e.target.value })} placeholder="/ˈeksəmpəl/" />
+            <Input
+              value={form.phonetic}
+              onChange={(e) => setForm({ ...form, phonetic: e.target.value })}
+              placeholder="/ˈeksəmpəl/"
+            />
           </div>
           <div>
             <Label>例句</Label>
@@ -130,11 +153,15 @@ export default function AddWordModal({ word, onClose }: Props) {
               <select
                 className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value=""
-                onChange={(e) => { if (e.target.value) addTag(e.target.value) }}
+                onChange={(e) => {
+                  if (e.target.value) addTag(e.target.value)
+                }}
               >
                 <option value="">选择已有标签...</option>
                 {availableTags.map((t) => (
-                  <option key={t.id} value={t.name}>{t.name}</option>
+                  <option key={t.id} value={t.name}>
+                    {t.name}
+                  </option>
                 ))}
               </select>
               <div className="flex gap-1">
@@ -147,7 +174,12 @@ export default function AddWordModal({ word, onClose }: Props) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => { if (newTag.trim()) { addTag(newTag.trim()); setNewTag('') } }}
+                  onClick={() => {
+                    if (newTag.trim()) {
+                      addTag(newTag.trim())
+                      setNewTag('')
+                    }
+                  }}
                 >
                   添加
                 </Button>
@@ -155,7 +187,9 @@ export default function AddWordModal({ word, onClose }: Props) {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>取消</Button>
+            <Button variant="outline" onClick={onClose}>
+              取消
+            </Button>
             <Button onClick={handleSubmit}>{word ? '保存' : '添加'}</Button>
           </div>
         </div>

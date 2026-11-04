@@ -2,13 +2,15 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
   "timezone": "Asia/Shanghai",
+  "schedule": ["before 9am on monday"],
   "rebaseWhen": "conflicted",
   "prConcurrentLimit": 5,
   "prHourlyLimit": 5,
   "dependencyDashboardTitle": "Renovate 依赖更新",
   "postUpdateOptions": ["gomodTidy"],
   "lockFileMaintenance": {
-    "enabled": true
+    "enabled": true,
+    "schedule": ["before 9am on monday"]
   },
   "packageRules": [
     {
