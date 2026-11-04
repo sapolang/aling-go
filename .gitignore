@@ -16,3 +16,4 @@ whisper-model.txt
 subtitle-cache/
 library.json
 .task/
+.DS_Store

@@ -9,7 +9,8 @@
   "dependencyDashboardTitle": "Renovate 依赖更新",
   "postUpdateOptions": ["gomodTidy"],
   "lockFileMaintenance": {
-    "enabled": true
+    "enabled": true,
+    "schedule": ["before 9am on monday"]
   },
   "packageRules": [
     {
