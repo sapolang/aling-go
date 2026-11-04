@@ -17,6 +17,8 @@
 
 ### Changed
 - `make test` 现运行 typecheck + eslint，原 typecheck 拆为 `make typecheck`
+- 升级 Vite 5 → 8、@vitejs/plugin-react 4 → 6，清除 esbuild/vite 的 high 级漏洞
+- CI / Release 的 Node 版本由 20 提至 22（满足 Vite 8 引擎要求）
 
 ## [0.1.0] - 2026-07-28
 
