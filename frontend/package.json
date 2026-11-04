@@ -20,7 +20,7 @@
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0",
+    "react-router-dom": "^6.30.6",
     "react-window": "^1.8.10",
     "srt-parser-2": "^1.2.3",
     "tailwind-merge": "^2.4.0",
