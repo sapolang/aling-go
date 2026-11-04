@@ -48,11 +48,17 @@ export const useDictStore = create<DictStore>((set, get) => ({
   },
 
   openBook: async (tag: string) => {
-    set({ loading: true, currentBook: tag, currentIndex: 0, knownWords: new Set(), unknownWords: new Set() })
+    set({
+      loading: true,
+      currentBook: tag,
+      currentIndex: 0,
+      knownWords: new Set(),
+      unknownWords: new Set(),
+    })
     try {
       const words = await window.api.dbDictWords(tag)
       const savedIndex = await window.api.dbDictGetProgress(tag)
-      const startIndex = (savedIndex > 0 && savedIndex < words.length) ? savedIndex : 0
+      const startIndex = savedIndex > 0 && savedIndex < words.length ? savedIndex : 0
       set({ words, currentIndex: startIndex })
     } catch (e) {
       console.error('openBook error:', e)
@@ -92,14 +98,20 @@ export const useDictStore = create<DictStore>((set, get) => ({
 
   addAllUnknown: async () => {
     const { words, unknownWords } = get()
-    const toAdd = words.filter(w => unknownWords.has(w.word))
+    const toAdd = words.filter((w) => unknownWords.has(w.word))
     if (toAdd.length > 0) {
       await window.api.dbDictAddToWordList(toAdd)
     }
   },
 
   reset: () => {
-    set({ currentBook: null, words: [], currentIndex: 0, knownWords: new Set(), unknownWords: new Set() })
+    set({
+      currentBook: null,
+      words: [],
+      currentIndex: 0,
+      knownWords: new Set(),
+      unknownWords: new Set(),
+    })
   },
 
   setCurrentIndex: (i: number) => set({ currentIndex: i }),

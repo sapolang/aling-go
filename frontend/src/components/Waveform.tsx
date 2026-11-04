@@ -15,7 +15,15 @@ interface WaveformProps {
   onSeek: (time: number) => void
 }
 
-export default function Waveform({ data, duration, currentTime, subtitles, loading, dark, onSeek }: WaveformProps) {
+export default function Waveform({
+  data,
+  duration,
+  currentTime,
+  subtitles,
+  loading,
+  dark,
+  onSeek,
+}: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
@@ -33,9 +41,7 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
   const maxOffset = data.length
   offsetRef.current = viewOffset
 
-  const sampleIndex = duration > 0
-    ? Math.round((currentTime / duration) * data.length)
-    : 0
+  const sampleIndex = duration > 0 ? Math.round((currentTime / duration) * data.length) : 0
 
   useEffect(() => {
     if (draggingRef.current) return
@@ -110,7 +116,9 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
     }
   }, [data, clampedOffset, centerSample, duration, subtitles, zoom, pxPerSample, gapPx])
 
-  useEffect(() => { drawBars() }, [drawBars])
+  useEffect(() => {
+    drawBars()
+  }, [drawBars])
 
   useEffect(() => {
     const el = containerRef.current
@@ -154,14 +162,18 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
   }
 
   useEffect(() => {
-    const onUp = () => { draggingRef.current = false }
+    const onUp = () => {
+      draggingRef.current = false
+    }
     document.addEventListener('mouseup', onUp)
     return () => document.removeEventListener('mouseup', onUp)
   }, [])
 
   if (loading) {
     return (
-      <div className={`w-full h-full rounded flex items-center justify-center ${dark ? 'bg-[#1a1a2e]' : 'bg-white'}`}>
+      <div
+        className={`w-full h-full rounded flex items-center justify-center ${dark ? 'bg-[#1a1a2e]' : 'bg-white'}`}
+      >
         <div className="h-2 bg-gray-200 rounded w-3/4 animate-pulse" />
       </div>
     )
@@ -185,7 +197,14 @@ export default function Waveform({ data, duration, currentTime, subtitles, loadi
   )
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
   ctx.lineTo(x + w - r, y)

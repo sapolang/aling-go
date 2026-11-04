@@ -6,9 +6,20 @@ import { BookOpen } from 'lucide-react'
 
 export default function ArticleListPage() {
   const navigate = useNavigate()
-  const { categories, articles, currentCategory, allProgress, loading, loadCategories, loadArticles, loadAllProgress } = useArticleStore()
+  const {
+    categories,
+    articles,
+    currentCategory,
+    allProgress,
+    loading,
+    loadCategories,
+    loadArticles,
+    loadAllProgress,
+  } = useArticleStore()
 
-  useEffect(() => { loadCategories() }, [])
+  useEffect(() => {
+    loadCategories()
+  }, [])
 
   useEffect(() => {
     if (categories.length > 0 && !currentCategory) {
@@ -73,12 +84,11 @@ export default function ArticleListPage() {
                 onClick={() => handleArticleClick(a.id)}
               >
                 <CardContent className="p-4 flex items-center gap-4">
-                  <span className="text-sm text-muted-foreground w-8 shrink-0">
-                    {i + 1}
-                  </span>
+                  <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium truncate">
-                      {progress?.completed ? '✓ ' : ''}{a.title}
+                      {progress?.completed ? '✓ ' : ''}
+                      {a.title}
                     </h3>
                     {a.titleTranslate && (
                       <p className="text-sm text-muted-foreground truncate">{a.titleTranslate}</p>
@@ -86,7 +96,9 @@ export default function ArticleListPage() {
                   </div>
                   {progress?.completed && (
                     <div className="text-xs text-muted-foreground shrink-0 text-right">
-                      <span className="text-green-600 dark:text-green-400">{Math.round(progress.bestAccuracy * 100)}%</span>
+                      <span className="text-green-600 dark:text-green-400">
+                        {Math.round(progress.bestAccuracy * 100)}%
+                      </span>
                       {' · '}
                       <span>{Math.round(progress.bestWpm)} WPM</span>
                     </div>

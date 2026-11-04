@@ -155,7 +155,9 @@ export interface ElectronAPI {
   whisperStatus: () => Promise<WhisperStatus>
   downloadWhisperModel: (mirrorURL: string, modelName: string) => Promise<void>
   setWhisperModel: (name: string) => void
-  listWhisperModels: () => Promise<{ name: string; file: string; size: string; downloaded: boolean }[]>
+  listWhisperModels: () => Promise<
+    { name: string; file: string; size: string; downloaded: boolean }[]
+  >
   getWhisperLang: () => Promise<string>
   setWhisperLang: (lang: string) => void
   onWhisperProgress: (callback: (data: WhisperProgress) => void) => () => void

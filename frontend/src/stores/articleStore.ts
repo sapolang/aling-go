@@ -40,7 +40,11 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   loadArticles: async (categoryEnName: string) => {
     set({ loading: true })
     const articles = await window.api.getArticles(categoryEnName)
-    set({ articles, currentCategory: get().categories.find(c => c.enName === categoryEnName) || null, loading: false })
+    set({
+      articles,
+      currentCategory: get().categories.find((c) => c.enName === categoryEnName) || null,
+      loading: false,
+    })
   },
 
   loadArticle: async (id: number) => {

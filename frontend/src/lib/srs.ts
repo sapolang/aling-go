@@ -43,10 +43,7 @@ export function sm2(
     newInterval = Math.round(newInterval * 1.3)
   }
 
-  const newEfactor = Math.max(
-    1.3,
-    efactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)),
-  )
+  const newEfactor = Math.max(1.3, efactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
 
   const nextDate = new Date(Date.now() + newInterval * 86400000)
   const nextReview = nextDate.toISOString().split('T')[0]
@@ -54,11 +51,14 @@ export function sm2(
   return { nextReview, newEfactor, newInterval, newRepetitions }
 }
 
-export function srsIntervalLabel(quality: number, currentWord: {
-  efactor: number
-  interval: number
-  repetitions: number
-}): string {
+export function srsIntervalLabel(
+  quality: number,
+  currentWord: {
+    efactor: number
+    interval: number
+    repetitions: number
+  },
+): string {
   if (quality === 1) return '1天后'
   const result = sm2(currentWord.efactor, currentWord.interval, currentWord.repetitions, quality)
   return `${result.newInterval}天后`

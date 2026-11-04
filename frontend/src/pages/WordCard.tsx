@@ -9,10 +9,8 @@ import { gradeOptions, sm2, srsIntervalLabel } from '@/lib/srs'
 import { Speaker, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
 
 export default function WordCardPage() {
-  const {
-    reviewWords, reviewTotal, reviewCompleted,
-    loadReview, updateWord, incrementCompleted,
-  } = useWordStore()
+  const { reviewWords, reviewTotal, reviewCompleted, loadReview, updateWord, incrementCompleted } =
+    useWordStore()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [showButtons, setShowButtons] = useState(false)
@@ -23,7 +21,9 @@ export default function WordCardPage() {
   const writeRef = useRef<HTMLInputElement>(null)
   const flipTimer = useRef<ReturnType<typeof setTimeout>>()
 
-  useEffect(() => { loadReview() }, [])
+  useEffect(() => {
+    loadReview()
+  }, [])
 
   useEffect(() => {
     setWriteInput('')
@@ -55,37 +55,44 @@ export default function WordCardPage() {
     }
   }
 
-  const handleGrade = useCallback(async (quality: number) => {
-    if (!current || rating) return
-    setRating(true)
-    const { nextReview, newEfactor, newInterval, newRepetitions } = sm2(
-      current.efactor || 2.5,
-      current.interval || 0,
-      current.repetitions || 0,
-      quality,
-    )
-    await updateWord(current.id, {
-      level: quality === 1 ? 1 : quality === 3 ? 2 : 3,
-      next_review: nextReview,
-      repetitions: newRepetitions,
-      efactor: newEfactor,
-      interval: newInterval,
-    } as any)
-    incrementCompleted()
-    setRating(false)
-    setFlipped(false)
-    if (currentIndex < reviewWords.length - 1) {
-      setCurrentIndex(currentIndex + 1)
-    } else {
-      loadReview()
-      setCurrentIndex(0)
-    }
-  }, [current, currentIndex, rating, reviewWords.length, updateWord, incrementCompleted, loadReview])
+  const handleGrade = useCallback(
+    async (quality: number) => {
+      if (!current || rating) return
+      setRating(true)
+      const { nextReview, newEfactor, newInterval, newRepetitions } = sm2(
+        current.efactor || 2.5,
+        current.interval || 0,
+        current.repetitions || 0,
+        quality,
+      )
+      await updateWord(current.id, {
+        level: quality === 1 ? 1 : quality === 3 ? 2 : 3,
+        next_review: nextReview,
+        repetitions: newRepetitions,
+        efactor: newEfactor,
+        interval: newInterval,
+      } as any)
+      incrementCompleted()
+      setRating(false)
+      setFlipped(false)
+      if (currentIndex < reviewWords.length - 1) {
+        setCurrentIndex(currentIndex + 1)
+      } else {
+        loadReview()
+        setCurrentIndex(0)
+      }
+    },
+    [current, currentIndex, rating, reviewWords.length, updateWord, incrementCompleted, loadReview],
+  )
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === ' ') { e.preventDefault(); setFlipped((f) => !f); return }
+      if (e.key === ' ') {
+        e.preventDefault()
+        setFlipped((f) => !f)
+        return
+      }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault()
         setFlipped(false)
@@ -101,10 +108,26 @@ export default function WordCardPage() {
         setCurrentIndex((i) => Math.min(reviewWords.length - 1, i + 1))
         return
       }
-      if (flipped && e.key === '1') { e.preventDefault(); handleGrade(1); return }
-      if (flipped && e.key === '2') { e.preventDefault(); handleGrade(3); return }
-      if (flipped && e.key === '3') { e.preventDefault(); handleGrade(4); return }
-      if (flipped && e.key === '4') { e.preventDefault(); handleGrade(5); return }
+      if (flipped && e.key === '1') {
+        e.preventDefault()
+        handleGrade(1)
+        return
+      }
+      if (flipped && e.key === '2') {
+        e.preventDefault()
+        handleGrade(3)
+        return
+      }
+      if (flipped && e.key === '3') {
+        e.preventDefault()
+        handleGrade(4)
+        return
+      }
+      if (flipped && e.key === '4') {
+        e.preventDefault()
+        handleGrade(5)
+        return
+      }
       e.preventDefault()
     }
     window.addEventListener('keydown', onKeyDown)
@@ -174,7 +197,10 @@ export default function WordCardPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={(e) => { e.stopPropagation(); speak(current.word) }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  speak(current.word)
+                }}
               >
                 <Speaker className="h-4 w-4 mr-1" /> 朗读
               </Button>
@@ -198,7 +224,9 @@ export default function WordCardPage() {
               {current.tags && (
                 <div className="flex justify-center gap-1 flex-wrap">
                   {current.tags.split(',').map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">{tag.trim()}</Badge>
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag.trim()}
+                    </Badge>
                   ))}
                 </div>
               )}
@@ -206,7 +234,10 @@ export default function WordCardPage() {
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">
-                    写一写 {writeCount > 0 && <span className="text-green-500 font-medium">{writeCount} ✓</span>}
+                    写一写{' '}
+                    {writeCount > 0 && (
+                      <span className="text-green-500 font-medium">{writeCount} ✓</span>
+                    )}
                   </span>
                 </div>
                 <div className="flex gap-2 justify-center">
@@ -215,14 +246,25 @@ export default function WordCardPage() {
                     className={`w-40 h-8 text-center text-sm transition-colors ${writeError ? 'border-red-500 bg-red-50' : ''}`}
                     placeholder="拼写单词"
                     value={writeInput}
-                    onChange={(e) => { setWriteInput(e.target.value); setWriteError(false) }}
+                    onChange={(e) => {
+                      setWriteInput(e.target.value)
+                      setWriteError(false)
+                    }}
                     onKeyDown={(e) => {
                       e.stopPropagation()
                       if (e.key === 'Enter') handleWrite()
                     }}
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={(e) => { e.stopPropagation(); handleWrite() }}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleWrite()
+                    }}
+                  >
                     确认
                   </Button>
                 </div>
@@ -245,19 +287,31 @@ export default function WordCardPage() {
             onClick={() => handleGrade(opt.grade)}
           >
             <span className="text-sm font-semibold">{opt.label}</span>
-            <span className="text-xs opacity-80">
-              {srsIntervalLabel(opt.grade, current)}
-            </span>
+            <span className="text-xs opacity-80">{srsIntervalLabel(opt.grade, current)}</span>
             <span className="text-[10px] opacity-60">({opt.key})</span>
           </Button>
         ))}
       </div>
 
       <div className="flex justify-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => { setFlipped(false); setCurrentIndex(Math.max(0, currentIndex - 1)) }}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setFlipped(false)
+            setCurrentIndex(Math.max(0, currentIndex - 1))
+          }}
+        >
           <ChevronLeft className="h-4 w-4 mr-1" /> 上一个
         </Button>
-        <Button variant="outline" size="sm" onClick={() => { setFlipped(false); setCurrentIndex(Math.min(reviewWords.length - 1, currentIndex + 1)) }}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setFlipped(false)
+            setCurrentIndex(Math.min(reviewWords.length - 1, currentIndex + 1))
+          }}
+        >
           下一个 <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
       </div>
