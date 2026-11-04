@@ -17,7 +17,9 @@ func NewDictService(app *application.App) *DictService {
 	return &DictService{app: app}
 }
 
-func (s *DictService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error { return nil }
+func (s *DictService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return nil
+}
 func (s *DictService) ServiceShutdown() error { return nil }
 
 func (s *DictService) DbDictTags() []dict.DictTag {

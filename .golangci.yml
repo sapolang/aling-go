@@ -1,0 +1,31 @@
+# golangci-lint v2 配置
+# 文档: https://golangci-lint.run/usage/configuration/
+version: "2"
+
+run:
+  timeout: 5m
+  tests: false
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      check-blank: false
+      check-type-assertions: false
+      # defer Close() 是 Go 惯用写法，统一忽略这些返回值
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.Stmt).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Tx).Rollback
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+        - (io.Closer).Close
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - goimports

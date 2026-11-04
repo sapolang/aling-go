@@ -1,4 +1,4 @@
-.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install upgrade-wails
+.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -70,6 +70,13 @@ clean:
 
 vet:
 	go vet ./...
+
+lint:
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "Installing golangci-lint..."; \
+		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; \
+	fi
+	golangci-lint run
 
 tidy:
 	go mod tidy

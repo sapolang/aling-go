@@ -17,7 +17,9 @@ func NewPlatformService(app *application.App) *PlatformService {
 	return &PlatformService{app: app}
 }
 
-func (s *PlatformService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error { return nil }
+func (s *PlatformService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return nil
+}
 func (s *PlatformService) ServiceShutdown() error { return nil }
 
 // --- Dialogs ---
@@ -67,7 +69,7 @@ func (s *PlatformService) OpenExternal(filePath string) {
 	default:
 		cmd = exec.Command("xdg-open", filePath)
 	}
-	cmd.Start()
+	_ = cmd.Start()
 }
 
 func (s *PlatformService) GetPlatform() string {
@@ -85,5 +87,5 @@ func (s *PlatformService) ReadTextFile(path string) string {
 }
 
 func (s *PlatformService) WriteTextFile(path, content string) {
-	os.WriteFile(path, []byte(content), 0644)
+	_ = os.WriteFile(path, []byte(content), 0644)
 }

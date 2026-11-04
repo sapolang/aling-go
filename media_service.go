@@ -52,7 +52,7 @@ func (s *MediaService) ServiceStartup(ctx context.Context, options application.S
 
 func (s *MediaService) ServiceShutdown() error {
 	if s.mediaListener != nil {
-		s.mediaListener.Close()
+		_ = s.mediaListener.Close()
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func (s *MediaService) startMediaServer() {
 	}
 	s.mediaListener = listener
 	s.mediaPort = listener.Addr().(*net.TCPAddr).Port
-	go http.Serve(listener, mux)
+	go func() { _ = http.Serve(listener, mux) }()
 }
 
 func (s *MediaService) GetMediaPort() int {
@@ -86,7 +86,7 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 	}
 
 	if strings.Contains(filePath, "..") || !filepath.IsAbs(filePath) {
-		http.Error(w, "forbidden", 403)
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -136,8 +136,8 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		defer f.Close()
-		f.Seek(start, 0)
-		io.CopyN(w, f, end-start+1)
+		_, _ = f.Seek(start, 0)
+		_, _ = io.CopyN(w, f, end-start+1)
 		return
 	}
 
@@ -149,14 +149,14 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer f.Close()
-	io.Copy(w, f)
+	_, _ = io.Copy(w, f)
 }
 
 // --- Thumbnail ---
 
 func (s *MediaService) GetVideoThumbnail(filePath string) string {
 	cacheDir := filepath.Join(s.dataDir, "aling", "thumbnails")
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0755)
 	cacheKey := md5Hash(filePath)
 	thumbPath := filepath.Join(cacheDir, cacheKey+".jpg")
 
@@ -170,7 +170,7 @@ func (s *MediaService) GetVideoThumbnail(filePath string) string {
 	}
 
 	cmd := exec.Command(ffmpeg, "-i", filePath, "-ss", "00:00:05", "-vframes", "1", "-q:v", "2", "-update", "1", thumbPath)
-	cmd.Run()
+	_ = cmd.Run()
 
 	data, err := os.ReadFile(thumbPath)
 	if err != nil {
@@ -183,7 +183,7 @@ const waveformSampleCount = 1000
 
 func (s *MediaService) GetWaveformData(filePath string) []float64 {
 	cacheDir := filepath.Join(s.dataDir, "aling", "waveforms")
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0755)
 	cacheKey := md5Hash(filePath)
 	cachePath := filepath.Join(cacheDir, cacheKey+".json")
 
@@ -223,7 +223,7 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 		return nil
 	}
 
-	go io.Copy(io.Discard, stderr)
+	go func() { _, _ = io.Copy(io.Discard, stderr) }()
 
 	rawBytes, err := io.ReadAll(stdout)
 	if err != nil {
@@ -231,7 +231,7 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 		return nil
 	}
 
-	cmd.Wait()
+	_ = cmd.Wait()
 
 	if len(rawBytes) == 0 {
 		return nil
@@ -280,7 +280,7 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 
 	jsonBytes, err := json.Marshal(result)
 	if err == nil {
-		os.WriteFile(cachePath, jsonBytes, 0644)
+		_ = os.WriteFile(cachePath, jsonBytes, 0644)
 	}
 
 	return result

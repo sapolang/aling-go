@@ -30,19 +30,19 @@ type Category struct {
 }
 
 type Article struct {
-	ID              int          `json:"id"`
-	Title           string       `json:"title"`
-	TitleTranslate  string       `json:"titleTranslate"`
-	Text            string       `json:"text"`
-	TextTranslate   string       `json:"textTranslate"`
-	AudioSrc        string       `json:"audioSrc"`
-	LrcPosition     [][2]float64 `json:"lrcPosition"`
-	Question        *Question    `json:"question"`
+	ID             int          `json:"id"`
+	Title          string       `json:"title"`
+	TitleTranslate string       `json:"titleTranslate"`
+	Text           string       `json:"text"`
+	TextTranslate  string       `json:"textTranslate"`
+	AudioSrc       string       `json:"audioSrc"`
+	LrcPosition    [][2]float64 `json:"lrcPosition"`
+	Question       *Question    `json:"question"`
 }
 
 type Question struct {
-	Text      string `json:"text"`
-	Translate string `json:"translate"`
+	Text      string  `json:"text"`
+	Translate string  `json:"translate"`
 	Start     float64 `json:"start"`
 	End       float64 `json:"end"`
 }
@@ -51,7 +51,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	dbPath := "articles.db"
-	os.Remove(dbPath)
+	_ = os.Remove(dbPath)
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {

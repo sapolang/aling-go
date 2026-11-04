@@ -17,7 +17,7 @@ func migrateIfNeeded(dataDir string) {
 
 	oldDBPath := findOldDatabase()
 	if oldDBPath == "" {
-		os.WriteFile(migrateFlag, []byte("skipped"), 0644)
+		_ = os.WriteFile(migrateFlag, []byte("skipped"), 0644)
 		return
 	}
 
@@ -31,9 +31,9 @@ func migrateIfNeeded(dataDir string) {
 	if err == nil {
 		for rows.Next() {
 			var w Word
-			rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Phonetic, &w.Example,
+			_ = rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Phonetic, &w.Example,
 				&w.Tags, &w.Level, &w.NextReview, &w.CreatedAt, &w.UpdatedAt)
-			db.Exec(
+			_, _ = db.Exec(
 				"INSERT OR IGNORE INTO words (word, definition, phonetic, example, tags, level, next_review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 				w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.CreatedAt, w.UpdatedAt,
 			)
@@ -45,15 +45,15 @@ func migrateIfNeeded(dataDir string) {
 	if err == nil {
 		for rows.Next() {
 			var t Tag
-			rows.Scan(&t.ID, &t.Name, &t.Color)
-			db.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
+			_ = rows.Scan(&t.ID, &t.Name, &t.Color)
+			_, _ = db.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
 		}
 		rows.Close()
 	}
 
 	migrateSRS()
 
-	os.WriteFile(migrateFlag, []byte("done"), 0644)
+	_ = os.WriteFile(migrateFlag, []byte("done"), 0644)
 }
 
 func findOldDatabase() string {
@@ -79,6 +79,6 @@ func migrateSRS() {
 		{"interval", "INTEGER DEFAULT 0"},
 	}
 	for _, c := range cols {
-		db.Exec("ALTER TABLE words ADD COLUMN " + c.name + " " + c.def)
+		_, _ = db.Exec("ALTER TABLE words ADD COLUMN " + c.name + " " + c.def)
 	}
 }
