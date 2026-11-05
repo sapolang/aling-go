@@ -23,6 +23,7 @@ interface PlayerStore {
   seekTo: number | null
   waveformData: number[]
   waveformLoading: boolean
+  subtitleOffset: number
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -39,6 +40,7 @@ interface PlayerStore {
   closeFile: () => void
   setWaveformData: (data: number[]) => void
   setWaveformLoading: (loading: boolean) => void
+  adjustSubtitleOffset: (delta: number) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -57,6 +59,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   seekTo: null,
   waveformData: [],
   waveformLoading: false,
+  subtitleOffset: 0,
 
   setFilePath: (filePath) =>
     set({
@@ -73,6 +76,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       seekTo: null,
       waveformData: [],
       waveformLoading: false,
+      subtitleOffset: 0,
     }),
   setPlaying: (playing) => set({ playing }),
   setPlayed: (played) => set({ played }),
@@ -102,7 +106,12 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       seekTo: null,
       waveformData: [],
       waveformLoading: false,
+      subtitleOffset: 0,
     }),
   setWaveformData: (waveformData) => set({ waveformData, waveformLoading: false }),
   setWaveformLoading: (waveformLoading) => set({ waveformLoading }),
+  adjustSubtitleOffset: (delta) =>
+    set((s) => ({
+      subtitleOffset: Math.round(Math.min(5, Math.max(-5, s.subtitleOffset + delta)) * 10) / 10,
+    })),
 }))

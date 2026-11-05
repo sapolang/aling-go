@@ -62,6 +62,56 @@ func initProgressTable() error {
 	return err
 }
 
+// Lookup 在 mini_dict 中查询单词：先精确匹配（大小写不敏感），
+// 再对常见词形变化（复数、过去式、现在分词等）做简单还原回退。
+// 未命中时返回 nil。
+func Lookup(word string) *DictWord {
+	w := strings.ToLower(strings.TrimSpace(word))
+	if w == "" || dictDB == nil {
+		return nil
+	}
+	candidates := []string{w}
+	add := func(s string) {
+		if s != "" && s != w {
+			candidates = append(candidates, s)
+		}
+	}
+	if strings.HasSuffix(w, "'s") {
+		add(strings.TrimSuffix(w, "'s"))
+	}
+	if strings.HasSuffix(w, "ies") && len(w) > 3 {
+		add(w[:len(w)-3] + "y")
+	}
+	if strings.HasSuffix(w, "es") && len(w) > 2 {
+		add(w[:len(w)-2])
+	}
+	if strings.HasSuffix(w, "s") && len(w) > 1 && !strings.HasSuffix(w, "ss") {
+		add(w[:len(w)-1])
+	}
+	if strings.HasSuffix(w, "ied") && len(w) > 3 {
+		add(w[:len(w)-3] + "y")
+	}
+	if strings.HasSuffix(w, "ed") && len(w) > 2 {
+		add(w[:len(w)-2])
+		add(w[:len(w)-1]) // 如 stopped -> stop
+	}
+	if strings.HasSuffix(w, "ing") && len(w) > 3 {
+		add(w[:len(w)-3])
+		add(w[:len(w)-3] + "e") // 如 making -> make
+	}
+	for _, c := range candidates {
+		var dw DictWord
+		err := dictDB.QueryRow(
+			"SELECT word, phonetic, translation, definition, pos, tag FROM mini_dict WHERE word = ? COLLATE NOCASE LIMIT 1",
+			c,
+		).Scan(&dw.Word, &dw.Phonetic, &dw.Translation, &dw.Definition, &dw.Pos, &dw.Tag)
+		if err == nil {
+			return &dw
+		}
+	}
+	return nil
+}
+
 func GetTags() ([]DictTag, error) {
 	rows, err := dictDB.Query("SELECT tag FROM mini_dict")
 	if err != nil {

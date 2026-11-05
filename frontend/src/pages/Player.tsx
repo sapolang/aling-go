@@ -4,16 +4,15 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { speak } from '@/lib/tts'
 import Waveform from '@/components/Waveform'
+import WordLookupModal from '@/components/WordLookupModal'
 import {
   Play,
   Pause,
   Repeat,
   Subtitles,
   Loader2,
-  BookmarkPlus,
   Volume2 as Speaker,
   MoreHorizontal,
   Download,
@@ -37,10 +36,8 @@ export default function PlayerPage() {
   const store = usePlayerStore()
   const dark = useThemeStore((s) => s.dark)
   const [selectedWord, setSelectedWord] = useState('')
-  const [wordDefinition, setWordDefinition] = useState('')
-  const [wordPhonetic, setWordPhonetic] = useState('')
-  const [showAddWord, setShowAddWord] = useState(false)
   const [currentSentence, setCurrentSentence] = useState('')
+  const [showLookup, setShowLookup] = useState(false)
   const [playError, setPlayError] = useState<string | null>(null)
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
@@ -64,9 +61,9 @@ export default function PlayerPage() {
     if (!el) return
     store.setPlayed(el.currentTime)
     store.setPlaying(!el.paused)
-    const idx = store.subtitles.findIndex(
-      (s) => el.currentTime >= s.startTime - 0.08 && el.currentTime <= s.endTime,
-    )
+    // 字幕匹配使用偏移后的时间：offset>0 表示字幕整体延后
+    const t = el.currentTime - store.subtitleOffset
+    const idx = store.subtitles.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
     if (idx !== -1) store.setCurrentSubtitleIndex(idx)
     if (store.loopEnd && el.currentTime >= store.loopEnd) {
       el.currentTime = store.loopStart || 0
@@ -136,14 +133,13 @@ export default function PlayerPage() {
   useEffect(() => {
     const el = scrollRef.current
     if (!el || store.subtitles.length === 0) return
-    const idx = store.subtitles.findIndex(
-      (s) => store.played >= s.startTime - 0.08 && store.played < s.endTime,
-    )
+    const t = store.played - store.subtitleOffset
+    const idx = store.subtitles.findIndex((s) => t >= s.startTime - 0.08 && t < s.endTime)
     if (idx <= 0 || idx === lastSubIdx.current) return
     lastSubIdx.current = idx
     const child = el.children[idx] as HTMLElement
     if (child) child.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [store.played])
+  }, [store.played, store.subtitleOffset])
 
   // --- Close sub menu on outside click ---
   useEffect(() => {
@@ -167,6 +163,49 @@ export default function PlayerPage() {
       }
       if (e.code === 'ArrowLeft') el.currentTime = Math.max(0, el.currentTime - 5)
       if (e.code === 'ArrowRight') el.currentTime = Math.min(el.duration || 0, el.currentTime + 5)
+      // --- 逐句复读与字幕微调（用 getState 避免闭包捕获旧状态） ---
+      const st = usePlayerStore.getState()
+      const subs = st.subtitles
+      const off = st.subtitleOffset
+      if (e.code === 'Comma') st.adjustSubtitleOffset(-0.1)
+      if (e.code === 'Period') st.adjustSubtitleOffset(0.1)
+      if (subs.length === 0) return
+      const t = el.currentTime - off
+      const curIdx = subs.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
+      const lastBefore = (time: number) => {
+        let idx = -1
+        for (let i = 0; i < subs.length; i++) {
+          if (subs[i].startTime + off <= time + 0.3) idx = i
+          else break
+        }
+        return idx
+      }
+      const seekToSub = (i: number) => {
+        if (i < 0 || i >= subs.length) return
+        el.currentTime = subs[i].startTime + off
+        el.play().catch(() => {})
+        st.setPlaying(true)
+      }
+      if (e.code === 'BracketLeft') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          // Shift+[ 上一句
+          if (curIdx > 0) seekToSub(curIdx - 1)
+          else if (curIdx === -1) seekToSub(Math.max(0, lastBefore(t) - 1))
+        } else {
+          // [ 重播当前句（不在句内时重播最近的一句）
+          seekToSub(curIdx >= 0 ? curIdx : lastBefore(t))
+        }
+      }
+      if (e.code === 'BracketRight') {
+        e.preventDefault()
+        // ] 下一句
+        if (curIdx >= 0) seekToSub(curIdx + 1)
+        else {
+          const next = subs.findIndex((s) => s.startTime + off > t + 0.3)
+          if (next !== -1) seekToSub(next)
+        }
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -303,30 +342,14 @@ export default function PlayerPage() {
   }
 
   const handleWordClick = (word: string, sentence: string) => {
-    setSelectedWord(word.replace(/[^a-zA-Z0-9\-']/g, ''))
+    const clean = word.replace(/[^a-zA-Z0-9\-']/g, '')
+    if (!clean) return
+    // 点词即查时暂停播放，方便看释义
+    mediaRef.current?.pause()
+    store.setPlaying(false)
+    setSelectedWord(clean)
     setCurrentSentence(sentence)
-    setWordDefinition('')
-    setWordPhonetic('')
-    setShowAddWord(true)
-  }
-
-  const handleAddWord = async () => {
-    if (!selectedWord) return
-    const today = new Date().toISOString().split('T')[0]
-    await window.api.dbWordsAdd({
-      word: selectedWord,
-      definition: wordDefinition,
-      phonetic: wordPhonetic,
-      example: currentSentence,
-      tags: '',
-      level: 1,
-      next_review: today,
-      repetitions: 0,
-      efactor: 2.5,
-      interval: 0,
-    })
-    setShowAddWord(false)
-    setSelectedWord('')
+    setShowLookup(true)
   }
 
   const formatTime = (s: number) => {
@@ -374,9 +397,8 @@ export default function PlayerPage() {
           )}
           {!isAudio &&
             (() => {
-              const sub = store.subtitles.find(
-                (s) => store.played >= s.startTime - 0.08 && store.played <= s.endTime,
-              )
+              const pa = store.played - store.subtitleOffset
+              const sub = store.subtitles.find((s) => pa >= s.startTime - 0.08 && pa <= s.endTime)
               return sub ? (
                 <div
                   className="absolute bottom-0 left-0 right-0 p-4 pb-6 flex justify-center"
@@ -395,7 +417,7 @@ export default function PlayerPage() {
             <Waveform
               data={store.waveformData}
               duration={store.duration}
-              currentTime={store.played}
+              currentTime={store.played - store.subtitleOffset}
               subtitles={store.subtitles}
               loading={store.waveformLoading}
               dark={dark}
@@ -520,6 +542,34 @@ export default function PlayerPage() {
                 >
                   <FileDown className="h-3.5 w-3.5" /> 导入 SRT
                 </button>
+                <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span>字幕偏移</span>
+                    <span>{store.subtitleOffset.toFixed(1)}s</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
+                      title="字幕提前 0.1s（快捷键 ,）"
+                      onClick={() => store.adjustSubtitleOffset(-0.1)}
+                    >
+                      -0.1s
+                    </button>
+                    <button
+                      className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
+                      onClick={() => store.adjustSubtitleOffset(-store.subtitleOffset)}
+                    >
+                      重置
+                    </button>
+                    <button
+                      className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
+                      title="字幕延后 0.1s（快捷键 .）"
+                      onClick={() => store.adjustSubtitleOffset(0.1)}
+                    >
+                      +0.1s
+                    </button>
+                  </div>
+                </div>
                 {store.subtitles.length > 0 && (
                   <>
                     <button
@@ -564,13 +614,14 @@ export default function PlayerPage() {
             </div>
           ) : (
             store.subtitles.map((sub, idx) => {
-              const isActive = store.played >= sub.startTime - 0.08 && store.played < sub.endTime
-              const isPast = store.played > sub.endTime
+              const pa = store.played - store.subtitleOffset
+              const isActive = pa >= sub.startTime - 0.08 && pa < sub.endTime
+              const isPast = pa > sub.endTime
               return (
                 <div
                   key={sub.id}
                   className={`p-2 rounded text-lg cursor-pointer transition-colors mb-1 ${isActive ? 'bg-primary/10 border-l-2 border-primary font-medium' : isPast ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}
-                  onClick={() => store.requestSeek(sub.startTime)}
+                  onClick={() => store.requestSeek(sub.startTime + store.subtitleOffset)}
                 >
                   <span className="text-xs text-muted-foreground mr-2">
                     {formatTime(sub.startTime)}
@@ -647,53 +698,12 @@ export default function PlayerPage() {
           </div>
         )}
 
-        {showAddWord && (
-          <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-            onClick={() => setShowAddWord(false)}
-          >
-            <Card className="w-96 p-6" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold mb-4">添加生词</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium">单词</label>
-                  <Input value={selectedWord} onChange={(e) => setSelectedWord(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">释义</label>
-                  <Input
-                    value={wordDefinition}
-                    onChange={(e) => setWordDefinition(e.target.value)}
-                    placeholder="输入释义"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">音标</label>
-                  <Input
-                    value={wordPhonetic}
-                    onChange={(e) => setWordPhonetic(e.target.value)}
-                    placeholder="/ˈeksəmpəl/"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">例句</label>
-                  <textarea
-                    className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={currentSentence}
-                    onChange={(e) => setCurrentSentence(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => setShowAddWord(false)}>
-                    取消
-                  </Button>
-                  <Button onClick={handleAddWord}>
-                    <BookmarkPlus className="h-4 w-4 mr-1" /> 加入生词库
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
+        {showLookup && selectedWord && (
+          <WordLookupModal
+            word={selectedWord}
+            sentence={currentSentence}
+            onClose={() => setShowLookup(false)}
+          />
         )}
 
         {showTranscribeLangModal && store.filePath && (

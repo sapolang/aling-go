@@ -45,6 +45,7 @@ import {
   DbDictAddToWordList,
   DbDictSaveProgress,
   DbDictGetProgress,
+  DbDictLookup,
 } from '../../bindings/aling-go/dictservice'
 
 import {
@@ -151,6 +152,11 @@ export function initBridge(): void {
     dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(JSON.stringify(words)),
     dbDictSaveProgress: (tag: string, index: number) => DbDictSaveProgress(tag, index),
     dbDictGetProgress: (tag: string) => DbDictGetProgress(tag),
+    dbDictLookup: (word: string) =>
+      DbDictLookup(word).then((s: string) => {
+        if (!s) return null
+        return JSON.parse(s)
+      }),
 
     libraryList: () => LibraryList().then((s: string) => JSON.parse(s)),
     libraryImport: (category: string, folderId: string) =>
