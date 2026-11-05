@@ -4,6 +4,19 @@ import { Button } from '@/components/ui/button'
 import { useThemeStore } from '@/stores/themeStore'
 import { Sun, Moon, Download, Upload, Trash2, AlertTriangle, Mic, Loader2 } from 'lucide-react'
 
+interface ExportedWord {
+  word: string
+  definition: string
+  phonetic: string
+  example: string
+  tags: string
+}
+
+function escapeCSV(value: unknown): string {
+  const text = String(value ?? '')
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
 export default function SettingsPage() {
   const { dark, toggle } = useThemeStore()
   const [importResult, setImportResult] = useState<string | null>(null)
@@ -29,6 +42,34 @@ export default function SettingsPage() {
       if (filePath) {
         await window.api.writeTextFile(filePath, jsonStr)
         alert('导出成功！')
+      }
+    } catch (err) {
+      alert('导出失败: ' + err)
+    }
+  }
+
+  const handleExportCSV = async () => {
+    try {
+      const jsonStr = await window.api.dbExport()
+      const { words = [] } = JSON.parse(jsonStr)
+      const header = ['word', 'definition', 'phonetic', 'example', 'tags']
+      const rows = words.map((w: ExportedWord) => [
+        w.word,
+        w.definition,
+        w.phonetic,
+        w.example,
+        String(w.tags ?? '')
+          .split(/[,，\s]+/)
+          .filter(Boolean)
+          .join(' '),
+      ])
+      const csv = [header, ...rows].map((row: unknown[]) => row.map(escapeCSV).join(',')).join('\n')
+      const filePath = await window.api.saveFile(
+        `novaling-words-${new Date().toISOString().split('T')[0]}.csv`,
+      )
+      if (filePath) {
+        await window.api.writeTextFile(filePath, csv)
+        alert('导出成功，可直接在 Anki 中导入')
       }
     } catch (err) {
       alert('导出失败: ' + err)
@@ -197,6 +238,17 @@ export default function SettingsPage() {
             </div>
             <Button onClick={handleExport}>
               <Download className="h-4 w-4 mr-1" /> 导出
+            </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">导出为 CSV（Anki 兼容）</p>
+              <p className="text-sm text-muted-foreground">
+                字段顺序：单词、释义、音标、例句、标签
+              </p>
+            </div>
+            <Button variant="outline" onClick={handleExportCSV}>
+              <Download className="h-4 w-4 mr-1" /> CSV
             </Button>
           </div>
           <div className="flex items-center justify-between">
