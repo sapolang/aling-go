@@ -44,6 +44,7 @@ export function Layout({
   const setPlaying = usePlayerStore((s) => s.setPlaying)
   const closeFile = usePlayerStore((s) => s.closeFile)
   const reviewCount = useWordStore((s) => s.reviewTotal)
+  const reviewCompleted = useWordStore((s) => s.reviewCompleted)
   const loadReviewCount = useWordStore((s) => s.loadReviewCount)
   const [collapsed, setCollapsed] = useState(false)
 
@@ -83,7 +84,10 @@ export function Layout({
           {navItems.map((item) => {
             const Icon = item.icon
             const active = location.pathname === item.path
-            const badge = item.path === '/card' && reviewCount > 0 ? reviewCount : 0
+            const badge =
+              item.path === '/card'
+                ? Math.max(0, reviewCount - (location.pathname === '/card' ? reviewCompleted : 0))
+                : 0
             return (
               <Button
                 key={item.path}
