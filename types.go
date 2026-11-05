@@ -67,11 +67,12 @@ type LibraryImportResult struct {
 }
 
 type LibraryFile struct {
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	FolderID string `json:"folderId"`
-	AddedAt  string `json:"addedAt"`
+	Path         string  `json:"path"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	FolderID     string  `json:"folderId"`
+	AddedAt      string  `json:"addedAt"`
+	LastPosition float64 `json:"lastPosition,omitempty"`
 }
 
 type Folder struct {

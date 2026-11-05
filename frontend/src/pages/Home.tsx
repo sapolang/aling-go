@@ -28,6 +28,7 @@ import {
   X,
   FolderOutput,
   MoreHorizontal,
+  PlayCircle,
 } from 'lucide-react'
 
 const CATEGORIES = [
@@ -72,6 +73,12 @@ export default function HomePage() {
   })
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
+  const [resumeEntry, setResumeEntry] = useState<{
+    path: string
+    name: string
+    type: string
+    lastPosition: number
+  } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{
     visible: boolean
     name: string
@@ -86,6 +93,16 @@ export default function HomePage() {
 
   useEffect(() => {
     store.load()
+  }, [])
+
+  useEffect(() => {
+    window.api
+      .recentList()
+      .then((list: any[]) => {
+        const hit = (list || []).find((e) => (e.lastPosition || 0) > 10 && e.type !== 'pdf')
+        setResumeEntry(hit || null)
+      })
+      .catch(() => {})
   }, [])
 
   const showToast = useCallback((message: string, variant: ToastState['variant'] = 'success') => {
@@ -245,6 +262,29 @@ export default function HomePage() {
     store.setCurrentFolder(folder.id)
   }
 
+  const formatResumeTime = (s: number) => {
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sec = Math.floor(s % 60)
+    return h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+      : `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  const handleResume = () => {
+    if (!resumeEntry) return
+    const file =
+      store.files.find((f) => f.path === resumeEntry.path) ||
+      ({
+        path: resumeEntry.path,
+        name: resumeEntry.name,
+        type: resumeEntry.type || 'video',
+        folderId: '',
+        addedAt: '',
+      } as LibraryFile)
+    handleOpenFile(file)
+  }
+
   const handleExitFolder = () => {
     store.setCurrentFolder(currentFolder?.parentId || null)
   }
@@ -329,6 +369,20 @@ export default function HomePage() {
           </div>
           <Button size="sm" onClick={() => navigate('/card')}>
             开始复习
+          </Button>
+        </Card>
+      )}
+
+      {resumeEntry && (
+        <Card className="flex items-center justify-between gap-3 p-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">继续学习：{resumeEntry.name}</p>
+            <p className="text-xs text-muted-foreground">
+              上次看到 {formatResumeTime(resumeEntry.lastPosition)}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={handleResume}>
+            <PlayCircle className="h-4 w-4 mr-1" /> 继续播放
           </Button>
         </Card>
       )}

@@ -58,6 +58,8 @@ import {
   FolderRename,
   RecentList,
   RecentAdd,
+  RecentGetPosition,
+  RecentUpdatePosition,
   CacheSubtitles,
   GetCachedSubtitles,
 } from '../../bindings/aling-go/libraryservice'
@@ -132,6 +134,13 @@ export function initBridge(): void {
 
     recentList: () => RecentList().then((s: string) => JSON.parse(s)),
     recentAdd: (filePath: string) => RecentAdd(filePath).then((s: string) => JSON.parse(s)),
+    recentGetPosition: (filePath: string) =>
+      RecentGetPosition(filePath).then((s: string) => {
+        const n = JSON.parse(s)
+        return typeof n === 'number' ? n : 0
+      }),
+    recentUpdatePosition: (filePath: string, position: number) =>
+      RecentUpdatePosition(filePath, position),
     cacheSubtitles: (filePath: string, subs: any[]) =>
       CacheSubtitles(filePath, JSON.stringify(subs)),
     getCachedSubtitles: (filePath: string) =>
