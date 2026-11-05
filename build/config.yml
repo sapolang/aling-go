@@ -17,6 +17,7 @@ dev_mode:
     dir:
       - .git
       - node_modules
+      - frontend
       - build
       - bin
     file:
@@ -30,7 +31,7 @@ dev_mode:
       - "*.ts"
     git_ignore: true
   executes:
-    - cmd: wails3 build
+    - cmd: wails3 build DEV=true
       type: blocking
     - cmd: wails3 task common:dev:frontend
       type: background
