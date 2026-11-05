@@ -4,6 +4,14 @@ import { Button } from '@/components/ui/button'
 import { useThemeStore } from '@/stores/themeStore'
 import { Sun, Moon, Download, Upload, Trash2, AlertTriangle, Mic, Loader2 } from 'lucide-react'
 
+interface ExportedWord {
+  word: string
+  definition: string
+  phonetic: string
+  example: string
+  tags: string
+}
+
 function escapeCSV(value: unknown): string {
   const text = String(value ?? '')
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
@@ -45,7 +53,16 @@ export default function SettingsPage() {
       const jsonStr = await window.api.dbExport()
       const { words = [] } = JSON.parse(jsonStr)
       const header = ['word', 'definition', 'phonetic', 'example', 'tags']
-      const rows = words.map((w: any) => [w.word, w.definition, w.phonetic, w.example, w.tags])
+      const rows = words.map((w: ExportedWord) => [
+        w.word,
+        w.definition,
+        w.phonetic,
+        w.example,
+        String(w.tags ?? '')
+          .split(/[,，\s]+/)
+          .filter(Boolean)
+          .join(' '),
+      ])
       const csv = [header, ...rows].map((row: unknown[]) => row.map(escapeCSV).join(',')).join('\n')
       const filePath = await window.api.saveFile(
         `novaling-words-${new Date().toISOString().split('T')[0]}.csv`,
