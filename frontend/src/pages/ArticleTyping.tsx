@@ -79,6 +79,7 @@ export default function ArticleTypingPage() {
   >([])
   const audioRef = useRef<HTMLAudioElement>(null)
   const cursorRef = useRef<HTMLSpanElement>(null)
+  const abortedRef = useRef(false)
   const hideHintTimer = useRef<ReturnType<typeof setTimeout>>()
 
   const articleId = Number(id)
@@ -101,7 +102,11 @@ export default function ArticleTypingPage() {
       typingProgress.articleId === articleId &&
       typingProgress.mode === mode
     ) {
-      setTyped(currentArticle?.text.slice(0, typingProgress.position) || '')
+      const source =
+        mode === 'dictation'
+          ? (currentArticle?.text || '').replace(/[0-9]/g, '')
+          : currentArticle?.text || ''
+      setTyped(source.slice(0, typingProgress.position))
     }
   }, [typingProgress, currentArticle, articleId, mode])
 
@@ -119,7 +124,9 @@ export default function ArticleTypingPage() {
   }, [typed.length, started, finished])
 
   const text = currentArticle?.text || ''
-  const totalChars = text.length
+  // 默写模式不要求输入数字，统一使用去掉数字后的文本作为比对基准
+  const sourceText = mode === 'dictation' ? text.replace(/[0-9]/g, '') : text
+  const totalChars = sourceText.length
   const typedChars = typed.length
 
   const charStates: CharState[] = useMemo(() => {
@@ -136,10 +143,10 @@ export default function ArticleTypingPage() {
   const correctCount = useMemo(() => {
     let count = 0
     for (let i = 0; i < typed.length; i++) {
-      if (sameChar(typed[i], text[i])) count++
+      if (sameChar(typed[i], sourceText[i])) count++
     }
     return count
-  }, [typed, text])
+  }, [typed, sourceText])
 
   const accuracy = typed.length > 0 ? correctCount / typed.length : 1
   const wpm = elapsed > 0 ? Math.round(typedChars / 5 / (elapsed / 60)) : 0
@@ -157,7 +164,7 @@ export default function ArticleTypingPage() {
           setStarted(true)
           setStartTime(Date.now())
         }
-        if (typed.length < text.length) {
+        if (typed.length < sourceText.length) {
           if (mode === 'follow') {
             setTyped((prev) => {
               let newTyped = prev
@@ -178,7 +185,7 @@ export default function ArticleTypingPage() {
             })
           } else {
             setTyped((prev) => prev + e.key)
-            if (typed.length + 1 >= text.length) {
+            if (typed.length + 1 >= sourceText.length) {
               setFinished(true)
               setShowResult(true)
             }
@@ -195,7 +202,7 @@ export default function ArticleTypingPage() {
         }
         setTyped((prev) => {
           const nextTyped = prev + '\n'
-          if (nextTyped.length >= text.length) {
+          if (nextTyped.length >= sourceText.length) {
             setFinished(true)
             setShowResult(true)
           }
@@ -212,7 +219,7 @@ export default function ArticleTypingPage() {
 
       if (e.key === 'Tab' && mode === 'dictation') {
         e.preventDefault()
-        const remaining = text.slice(typed.length)
+        const remaining = sourceText.slice(typed.length)
         const nextWord = remaining.match(/^\S+/)?.[0] || ''
         setHintWord(nextWord)
         setShowHint(true)
@@ -247,19 +254,22 @@ export default function ArticleTypingPage() {
     setElapsed(0)
     setShowResult(false)
     setDictationResults([])
+    abortedRef.current = false
   }
 
   const handleComplete = async () => {
+    const aborted = abortedRef.current
     const mistakeWords: { word: string; typed: string; position: number }[] = []
-    const words = text.split(/\s+/)
+    const words = sourceText.split(/\s+/)
     let pos = 0
     for (const word of words) {
-      const endPos = pos + word.length
-      const typedSegment = typed.slice(pos, endPos)
+      const startPos = sourceText.indexOf(word, pos)
+      if (startPos < 0) break
+      const typedSegment = typed.slice(startPos, startPos + word.length)
       if (typedSegment.toLowerCase() !== word.toLowerCase() && typedSegment.length > 0) {
-        mistakeWords.push({ word, typed: typedSegment, position: pos })
+        mistakeWords.push({ word, typed: typedSegment, position: startPos })
       }
-      pos = endPos + 1
+      pos = startPos + word.length
     }
 
     const record = {
@@ -270,7 +280,9 @@ export default function ArticleTypingPage() {
       duration: elapsed,
       mistakes: JSON.stringify(mistakeWords),
     }
-    await saveTypingRecord(record)
+    if (!aborted) {
+      await saveTypingRecord(record)
+    }
 
     const currentBestAccuracy = typingProgress?.bestAccuracy || 0
     const currentBestWpm = typingProgress?.bestWpm || 0
@@ -278,7 +290,7 @@ export default function ArticleTypingPage() {
       articleId,
       mode,
       position: typedChars,
-      completed: true,
+      completed: !aborted,
       bestAccuracy: Math.max(accuracy, currentBestAccuracy),
       bestWpm: Math.max(wpm, currentBestWpm),
     })
@@ -338,7 +350,7 @@ export default function ArticleTypingPage() {
 
   // Render dictation mode: typed words with reveal
   const renderDictationText = () => {
-    const originalWords = text.split(/(\s+)/)
+    const originalWords = sourceText.split(/(\s+)/)
     let typedPos = 0
     const typedWords = typed.split(/(\s+)/)
 
@@ -370,7 +382,7 @@ export default function ArticleTypingPage() {
           )
         })}
         {/* Show cursor for remaining */}
-        {typed.length < text.length && (
+        {typed.length < sourceText.length && (
           <span ref={cursorRef} className="border-b-2 border-blue-500 animate-pulse">
             &nbsp;
           </span>
@@ -378,7 +390,7 @@ export default function ArticleTypingPage() {
         {/* Show remaining as hidden */}
         {mode === 'dictation' && (
           <span className="text-muted-foreground/20">
-            {'█'.repeat(Math.min(200, text.length - typed.length))}
+            {'█'.repeat(Math.min(200, sourceText.length - typed.length))}
           </span>
         )}
       </div>
@@ -386,7 +398,7 @@ export default function ArticleTypingPage() {
   }
 
   const mistakesFromErrors = (() => {
-    const words = text.split(/\s+/)
+    const words = sourceText.split(/\s+/)
     const typedWords = typed.split(/\s+/)
     const result: { word: string; typed: string }[] = []
     for (let i = 0; i < Math.min(words.length, typedWords.length); i++) {
@@ -513,6 +525,7 @@ export default function ArticleTypingPage() {
             size="sm"
             variant="outline"
             onClick={() => {
+              abortedRef.current = true
               setFinished(true)
               setShowResult(true)
             }}
