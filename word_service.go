@@ -53,6 +53,16 @@ func (s *WordService) DbWordsSearch(query string) []Word {
 	return dbWordsSearch(query)
 }
 
+// --- Review logs / stats ---
+
+func (s *WordService) LogReview(wordID int, quality int) {
+	dbReviewLogAdd(wordID, quality)
+}
+
+func (s *WordService) GetLearningStats() string {
+	return dbLearningStats()
+}
+
 // --- Tags ---
 
 func (s *WordService) DbTagsList() []Tag {

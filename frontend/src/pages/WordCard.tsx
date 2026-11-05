@@ -72,6 +72,7 @@ export default function WordCardPage() {
         efactor: newEfactor,
         interval: newInterval,
       } as any)
+      void window.api.logReview(current.id, quality).catch(() => undefined)
       incrementCompleted()
       setRating(false)
       setFlipped(false)

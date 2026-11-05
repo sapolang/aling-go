@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Type,
+  BarChart3,
 } from 'lucide-react'
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { path: '/words', label: '生词库', icon: BookOpen },
   { path: '/dict', label: '单词书', icon: Library },
   { path: '/card', label: '卡片背诵', icon: FlipVertical },
+  { path: '/stats', label: '学习统计', icon: BarChart3 },
   { path: '/articles', label: '文章打字', icon: Type },
   { path: '/settings', label: '设置', icon: Settings },
 ]
