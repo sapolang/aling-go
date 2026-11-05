@@ -127,6 +127,20 @@ export interface TypingRecord {
   createdAt: string
 }
 
+export interface DailyReview {
+  date: string
+  count: number
+}
+
+export interface LearningStats {
+  totalReviews: number
+  todayReviews: number
+  streak: number
+  totalWords: number
+  mastered: number
+  daily: DailyReview[]
+}
+
 export interface ElectronAPI {
   openFile: (filters?: string | { name: string; extensions: string[] }[]) => Promise<string | null>
   saveFile: (defaultName: string) => Promise<string | null>
@@ -150,6 +164,9 @@ export interface ElectronAPI {
   dbExport: () => Promise<string>
   dbImport: (jsonData: string) => Promise<{ imported: number; skipped: number }>
   dbClear: () => Promise<void>
+
+  logReview: (wordID: number, quality: number) => Promise<void>
+  learningStats: () => Promise<LearningStats>
 
   whisperTranscribe: (filePath: string) => Promise<SubtitleItem[]>
   whisperStatus: () => Promise<WhisperStatus>

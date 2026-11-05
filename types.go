@@ -45,6 +45,20 @@ type ImportResult struct {
 	Skipped  int `json:"skipped"`
 }
 
+type DailyReview struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
+type LearningStats struct {
+	TotalReviews int           `json:"totalReviews"`
+	TodayReviews int           `json:"todayReviews"`
+	Streak       int           `json:"streak"`
+	TotalWords   int           `json:"totalWords"`
+	Mastered     int           `json:"mastered"`
+	Daily        []DailyReview `json:"daily"`
+}
+
 type LibraryImportResult struct {
 	Files    []LibraryFile `json:"files"`
 	Imported int           `json:"imported"`

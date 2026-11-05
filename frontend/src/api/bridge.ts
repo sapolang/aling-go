@@ -24,6 +24,8 @@ import {
   DbImport,
   DbClear,
   AddWordsBatch,
+  LogReview,
+  GetLearningStats,
 } from '../../bindings/aling-go/wordservice'
 
 import {
@@ -102,6 +104,9 @@ export function initBridge(): void {
     dbExport: () => DbExport(),
     dbImport: (jsonStr: string) => DbImport(jsonStr),
     dbClear: () => DbClear(),
+
+    logReview: (wordID: number, quality: number) => LogReview(wordID, quality),
+    learningStats: () => GetLearningStats().then((s: string) => JSON.parse(s)),
 
     whisperTranscribe: (filePath: string) =>
       Transcribe(filePath).then((s: string) => {

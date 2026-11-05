@@ -13,6 +13,7 @@ const Dict = lazy(() => import('@/pages/DictPage'))
 const Review = lazy(() => import('@/pages/ReviewPage'))
 const ArticleList = lazy(() => import('@/pages/ArticleList'))
 const ArticleTyping = lazy(() => import('@/pages/ArticleTyping'))
+const Stats = lazy(() => import('@/pages/StatsPage'))
 
 function Loading() {
   return (
@@ -41,6 +42,7 @@ function AppContent() {
           <Route path="/card" element={<WordCard />} />
           <Route path="/articles" element={<ArticleList />} />
           <Route path="/articles/:id" element={<ArticleTyping />} />
+          <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Suspense>

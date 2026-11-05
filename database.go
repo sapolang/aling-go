@@ -68,6 +68,13 @@ func createTables() error {
 			updated_at TEXT DEFAULT (datetime('now','localtime')),
 			PRIMARY KEY (article_id, mode)
 		);
+		CREATE TABLE IF NOT EXISTS review_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			word_id INTEGER NOT NULL,
+			quality INTEGER NOT NULL,
+			reviewed_at TEXT DEFAULT (datetime('now','localtime'))
+		);
+		CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
 	`)
 	return err
 }
@@ -232,6 +239,85 @@ func dbClear() {
 	if _, err := db.Exec("DELETE FROM tags"); err != nil {
 		fmt.Fprintf(os.Stderr, "dbClear tags: %v\n", err)
 	}
+}
+
+// --- Review logs ---
+
+func dbReviewLogAdd(wordID, quality int) {
+	if _, err := db.Exec("INSERT INTO review_logs (word_id, quality) VALUES (?, ?)", wordID, quality); err != nil {
+		fmt.Fprintf(os.Stderr, "dbReviewLogAdd: %v\n", err)
+	}
+}
+
+func dbLearningStats() string {
+	stats := LearningStats{Daily: make([]DailyReview, 0, 30)}
+	if err := db.QueryRow("SELECT COUNT(*) FROM review_logs").Scan(&stats.TotalReviews); err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats total: %v\n", err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) = date('now','localtime')").Scan(&stats.TodayReviews); err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats today: %v\n", err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM words").Scan(&stats.TotalWords); err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats words: %v\n", err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM words WHERE repetitions >= 3").Scan(&stats.Mastered); err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats mastered: %v\n", err)
+	}
+
+	counts := make(map[string]int)
+	rows, err := db.Query("SELECT substr(reviewed_at, 1, 10) AS d, COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) >= date('now','localtime','-29 days') GROUP BY d")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats daily: %v\n", err)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var date string
+			var count int
+			if rows.Scan(&date, &count) == nil {
+				counts[date] = count
+			}
+		}
+	}
+
+	// 连续天数不受 30 天图表窗口限制，单独统计全部复习日期
+	streakDays := make(map[string]bool)
+	srows, sErr := db.Query("SELECT DISTINCT substr(reviewed_at, 1, 10) FROM review_logs")
+	if sErr != nil {
+		fmt.Fprintf(os.Stderr, "learningStats streak: %v\n", sErr)
+	} else {
+		defer srows.Close()
+		for srows.Next() {
+			var date string
+			if srows.Scan(&date) == nil {
+				streakDays[date] = true
+			}
+		}
+	}
+
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	start := 0
+	if !streakDays[today] {
+		start = 1
+	}
+	for i := start; ; i++ {
+		if !streakDays[now.AddDate(0, 0, -i).Format("2006-01-02")] {
+			break
+		}
+		stats.Streak++
+	}
+
+	for i := 29; i >= 0; i-- {
+		date := now.AddDate(0, 0, -i).Format("2006-01-02")
+		stats.Daily = append(stats.Daily, DailyReview{Date: date, Count: counts[date]})
+	}
+
+	data, err := json.Marshal(stats)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats marshal: %v\n", err)
+		return "{}"
+	}
+	return string(data)
 }
 
 // --- Helpers ---
