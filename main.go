@@ -73,7 +73,12 @@ func main() {
 	})
 
 	tray := wailsApp.SystemTray.New()
-	tray.SetIcon(trayIcon)
+	if icon, err := trayTemplateIcon(trayIcon); err == nil {
+		tray.SetTemplateIcon(icon)
+	} else {
+		fmt.Fprintf(os.Stderr, "tray icon: %v\n", err)
+		tray.SetIcon(trayIcon)
+	}
 	tray.SetTooltip("语练")
 
 	trayMenu := wailsApp.NewMenu()
