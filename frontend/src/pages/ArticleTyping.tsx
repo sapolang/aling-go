@@ -64,6 +64,7 @@ export default function ArticleTypingPage() {
     { word: string; typed: string; correct: boolean }[]
   >([])
   const audioRef = useRef<HTMLAudioElement>(null)
+  const cursorRef = useRef<HTMLSpanElement>(null)
   const hideHintTimer = useRef<ReturnType<typeof setTimeout>>()
 
   const articleId = Number(id)
@@ -98,6 +99,11 @@ export default function ArticleTypingPage() {
     return () => clearInterval(interval)
   }, [started, startTime, finished])
 
+  useEffect(() => {
+    if (!started || finished) return
+    cursorRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [typed.length, started, finished])
+
   const text = currentArticle?.text || ''
   const totalChars = text.length
   const typedChars = typed.length
@@ -127,9 +133,12 @@ export default function ArticleTypingPage() {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (finished || showResult) return
+      if (e.isComposing) return
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
+        // 跟打模式下空格与标点会自动跳过，忽略这些按键，避免重复追加导致错位
+        if (mode === 'follow' && isAutoSkipChar(e.key)) return
         if (!started) {
           setStarted(true)
           setStartTime(Date.now())
@@ -161,6 +170,23 @@ export default function ArticleTypingPage() {
             }
           }
         }
+        return
+      }
+
+      if (e.key === 'Enter' && mode === 'dictation') {
+        e.preventDefault()
+        if (!started) {
+          setStarted(true)
+          setStartTime(Date.now())
+        }
+        setTyped((prev) => {
+          const nextTyped = prev + '\n'
+          if (nextTyped.length >= text.length) {
+            setFinished(true)
+            setShowResult(true)
+          }
+          return nextTyped
+        })
         return
       }
 
@@ -279,6 +305,7 @@ export default function ArticleTypingPage() {
       {charStates.map((cs, i) => (
         <span
           key={i}
+          ref={cs.status === 'current' ? cursorRef : undefined}
           className={
             cs.status === 'correct'
               ? 'text-green-600 dark:text-green-400'
@@ -330,12 +357,14 @@ export default function ArticleTypingPage() {
         })}
         {/* Show cursor for remaining */}
         {typed.length < text.length && (
-          <span className="border-b-2 border-blue-500 animate-pulse">&nbsp;</span>
+          <span ref={cursorRef} className="border-b-2 border-blue-500 animate-pulse">
+            &nbsp;
+          </span>
         )}
         {/* Show remaining as hidden */}
         {mode === 'dictation' && (
           <span className="text-muted-foreground/20">
-            {'█'.repeat(Math.min(50, text.length - typed.length))}
+            {'█'.repeat(Math.min(200, text.length - typed.length))}
           </span>
         )}
       </div>
@@ -460,11 +489,26 @@ export default function ArticleTypingPage() {
         </div>
       </div>
 
+      {started && !finished && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setFinished(true)
+              setShowResult(true)
+            }}
+          >
+            完成本次练习
+          </Button>
+        </div>
+      )}
+
       {/* Mode hint */}
       <p className="text-xs text-muted-foreground text-center">
         {mode === 'follow'
           ? '逐字输入，换行、空格和标点自动跳过 · Backspace 回退'
-          : '凭记忆输入每个词，空格确认 · Tab 查看提示'}
+          : '凭记忆输入全文，Enter 换行 · Tab 查看提示'}
       </p>
 
       {/* Result modal */}
