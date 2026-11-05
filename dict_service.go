@@ -22,6 +22,16 @@ func (s *DictService) ServiceStartup(ctx context.Context, options application.Se
 }
 func (s *DictService) ServiceShutdown() error { return nil }
 
+// DbDictLookup 查询单个单词的词典释义，未命中返回空字符串
+func (s *DictService) DbDictLookup(word string) string {
+	w := dict.Lookup(word)
+	if w == nil {
+		return ""
+	}
+	b, _ := json.Marshal(w)
+	return string(b)
+}
+
 func (s *DictService) DbDictTags() []dict.DictTag {
 	tags, err := dict.GetTags()
 	if err != nil {
