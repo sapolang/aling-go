@@ -39,6 +39,10 @@ interface CharState {
   status: 'pending' | 'current' | 'correct' | 'wrong'
 }
 
+function sameChar(a: string | undefined, b: string | undefined): boolean {
+  return a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase()
+}
+
 export default function ArticleTypingPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -111,7 +115,7 @@ export default function ArticleTypingPage() {
   const charStates: CharState[] = useMemo(() => {
     return text.split('').map((char, i) => {
       if (i < typed.length) {
-        const isCorrect = typed[i] === char
+        const isCorrect = sameChar(typed[i], char)
         return { char, status: isCorrect ? 'correct' : 'wrong' }
       }
       if (i === typed.length) return { char, status: 'current' }
@@ -122,7 +126,7 @@ export default function ArticleTypingPage() {
   const correctCount = useMemo(() => {
     let count = 0
     for (let i = 0; i < typed.length; i++) {
-      if (typed[i] === text[i]) count++
+      if (sameChar(typed[i], text[i])) count++
     }
     return count
   }, [typed, text])
