@@ -26,6 +26,16 @@ const AUTO_SKIP_CHARS = new Set([
   '—',
   '–',
   '…',
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
 ])
 
 function isAutoSkipChar(char: string): boolean {
@@ -37,6 +47,10 @@ type Mode = 'follow' | 'dictation'
 interface CharState {
   char: string
   status: 'pending' | 'current' | 'correct' | 'wrong'
+}
+
+function sameChar(a: string | undefined, b: string | undefined): boolean {
+  return a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase()
 }
 
 export default function ArticleTypingPage() {
@@ -64,6 +78,8 @@ export default function ArticleTypingPage() {
     { word: string; typed: string; correct: boolean }[]
   >([])
   const audioRef = useRef<HTMLAudioElement>(null)
+  const cursorRef = useRef<HTMLSpanElement>(null)
+  const abortedRef = useRef(false)
   const hideHintTimer = useRef<ReturnType<typeof setTimeout>>()
 
   const articleId = Number(id)
@@ -86,7 +102,11 @@ export default function ArticleTypingPage() {
       typingProgress.articleId === articleId &&
       typingProgress.mode === mode
     ) {
-      setTyped(currentArticle?.text.slice(0, typingProgress.position) || '')
+      const source =
+        mode === 'dictation'
+          ? (currentArticle?.text || '').replace(/[0-9]/g, '')
+          : currentArticle?.text || ''
+      setTyped(source.slice(0, typingProgress.position))
     }
   }, [typingProgress, currentArticle, articleId, mode])
 
@@ -98,14 +118,21 @@ export default function ArticleTypingPage() {
     return () => clearInterval(interval)
   }, [started, startTime, finished])
 
+  useEffect(() => {
+    if (!started || finished) return
+    cursorRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [typed.length, started, finished])
+
   const text = currentArticle?.text || ''
-  const totalChars = text.length
+  // 默写模式不要求输入数字，统一使用去掉数字后的文本作为比对基准
+  const sourceText = mode === 'dictation' ? text.replace(/[0-9]/g, '') : text
+  const totalChars = sourceText.length
   const typedChars = typed.length
 
   const charStates: CharState[] = useMemo(() => {
     return text.split('').map((char, i) => {
       if (i < typed.length) {
-        const isCorrect = typed[i] === char
+        const isCorrect = sameChar(typed[i], char)
         return { char, status: isCorrect ? 'correct' : 'wrong' }
       }
       if (i === typed.length) return { char, status: 'current' }
@@ -116,10 +143,10 @@ export default function ArticleTypingPage() {
   const correctCount = useMemo(() => {
     let count = 0
     for (let i = 0; i < typed.length; i++) {
-      if (typed[i] === text[i]) count++
+      if (sameChar(typed[i], sourceText[i])) count++
     }
     return count
-  }, [typed, text])
+  }, [typed, sourceText])
 
   const accuracy = typed.length > 0 ? correctCount / typed.length : 1
   const wpm = elapsed > 0 ? Math.round(typedChars / 5 / (elapsed / 60)) : 0
@@ -127,14 +154,17 @@ export default function ArticleTypingPage() {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (finished || showResult) return
+      if (e.isComposing) return
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
+        // 跟打模式下空格与标点会自动跳过，忽略这些按键，避免重复追加导致错位
+        if (mode === 'follow' && isAutoSkipChar(e.key)) return
         if (!started) {
           setStarted(true)
           setStartTime(Date.now())
         }
-        if (typed.length < text.length) {
+        if (typed.length < sourceText.length) {
           if (mode === 'follow') {
             setTyped((prev) => {
               let newTyped = prev
@@ -155,12 +185,29 @@ export default function ArticleTypingPage() {
             })
           } else {
             setTyped((prev) => prev + e.key)
-            if (typed.length + 1 >= text.length) {
+            if (typed.length + 1 >= sourceText.length) {
               setFinished(true)
               setShowResult(true)
             }
           }
         }
+        return
+      }
+
+      if (e.key === 'Enter' && mode === 'dictation') {
+        e.preventDefault()
+        if (!started) {
+          setStarted(true)
+          setStartTime(Date.now())
+        }
+        setTyped((prev) => {
+          const nextTyped = prev + '\n'
+          if (nextTyped.length >= sourceText.length) {
+            setFinished(true)
+            setShowResult(true)
+          }
+          return nextTyped
+        })
         return
       }
 
@@ -172,7 +219,7 @@ export default function ArticleTypingPage() {
 
       if (e.key === 'Tab' && mode === 'dictation') {
         e.preventDefault()
-        const remaining = text.slice(typed.length)
+        const remaining = sourceText.slice(typed.length)
         const nextWord = remaining.match(/^\S+/)?.[0] || ''
         setHintWord(nextWord)
         setShowHint(true)
@@ -207,19 +254,22 @@ export default function ArticleTypingPage() {
     setElapsed(0)
     setShowResult(false)
     setDictationResults([])
+    abortedRef.current = false
   }
 
   const handleComplete = async () => {
+    const aborted = abortedRef.current
     const mistakeWords: { word: string; typed: string; position: number }[] = []
-    const words = text.split(/\s+/)
+    const words = sourceText.split(/\s+/)
     let pos = 0
     for (const word of words) {
-      const endPos = pos + word.length
-      const typedSegment = typed.slice(pos, endPos)
+      const startPos = sourceText.indexOf(word, pos)
+      if (startPos < 0) break
+      const typedSegment = typed.slice(startPos, startPos + word.length)
       if (typedSegment.toLowerCase() !== word.toLowerCase() && typedSegment.length > 0) {
-        mistakeWords.push({ word, typed: typedSegment, position: pos })
+        mistakeWords.push({ word, typed: typedSegment, position: startPos })
       }
-      pos = endPos + 1
+      pos = startPos + word.length
     }
 
     const record = {
@@ -230,7 +280,9 @@ export default function ArticleTypingPage() {
       duration: elapsed,
       mistakes: JSON.stringify(mistakeWords),
     }
-    await saveTypingRecord(record)
+    if (!aborted) {
+      await saveTypingRecord(record)
+    }
 
     const currentBestAccuracy = typingProgress?.bestAccuracy || 0
     const currentBestWpm = typingProgress?.bestWpm || 0
@@ -238,7 +290,7 @@ export default function ArticleTypingPage() {
       articleId,
       mode,
       position: typedChars,
-      completed: true,
+      completed: !aborted,
       bestAccuracy: Math.max(accuracy, currentBestAccuracy),
       bestWpm: Math.max(wpm, currentBestWpm),
     })
@@ -279,17 +331,18 @@ export default function ArticleTypingPage() {
       {charStates.map((cs, i) => (
         <span
           key={i}
+          ref={cs.status === 'current' ? cursorRef : undefined}
           className={
-            cs.status === 'correct'
-              ? 'text-green-600 dark:text-green-400'
-              : cs.status === 'wrong'
-                ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+            cs.status === 'wrong'
+              ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+              : cs.status === 'correct'
+                ? 'text-muted-foreground'
                 : cs.status === 'current'
-                  ? 'border-b-2 border-blue-500 text-muted-foreground'
-                  : 'text-muted-foreground'
+                  ? 'border-b-2 border-blue-500 text-foreground'
+                  : 'text-foreground'
           }
         >
-          {cs.char === '\n' ? '↵\n' : cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
+          {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
         </span>
       ))}
     </div>
@@ -297,7 +350,7 @@ export default function ArticleTypingPage() {
 
   // Render dictation mode: typed words with reveal
   const renderDictationText = () => {
-    const originalWords = text.split(/(\s+)/)
+    const originalWords = sourceText.split(/(\s+)/)
     let typedPos = 0
     const typedWords = typed.split(/(\s+)/)
 
@@ -329,13 +382,15 @@ export default function ArticleTypingPage() {
           )
         })}
         {/* Show cursor for remaining */}
-        {typed.length < text.length && (
-          <span className="border-b-2 border-blue-500 animate-pulse">&nbsp;</span>
+        {typed.length < sourceText.length && (
+          <span ref={cursorRef} className="border-b-2 border-blue-500 animate-pulse">
+            &nbsp;
+          </span>
         )}
         {/* Show remaining as hidden */}
         {mode === 'dictation' && (
           <span className="text-muted-foreground/20">
-            {'█'.repeat(Math.min(50, text.length - typed.length))}
+            {'█'.repeat(Math.min(200, sourceText.length - typed.length))}
           </span>
         )}
       </div>
@@ -343,7 +398,7 @@ export default function ArticleTypingPage() {
   }
 
   const mistakesFromErrors = (() => {
-    const words = text.split(/\s+/)
+    const words = sourceText.split(/\s+/)
     const typedWords = typed.split(/\s+/)
     const result: { word: string; typed: string }[] = []
     for (let i = 0; i < Math.min(words.length, typedWords.length); i++) {
@@ -445,7 +500,11 @@ export default function ArticleTypingPage() {
       )}
 
       {/* Text display */}
-      <Card className="p-6">{mode === 'follow' ? renderFollowText() : renderDictationText()}</Card>
+      <Card className="p-6">
+        <div className="max-h-[60vh] overflow-y-auto pr-2">
+          {mode === 'follow' ? renderFollowText() : renderDictationText()}
+        </div>
+      </Card>
 
       {/* Stats */}
       <div className="flex gap-6 justify-center text-sm text-muted-foreground">
@@ -460,11 +519,27 @@ export default function ArticleTypingPage() {
         </div>
       </div>
 
+      {started && !finished && (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              abortedRef.current = true
+              setFinished(true)
+              setShowResult(true)
+            }}
+          >
+            完成本次练习
+          </Button>
+        </div>
+      )}
+
       {/* Mode hint */}
       <p className="text-xs text-muted-foreground text-center">
         {mode === 'follow'
           ? '逐字输入，换行、空格和标点自动跳过 · Backspace 回退'
-          : '凭记忆输入每个词，空格确认 · Tab 查看提示'}
+          : '凭记忆输入全文，Enter 换行 · Tab 查看提示'}
       </p>
 
       {/* Result modal */}
