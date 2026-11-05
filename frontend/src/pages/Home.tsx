@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLibraryStore, type LibraryFile, type Folder } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
+import { useWordStore } from '@/stores/wordStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -55,6 +56,7 @@ interface ToastState {
 export default function HomePage() {
   const store = useLibraryStore()
   const player = usePlayerStore()
+  const reviewCount = useWordStore((s) => s.reviewTotal)
   const navigate = useNavigate()
   const [showNewFolder, setShowNewFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -319,6 +321,18 @@ export default function HomePage() {
 
   return (
     <div className="space-y-4">
+      {reviewCount > 0 && (
+        <Card className="flex items-center justify-between gap-3 border-primary/30 bg-primary/5 p-4">
+          <div>
+            <p className="text-sm font-medium">今日待复习 {reviewCount} 个单词</p>
+            <p className="text-xs text-muted-foreground">按 SRS 计划，趁热打铁</p>
+          </div>
+          <Button size="sm" onClick={() => navigate('/card')}>
+            开始复习
+          </Button>
+        </Card>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button size="sm" onClick={handleImport}>
