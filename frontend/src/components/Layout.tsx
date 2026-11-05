@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePlayerStore } from '@/stores/playerStore'
+import { useWordStore } from '@/stores/wordStore'
 import {
   Home,
   Play,
@@ -42,11 +43,17 @@ export function Layout({
   const progress = usePlayerStore((s) => s.transcriptionProgress)
   const setPlaying = usePlayerStore((s) => s.setPlaying)
   const closeFile = usePlayerStore((s) => s.closeFile)
+  const reviewCount = useWordStore((s) => s.reviewTotal)
+  const loadReviewCount = useWordStore((s) => s.loadReviewCount)
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
     if (isPlayerRoute) setCollapsed(true)
   }, [isPlayerRoute])
+
+  useEffect(() => {
+    loadReviewCount()
+  }, [location.pathname, loadReviewCount])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -76,16 +83,24 @@ export function Layout({
           {navItems.map((item) => {
             const Icon = item.icon
             const active = location.pathname === item.path
+            const badge = item.path === '/card' && reviewCount > 0 ? reviewCount : 0
             return (
               <Button
                 key={item.path}
                 variant={active ? 'secondary' : 'ghost'}
-                className={`w-full justify-start gap-3 ${collapsed ? 'px-0 justify-center' : ''}`}
+                className={`relative w-full justify-start gap-3 ${collapsed ? 'px-0 justify-center' : ''}`}
                 onClick={() => navigate(item.path)}
                 title={collapsed ? item.label : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed && item.label}
+                {badge > 0 && (
+                  <span
+                    className={`ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground ${collapsed ? 'absolute top-1 right-1 ml-0' : ''}`}
+                  >
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
               </Button>
             )
           })}
