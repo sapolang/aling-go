@@ -54,7 +54,6 @@ type LearningStats struct {
 	TotalReviews int           `json:"totalReviews"`
 	TodayReviews int           `json:"todayReviews"`
 	Streak       int           `json:"streak"`
-	DueCount     int           `json:"dueCount"`
 	TotalWords   int           `json:"totalWords"`
 	Mastered     int           `json:"mastered"`
 	Daily        []DailyReview `json:"daily"`

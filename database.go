@@ -74,6 +74,7 @@ func createTables() error {
 			quality INTEGER NOT NULL,
 			reviewed_at TEXT DEFAULT (datetime('now','localtime'))
 		);
+		CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
 	`)
 	return err
 }
@@ -249,7 +250,7 @@ func dbReviewLogAdd(wordID, quality int) {
 }
 
 func dbLearningStats() string {
-	stats := LearningStats{Daily: make([]DailyReview, 0, 30), DueCount: dbWordsGetReviewCount()}
+	stats := LearningStats{Daily: make([]DailyReview, 0, 30)}
 	if err := db.QueryRow("SELECT COUNT(*) FROM review_logs").Scan(&stats.TotalReviews); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats total: %v\n", err)
 	}
@@ -278,14 +279,29 @@ func dbLearningStats() string {
 		}
 	}
 
+	// 连续天数不受 30 天图表窗口限制，单独统计全部复习日期
+	streakDays := make(map[string]bool)
+	srows, sErr := db.Query("SELECT DISTINCT substr(reviewed_at, 1, 10) FROM review_logs")
+	if sErr != nil {
+		fmt.Fprintf(os.Stderr, "learningStats streak: %v\n", sErr)
+	} else {
+		defer srows.Close()
+		for srows.Next() {
+			var date string
+			if srows.Scan(&date) == nil {
+				streakDays[date] = true
+			}
+		}
+	}
+
 	now := time.Now()
 	today := now.Format("2006-01-02")
 	start := 0
-	if counts[today] == 0 {
+	if !streakDays[today] {
 		start = 1
 	}
 	for i := start; ; i++ {
-		if counts[now.AddDate(0, 0, -i).Format("2006-01-02")] == 0 {
+		if !streakDays[now.AddDate(0, 0, -i).Format("2006-01-02")] {
 			break
 		}
 		stats.Streak++

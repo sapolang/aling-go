@@ -19,13 +19,19 @@ export default function StatsPage() {
   const [typing, setTyping] = useState({ bestWpm: 0, completed: 0 })
 
   useEffect(() => {
-    window.api.learningStats().then(setStats)
-    window.api.getAllTypingProgress().then((list: TypingProgress[]) => {
-      setTyping({
-        bestWpm: list.reduce((max, item) => Math.max(max, item.bestWpm || 0), 0),
-        completed: list.filter((item) => item.completed).length,
+    window.api
+      .learningStats()
+      .then(setStats)
+      .catch(() => undefined)
+    window.api
+      .getAllTypingProgress()
+      .then((list: TypingProgress[]) => {
+        setTyping({
+          bestWpm: list.reduce((max, item) => Math.max(max, item.bestWpm || 0), 0),
+          completed: list.filter((item) => item.completed).length,
+        })
       })
-    })
+      .catch(() => undefined)
   }, [])
 
   const maxCount = Math.max(1, ...(stats?.daily.map((d) => d.count) ?? [1]))
@@ -41,7 +47,7 @@ export default function StatsPage() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="今日复习" value={stats?.todayReviews ?? 0} />
-        <StatCard label="连续学习" value={`${stats?.streak ?? 0} 天`} />
+        <StatCard label="连续复习" value={`${stats?.streak ?? 0} 天`} />
         <StatCard label="累计复习" value={stats?.totalReviews ?? 0} />
         <StatCard label="已掌握" value={`${stats?.mastered ?? 0} / ${stats?.totalWords ?? 0}`} />
       </div>

@@ -136,7 +136,6 @@ export interface LearningStats {
   totalReviews: number
   todayReviews: number
   streak: number
-  dueCount: number
   totalWords: number
   mastered: number
   daily: DailyReview[]
