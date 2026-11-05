@@ -311,16 +311,16 @@ export default function ArticleTypingPage() {
           key={i}
           ref={cs.status === 'current' ? cursorRef : undefined}
           className={
-            cs.status === 'correct'
-              ? 'text-green-600 dark:text-green-400'
-              : cs.status === 'wrong'
-                ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+            cs.status === 'wrong'
+              ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+              : cs.status === 'correct'
+                ? 'text-muted-foreground'
                 : cs.status === 'current'
-                  ? 'border-b-2 border-blue-500 text-muted-foreground'
-                  : 'text-muted-foreground'
+                  ? 'border-b-2 border-blue-500 text-foreground'
+                  : 'text-foreground'
           }
         >
-          {cs.char === '\n' ? '↵\n' : cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
+          {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
         </span>
       ))}
     </div>
@@ -478,7 +478,11 @@ export default function ArticleTypingPage() {
       )}
 
       {/* Text display */}
-      <Card className="p-6">{mode === 'follow' ? renderFollowText() : renderDictationText()}</Card>
+      <Card className="p-6">
+        <div className="max-h-[60vh] overflow-y-auto pr-2">
+          {mode === 'follow' ? renderFollowText() : renderDictationText()}
+        </div>
+      </Card>
 
       {/* Stats */}
       <div className="flex gap-6 justify-center text-sm text-muted-foreground">
