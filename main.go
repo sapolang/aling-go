@@ -15,6 +15,9 @@ import (
 //go:embed frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon.png
+var trayIcon []byte
+
 func main() {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -68,6 +71,24 @@ func main() {
 		win.Hide()
 		event.Cancel()
 	})
+
+	tray := wailsApp.SystemTray.New()
+	tray.SetIcon(trayIcon)
+	tray.SetTooltip("语练")
+
+	trayMenu := wailsApp.NewMenu()
+	trayMenu.Add("显示窗口").OnClick(func(*application.Context) {
+		win.Show()
+		win.Focus()
+	})
+	trayMenu.Add("隐藏窗口").OnClick(func(*application.Context) {
+		win.Hide()
+	})
+	trayMenu.AddSeparator()
+	trayMenu.Add("退出").OnClick(func(*application.Context) {
+		wailsApp.Quit()
+	})
+	tray.SetMenu(trayMenu)
 
 	if err := wailsApp.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
