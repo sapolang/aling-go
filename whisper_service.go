@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,13 +25,24 @@ type whisperProgress struct {
 }
 
 var whisperModels = []struct {
-	Name string
-	File string
-	Size string
+	Name   string
+	File   string
+	Size   string
+	SHA256 string
 }{
-	{"tiny", "ggml-tiny.bin", "75MB"},
-	{"small", "ggml-small.bin", "466MB"},
-	{"large", "ggml-large-v3.bin", "3.1GB"},
+	{"tiny", "ggml-tiny.bin", "75MB", "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"},
+	{"base", "ggml-base.bin", "142MB", "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"},
+	{"small", "ggml-small.bin", "466MB", "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"},
+	{"large", "ggml-large-v3.bin", "3.1GB", "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"},
+}
+
+// 下载源按优先级排序，逐一尝试；tmp 文件保留以支持断点续传
+var whisperModelSources = []struct {
+	Name string
+	Base string
+}{
+	{"hf-mirror", "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main"},
+	{"huggingface", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"},
 }
 
 func bundleResources() string {
@@ -243,7 +256,7 @@ func (s *WhisperService) ListWhisperModels() string {
 
 // --- Model download ---
 
-func (s *WhisperService) DownloadWhisperModel(mirrorURL, modelName string) error {
+func (s *WhisperService) DownloadWhisperModel(modelName string) error {
 	s.dlMu.Lock()
 	if s.dlActive {
 		s.dlMu.Unlock()
@@ -268,56 +281,122 @@ func (s *WhisperService) DownloadWhisperModel(mirrorURL, modelName string) error
 	_ = os.MkdirAll(modelDir, 0755)
 	modelPath := s.modelPath()
 	tmpPath := modelPath + ".tmp"
-	_ = os.Remove(tmpPath)
 
-	url := mirrorURL + "/ggerganov/whisper.cpp/resolve/main/" + s.modelFile
-	client := &http.Client{Timeout: 30 * 60 * 1e9}
-	resp, err := client.Get(url)
-	if err != nil {
+	var lastErr error
+	ok := false
+	for _, src := range whisperModelSources {
+		s.app.Logger.Info("downloading whisper model", "source", src.Name, "model", modelName)
+		if err := s.downloadFromURL(src.Base+"/"+s.modelFile, tmpPath); err != nil {
+			s.app.Logger.Info("download source failed, trying next", "source", src.Name, "error", err)
+			lastErr = err
+			continue
+		}
+		ok = true
+		break
+	}
+	if !ok {
+		return fmt.Errorf("all download sources failed: %w", lastErr)
+	}
+
+	if err := s.verifyModelSHA256(tmpPath); err != nil {
 		_ = os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, modelPath)
+}
+
+// downloadFromURL 下载到 tmpPath；已存在 tmp 时用 Range 断点续传，失败保留 tmp
+func (s *WhisperService) downloadFromURL(url, tmpPath string) error {
+	var offset int64
+	if fi, err := os.Stat(tmpPath); err == nil {
+		offset = fi.Size()
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+	client := &http.Client{Timeout: 30 * 60 * 1e9}
+	resp, err := client.Do(req)
+	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	out, err := os.Create(tmpPath)
+	var out *os.File
+	switch {
+	case offset > 0 && resp.StatusCode == http.StatusPartialContent:
+		out, err = os.OpenFile(tmpPath, os.O_WRONLY|os.O_APPEND, 0600)
+	case resp.StatusCode == http.StatusOK:
+		offset = 0
+		out, err = os.Create(tmpPath)
+	default:
+		return fmt.Errorf("unexpected status: %s", resp.Status)
+	}
 	if err != nil {
-		_ = os.Remove(tmpPath)
 		return err
 	}
 
-	total := resp.ContentLength
-	downloaded := int64(0)
+	total := resp.ContentLength + offset
+	downloaded := offset
 	buf := make([]byte, 32*1024)
 
 	for {
-		n, err := resp.Body.Read(buf)
+		n, rerr := resp.Body.Read(buf)
 		if n > 0 {
-			if _, err := out.Write(buf[:n]); err != nil {
+			if _, werr := out.Write(buf[:n]); werr != nil {
 				out.Close()
-				_ = os.Remove(tmpPath)
-				return fmt.Errorf("write error: %w", err)
+				return fmt.Errorf("write error: %w", werr)
 			}
 			downloaded += int64(n)
 			if total > 0 {
 				pct := int(downloaded * 100 / total)
+				if pct > 100 {
+					pct = 100
+				}
 				s.dlMu.Lock()
 				s.dlProgress = pct
 				s.dlMu.Unlock()
 				s.app.Event.Emit("whisper:download-progress", pct)
 			}
 		}
-		if err == io.EOF {
+		if rerr == io.EOF {
 			break
 		}
-		if err != nil {
+		if rerr != nil {
 			out.Close()
-			_ = os.Remove(tmpPath)
-			return err
+			return rerr
 		}
 	}
+	return out.Close()
+}
 
-	out.Close()
-	_ = os.Rename(tmpPath, modelPath)
+func (s *WhisperService) verifyModelSHA256(path string) error {
+	want := ""
+	for _, m := range whisperModels {
+		if m.File == s.modelFile {
+			want = m.SHA256
+			break
+		}
+	}
+	if want == "" {
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != want {
+		return fmt.Errorf("SHA256 mismatch: got %s, want %s", got, want)
+	}
 	return nil
 }
 
