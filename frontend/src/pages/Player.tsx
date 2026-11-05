@@ -55,6 +55,8 @@ export default function PlayerPage() {
   // --- Refs for event handlers (avoid stale closures) ---
   const onTimeUpdateRef = useRef<() => void>(() => {})
   const onMetaRef = useRef<() => void>(() => {})
+  const lastPosSaveRef = useRef(0)
+  const resumedForRef = useRef('')
 
   onTimeUpdateRef.current = () => {
     const el = mediaRef.current
@@ -68,11 +70,33 @@ export default function PlayerPage() {
     if (store.loopEnd && el.currentTime >= store.loopEnd) {
       el.currentTime = store.loopStart || 0
     }
+    // 每 5s 节流保存播放位置
+    if (store.filePath && Math.abs(el.currentTime - lastPosSaveRef.current) >= 5) {
+      lastPosSaveRef.current = el.currentTime
+      window.api.recentUpdatePosition(store.filePath, el.currentTime)
+    }
   }
 
   onMetaRef.current = () => {
     const el = mediaRef.current
-    if (el) store.setDuration(el.duration)
+    if (!el) return
+    store.setDuration(el.duration)
+    // 打开文件后续播上次位置；剩余 <15s 或 <5% 视为已看完，归零
+    const fp = store.filePath
+    if (!fp || resumedForRef.current === fp) return
+    resumedForRef.current = fp
+    lastPosSaveRef.current = 0
+    window.api.recentGetPosition(fp).then((pos: number) => {
+      if (!pos || pos <= 0) return
+      const dur = el.duration || 0
+      const remaining = dur - pos
+      if (dur > 0 && (remaining < 15 || remaining / dur < 0.05)) {
+        window.api.recentUpdatePosition(fp, 0)
+        return
+      }
+      el.currentTime = pos
+      lastPosSaveRef.current = pos
+    })
   }
 
   // --- Media element event wiring ---

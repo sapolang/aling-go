@@ -269,15 +269,46 @@ func (s *LibraryService) FolderRename(id, name string) string {
 func (s *LibraryService) RecentList() string {
 	lib := s.readLibrary()
 	type recentEntry struct {
-		Path string `json:"path"`
-		Name string `json:"name"`
+		Path         string  `json:"path"`
+		Name         string  `json:"name"`
+		Type         string  `json:"type"`
+		LastPosition float64 `json:"lastPosition,omitempty"`
 	}
 	entries := make([]recentEntry, 0, len(lib.Files))
 	for _, f := range lib.Files {
-		entries = append(entries, recentEntry{Path: f.Path, Name: f.Name})
+		entries = append(entries, recentEntry{
+			Path:         f.Path,
+			Name:         f.Name,
+			Type:         f.Type,
+			LastPosition: f.LastPosition,
+		})
 	}
 	b, _ := json.Marshal(entries)
 	return string(b)
+}
+
+// RecentGetPosition 返回文件上次播放位置（秒），无记录时返回 "0"
+func (s *LibraryService) RecentGetPosition(filePath string) string {
+	lib := s.readLibrary()
+	for _, f := range lib.Files {
+		if f.Path == filePath {
+			b, _ := json.Marshal(f.LastPosition)
+			return string(b)
+		}
+	}
+	return "0"
+}
+
+// RecentUpdatePosition 保存文件播放位置（秒）
+func (s *LibraryService) RecentUpdatePosition(filePath string, position float64) {
+	lib := s.readLibrary()
+	for i := range lib.Files {
+		if lib.Files[i].Path == filePath {
+			lib.Files[i].LastPosition = position
+			s.writeLibrary(lib)
+			return
+		}
+	}
 }
 
 func (s *LibraryService) RecentAdd(filePath string) string {
