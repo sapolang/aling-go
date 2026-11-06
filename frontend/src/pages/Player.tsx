@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
+import type { LibraryFile } from '@/stores/libraryStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,6 +12,7 @@ import {
   Play,
   Pause,
   Repeat,
+  SkipForward,
   Subtitles,
   Loader2,
   Volume2 as Speaker,
@@ -105,14 +107,27 @@ export default function PlayerPage() {
     if (!el) return
     const onTime = () => onTimeUpdateRef.current()
     const onMeta = () => onMetaRef.current()
+    const onEnded = () => {
+      store.setPlaying(false)
+      const st = usePlayerStore.getState()
+      const endedPath = st.filePath
+      if (!st.autoNextEpisode || !endedPath) return
+      findNextEpisode(endedPath).then((next) => {
+        // 等待期间用户可能已手动切换文件
+        if (next && usePlayerStore.getState().filePath === endedPath) openMediaFile(next)
+      })
+    }
+    const onError = () => setPlayError('媒体加载失败')
     el.addEventListener('timeupdate', onTime)
     el.addEventListener('loadedmetadata', onMeta)
-    el.addEventListener('ended', () => store.setPlaying(false))
-    el.addEventListener('error', () => setPlayError('媒体加载失败'))
+    el.addEventListener('ended', onEnded)
+    el.addEventListener('error', onError)
     if (el.duration) onMetaRef.current()
     return () => {
       el.removeEventListener('timeupdate', onTime)
       el.removeEventListener('loadedmetadata', onMeta)
+      el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
     }
   }, [store.filePath])
 
@@ -235,36 +250,56 @@ export default function PlayerPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [isActive, store.playing])
 
+  // 打开媒体文件：设置路径、加载波形、加载字幕（缓存优先，回退同名 SRT）
+  const openMediaFile = async (filePath: string) => {
+    store.setFilePath(filePath)
+    setPlayError(null)
+    window.api.recentAdd(filePath)
+    store.setWaveformLoading(true)
+    window.api
+      .getWaveformData(filePath)
+      .then((data: number[]) => {
+        if (data && data.length > 0) store.setWaveformData(data)
+        else store.setWaveformLoading(false)
+      })
+      .catch(() => store.setWaveformLoading(false))
+    try {
+      const cached = await window.api.getCachedSubtitles(filePath)
+      if (cached && cached.length > 0) {
+        store.setSubtitles(cached)
+        return
+      }
+      const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
+      try {
+        await window.api.readTextFile(srtPath)
+        loadSrtFile(srtPath)
+      } catch (e) {
+        console.error('Failed to load SRT:', e)
+      }
+    } catch (e) {
+      console.error('Failed to load cached subtitles:', e)
+    }
+  }
+
   const handleOpenFile = async () => {
     const filePath = await window.api.openFile()
-    if (filePath) {
-      store.setFilePath(filePath)
-      setPlayError(null)
-      window.api.recentAdd(filePath)
-      store.setWaveformLoading(true)
-      window.api
-        .getWaveformData(filePath)
-        .then((data: number[]) => {
-          if (data && data.length > 0) store.setWaveformData(data)
-          else store.setWaveformLoading(false)
-        })
-        .catch(() => store.setWaveformLoading(false))
-      try {
-        const cached = await window.api.getCachedSubtitles(filePath)
-        if (cached && cached.length > 0) {
-          store.setSubtitles(cached)
-          return
-        }
-        const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
-        try {
-          await window.api.readTextFile(srtPath)
-          loadSrtFile(srtPath)
-        } catch (e) {
-          console.error('Failed to load SRT:', e)
-        }
-      } catch (e) {
-        console.error('Failed to load cached subtitles:', e)
-      }
+    if (filePath) openMediaFile(filePath)
+  }
+
+  // 媒体库同文件夹内按名称自然排序，取当前文件的下一个（自动下一集）
+  const findNextEpisode = async (current: string): Promise<string | null> => {
+    try {
+      const lib = await window.api.libraryList()
+      const files = ((lib?.files || []) as LibraryFile[]).filter((f) => f.type !== 'pdf')
+      const cur = files.find((f) => f.path === current)
+      if (!cur) return null
+      const siblings = files
+        .filter((f) => f.folderId === cur.folderId)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      const idx = siblings.findIndex((f) => f.path === current)
+      return idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1].path : null
+    } catch {
+      return null
     }
   }
 
@@ -507,6 +542,15 @@ export default function PlayerPage() {
                 </Button>
               </div>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={store.autoNextEpisode ? 'text-primary' : ''}
+              title={store.autoNextEpisode ? '自动下一集：开' : '自动下一集：关'}
+              onClick={() => store.setAutoNextEpisode(!store.autoNextEpisode)}
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
           </div>
         )}
 
