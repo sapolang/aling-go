@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
+import type { LibraryFile } from '@/stores/libraryStore'
+import type { SubtitleDisplayMode } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,6 +13,7 @@ import {
   Play,
   Pause,
   Repeat,
+  SkipForward,
   Subtitles,
   Loader2,
   Volume2 as Speaker,
@@ -27,6 +30,19 @@ import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+// 匹配 CJK 表意文字、假名、谚文及全角标点，用于区分中/英字幕行
+const CJK_RE = /[\u2e80-\u9fff\uf900-\ufaff\u3000-\u303f\u3040-\u30ff\uac00-\ud7af]/
+
+// 按显示模式过滤字幕文本行；off 模式在悬浮层隐藏，列表仍显示全文
+const filterSubtitleText = (text: string, mode: SubtitleDisplayMode): string => {
+  if (mode === 'all' || mode === 'off') return text
+  return text
+    .split('\n')
+    .filter((line) => (mode === 'zh' ? CJK_RE.test(line) : !CJK_RE.test(line)))
+    .join('\n')
+    .trim()
+}
 
 export default function PlayerPage() {
   const location = useLocation()
@@ -48,6 +64,18 @@ export default function PlayerPage() {
 
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
   const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
+
+  // 按显示模式派生字幕：过滤中/英文行，过滤后无内容的条目在列表中隐藏
+  const displaySubtitles = useMemo(
+    () =>
+      store.subtitles
+        .map((s) => ({
+          ...s,
+          displayText: filterSubtitleText(s.text, store.subtitleDisplayMode),
+        }))
+        .filter((s) => s.displayText.length > 0),
+    [store.subtitles, store.subtitleDisplayMode],
+  )
 
   useEffect(() => {
     window.api.getWhisperLang().then(setTranscribeLang)
@@ -106,14 +134,27 @@ export default function PlayerPage() {
     if (!el) return
     const onTime = () => onTimeUpdateRef.current()
     const onMeta = () => onMetaRef.current()
+    const onEnded = () => {
+      store.setPlaying(false)
+      const st = usePlayerStore.getState()
+      const endedPath = st.filePath
+      if (!st.autoNextEpisode || !endedPath) return
+      findNextEpisode(endedPath).then((next) => {
+        // 等待期间用户可能已手动切换文件
+        if (next && usePlayerStore.getState().filePath === endedPath) openMediaFile(next)
+      })
+    }
+    const onError = () => setPlayError('媒体加载失败')
     el.addEventListener('timeupdate', onTime)
     el.addEventListener('loadedmetadata', onMeta)
-    el.addEventListener('ended', () => store.setPlaying(false))
-    el.addEventListener('error', () => setPlayError('媒体加载失败'))
+    el.addEventListener('ended', onEnded)
+    el.addEventListener('error', onError)
     if (el.duration) onMetaRef.current()
     return () => {
       el.removeEventListener('timeupdate', onTime)
       el.removeEventListener('loadedmetadata', onMeta)
+      el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
     }
   }, [store.filePath])
 
@@ -157,14 +198,14 @@ export default function PlayerPage() {
   const lastSubIdx = useRef(-2)
   useEffect(() => {
     const el = scrollRef.current
-    if (!el || store.subtitles.length === 0) return
+    if (!el || displaySubtitles.length === 0) return
     const t = store.played - store.subtitleOffset
-    const idx = store.subtitles.findIndex((s) => t >= s.startTime - 0.08 && t < s.endTime)
+    const idx = displaySubtitles.findIndex((s) => t >= s.startTime - 0.08 && t < s.endTime)
     if (idx <= 0 || idx === lastSubIdx.current) return
     lastSubIdx.current = idx
     const child = el.children[idx] as HTMLElement
     if (child) child.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [store.played, store.subtitleOffset])
+  }, [store.played, store.subtitleOffset, displaySubtitles])
 
   // --- Close sub menu on outside click ---
   useEffect(() => {
@@ -236,36 +277,56 @@ export default function PlayerPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [isActive, store.playing])
 
+  // 打开媒体文件：设置路径、加载波形、加载字幕（缓存优先，回退同名 SRT）
+  const openMediaFile = async (filePath: string) => {
+    store.setFilePath(filePath)
+    setPlayError(null)
+    window.api.recentAdd(filePath)
+    store.setWaveformLoading(true)
+    window.api
+      .getWaveformData(filePath)
+      .then((data: number[]) => {
+        if (data && data.length > 0) store.setWaveformData(data)
+        else store.setWaveformLoading(false)
+      })
+      .catch(() => store.setWaveformLoading(false))
+    try {
+      const cached = await window.api.getCachedSubtitles(filePath)
+      if (cached && cached.length > 0) {
+        store.setSubtitles(cached)
+        return
+      }
+      const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
+      try {
+        await window.api.readTextFile(srtPath)
+        loadSrtFile(srtPath)
+      } catch (e) {
+        console.error('Failed to load SRT:', e)
+      }
+    } catch (e) {
+      console.error('Failed to load cached subtitles:', e)
+    }
+  }
+
   const handleOpenFile = async () => {
     const filePath = await window.api.openFile()
-    if (filePath) {
-      store.setFilePath(filePath)
-      setPlayError(null)
-      window.api.recentAdd(filePath)
-      store.setWaveformLoading(true)
-      window.api
-        .getWaveformData(filePath)
-        .then((data: number[]) => {
-          if (data && data.length > 0) store.setWaveformData(data)
-          else store.setWaveformLoading(false)
-        })
-        .catch(() => store.setWaveformLoading(false))
-      try {
-        const cached = await window.api.getCachedSubtitles(filePath)
-        if (cached && cached.length > 0) {
-          store.setSubtitles(cached)
-          return
-        }
-        const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
-        try {
-          await window.api.readTextFile(srtPath)
-          loadSrtFile(srtPath)
-        } catch (e) {
-          console.error('Failed to load SRT:', e)
-        }
-      } catch (e) {
-        console.error('Failed to load cached subtitles:', e)
-      }
+    if (filePath) openMediaFile(filePath)
+  }
+
+  // 媒体库同文件夹内按名称自然排序，取当前文件的下一个（自动下一集）
+  const findNextEpisode = async (current: string): Promise<string | null> => {
+    try {
+      const lib = await window.api.libraryList()
+      const files = ((lib?.files || []) as LibraryFile[]).filter((f) => f.type !== 'pdf')
+      const cur = files.find((f) => f.path === current)
+      if (!cur) return null
+      const siblings = files
+        .filter((f) => f.folderId === cur.folderId)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      const idx = siblings.findIndex((f) => f.path === current)
+      return idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1].path : null
+    } catch {
+      return null
     }
   }
 
@@ -421,16 +482,18 @@ export default function PlayerPage() {
             </div>
           )}
           {!isAudio &&
+            store.subtitleDisplayMode !== 'off' &&
             (() => {
               const pa = store.played - store.subtitleOffset
               const sub = store.subtitles.find((s) => pa >= s.startTime - 0.08 && pa <= s.endTime)
-              return sub ? (
+              const text = sub ? filterSubtitleText(sub.text, store.subtitleDisplayMode) : ''
+              return sub && text ? (
                 <div
                   className="absolute bottom-0 left-0 right-0 p-4 pb-6 flex justify-center"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed">
-                    {sub.text}
+                  <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed whitespace-pre-line">
+                    {text}
                   </span>
                 </div>
               ) : null
@@ -543,6 +606,15 @@ export default function PlayerPage() {
             >
               <Headphones className="h-4 w-4" />
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={store.autoNextEpisode ? 'text-primary' : ''}
+              title={store.autoNextEpisode ? '自动下一集：开' : '自动下一集：关'}
+              onClick={() => store.setAutoNextEpisode(!store.autoNextEpisode)}
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
           </div>
         )}
 
@@ -602,6 +674,27 @@ export default function PlayerPage() {
                 >
                   <FileDown className="h-3.5 w-3.5" /> 导入 SRT
                 </button>
+                <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
+                  <div className="text-xs text-muted-foreground mb-1">显示模式</div>
+                  <div className="flex gap-1">
+                    {(
+                      [
+                        ['all', '全部'],
+                        ['en', '仅英'],
+                        ['zh', '仅中'],
+                        ['off', '隐藏'],
+                      ] as const
+                    ).map(([m, label]) => (
+                      <button
+                        key={m}
+                        className={`flex-1 px-1 py-1 text-xs rounded ${store.subtitleDisplayMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
+                        onClick={() => store.setSubtitleDisplayMode(m)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
                   <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                     <span>字幕偏移</span>
@@ -673,7 +766,7 @@ export default function PlayerPage() {
               </div>
             </div>
           ) : (
-            store.subtitles.map((sub, idx) => {
+            displaySubtitles.map((sub) => {
               const pa = store.played - store.subtitleOffset
               const isActive = pa >= sub.startTime - 0.08 && pa < sub.endTime
               const isPast = pa > sub.endTime
@@ -686,7 +779,7 @@ export default function PlayerPage() {
                   <span className="text-xs text-muted-foreground mr-2">
                     {formatTime(sub.startTime)}
                   </span>
-                  {sub.text.split(/(\s+)/).map((part, i) => {
+                  {sub.displayText.split(/(\s+)/).map((part, i) => {
                     const clean = part.replace(/[^a-zA-Z0-9\-']/g, '')
                     if (clean.length > 1)
                       return (
@@ -708,7 +801,7 @@ export default function PlayerPage() {
                       className="ml-2 text-primary hover:text-primary/80"
                       onClick={(e) => {
                         e.stopPropagation()
-                        speak(sub.text)
+                        speak(sub.displayText)
                       }}
                     >
                       <Speaker className="h-3 w-3 inline" />
