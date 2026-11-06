@@ -117,8 +117,7 @@ export function initBridge(): void {
         return Array.isArray(parsed) ? parsed : []
       }),
     whisperStatus: () => WhisperStatus(),
-    downloadWhisperModel: (mirrorURL: string, modelName: string) =>
-      DownloadWhisperModel(mirrorURL, modelName),
+    downloadWhisperModel: (modelName: string) => DownloadWhisperModel(modelName),
     setWhisperModel: (name: string) => SetWhisperModel(name),
     listWhisperModels: () => ListWhisperModels().then((s: string) => JSON.parse(s)),
     getWhisperLang: () => GetWhisperLang(),

@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const [whisperModels, setWhisperModels] = useState<
     { name: string; file: string; size: string; downloaded: boolean }[]
   >([])
-  const [selectedModel, setSelectedModel] = useState('base')
+  const [selectedModel, setSelectedModel] = useState('tiny')
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
 
@@ -119,7 +119,7 @@ export default function SettingsPage() {
     setDownloadProgress(0)
     const cleanup = window.api.onDownloadProgress((pct: number) => setDownloadProgress(pct))
     try {
-      await window.api.downloadWhisperModel('https://hf-mirror.com', modelName)
+      await window.api.downloadWhisperModel(modelName)
       await window.api.setWhisperModel(modelName)
       const status = await window.api.whisperStatus()
       setWhisperStatus(status)
