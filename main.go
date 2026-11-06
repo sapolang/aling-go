@@ -57,6 +57,7 @@ func main() {
 	wailsApp.RegisterService(application.NewService(NewMediaService(wailsApp, dataDir)))
 	wailsApp.RegisterService(application.NewService(NewWhisperService(wailsApp, dataDir)))
 	wailsApp.RegisterService(application.NewService(NewPlatformService(wailsApp)))
+	wailsApp.RegisterService(application.NewService(NewAIService(wailsApp, dataDir)))
 	wailsApp.RegisterService(application.NewService(NewFavoriteService(wailsApp)))
 
 	win := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{

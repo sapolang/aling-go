@@ -83,6 +83,14 @@ import {
 } from '../../bindings/aling-go/whisperservice'
 
 import {
+  GetAIConfig,
+  SetAIConfig,
+  TestAIConnection,
+  TranslateStream,
+  Explain,
+} from '../../bindings/aling-go/aiservice'
+
+import {
   FavoriteList,
   FavoriteAdd,
   FavoriteDelete,
@@ -234,5 +242,21 @@ export function initBridge(): void {
       }),
     favoriteTagAdd: (name: string) => FavoriteTagAdd(name),
     favoriteTagDelete: (id: number) => FavoriteTagDelete(id),
+
+    aiGetConfig: () => GetAIConfig().then((s: string) => JSON.parse(s)),
+    aiSetConfig: (cfg: any) => SetAIConfig(JSON.stringify(cfg)),
+    aiTest: () => TestAIConnection().then((s: string) => JSON.parse(s)),
+    aiTranslateStream: (text: string, context: string, reqId: string) =>
+      TranslateStream(text, context, reqId).then((s: string) => JSON.parse(s)),
+    aiExplain: (text: string, context: string) =>
+      Explain(text, context).then((s: string) => JSON.parse(s)),
+    aiOnChunk: (cb: (data: { reqId: string; delta: string }) => void) => {
+      Events.On('ai:translate:chunk', (e: any) => cb(e.data))
+      return () => Events.Off('ai:translate:chunk')
+    },
+    aiOnDone: (cb: (data: { reqId: string; text?: string; error?: string }) => void) => {
+      Events.On('ai:translate:done', (e: any) => cb(e.data))
+      return () => Events.Off('ai:translate:done')
+    },
   } as any
 }
