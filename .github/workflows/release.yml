@@ -64,10 +64,30 @@ jobs:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate release notes
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          # 手动触发且 tag 尚未拉取时退回 HEAD，避免脚本失败
+          if git rev-parse --verify "${TAG}" >/dev/null 2>&1; then REF="${TAG}"; else REF="HEAD"; fi
+          PREV=$(git describe --tags --abbrev=0 "${REF}^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then RANGE="${PREV}..${TAG}"; else RANGE="${TAG}"; fi
+          echo "Generating notes for ${RANGE} (previous tag: ${PREV:-none})"
+          {
+            echo "## 更新内容"
+            echo
+            git log --no-merges --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" "${RANGE}"
+            echo
+            echo
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${RANGE}"
+          } > release-notes.md
+          cat release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: |
             aling-go-macos/aling-go.dmg
-          generate_release_notes: true
+          body_path: release-notes.md
           draft: ${{ github.event_name!= 'workflow_dispatch' }}
