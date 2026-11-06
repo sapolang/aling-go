@@ -53,6 +53,17 @@ function sameChar(a: string | undefined, b: string | undefined): boolean {
   return a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase()
 }
 
+// 按行切分原文，返回每行在原文中的起止下标（译文与其逐行一一对应）
+function splitLines(text: string): { start: number; end: number; text: string }[] {
+  const lines: { start: number; end: number; text: string }[] = []
+  let offset = 0
+  for (const line of text.split('\n')) {
+    lines.push({ start: offset, end: offset + line.length, text: line })
+    offset += line.length + 1
+  }
+  return lines
+}
+
 export default function ArticleTypingPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -128,6 +139,13 @@ export default function ArticleTypingPage() {
   const sourceText = mode === 'dictation' ? text.replace(/[0-9]/g, '') : text
   const totalChars = sourceText.length
   const typedChars = typed.length
+
+  // 逐行切分原文，译文中每行与原文逐行对应，显示在该行英文下方
+  const lines = useMemo(() => splitLines(text), [text])
+  const translations = useMemo(
+    () => (currentArticle?.textTranslate || '').split('\n'),
+    [currentArticle?.textTranslate],
+  )
 
   const charStates: CharState[] = useMemo(() => {
     return text.split('').map((char, i) => {
@@ -324,27 +342,42 @@ export default function ArticleTypingPage() {
 
   // Render character display for follow mode
   const renderFollowText = () => (
-    <div
-      className="font-mono text-xl leading-relaxed whitespace-pre-wrap break-words select-none"
-      style={{ letterSpacing: '0.05em' }}
-    >
-      {charStates.map((cs, i) => (
-        <span
-          key={i}
-          ref={cs.status === 'current' ? cursorRef : undefined}
-          className={
-            cs.status === 'wrong'
-              ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
-              : cs.status === 'correct'
-                ? 'text-muted-foreground'
-                : cs.status === 'current'
-                  ? 'border-b-2 border-blue-500 text-foreground'
-                  : 'text-foreground'
-          }
-        >
-          {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
-        </span>
-      ))}
+    <div className="font-mono text-2xl select-none">
+      {lines.map((line, li) => {
+        const translation = translations[li]?.trim()
+        if (!line.text.trim()) return <div key={li} className="h-3" />
+        return (
+          <div key={li} className="mb-1">
+            <div
+              className="whitespace-pre-wrap break-words leading-normal"
+              style={{ letterSpacing: '0.05em' }}
+            >
+              {charStates.slice(line.start, line.end).map((cs, i) => (
+                <span
+                  key={line.start + i}
+                  ref={cs.status === 'current' ? cursorRef : undefined}
+                  className={
+                    cs.status === 'wrong'
+                      ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+                      : cs.status === 'correct'
+                        ? 'text-muted-foreground'
+                        : cs.status === 'current'
+                          ? 'border-b-2 border-blue-500 text-foreground'
+                          : 'text-foreground'
+                  }
+                >
+                  {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
+                </span>
+              ))}
+            </div>
+            {translation && (
+              <div className="font-sans text-[17px] leading-snug text-muted-foreground whitespace-pre-wrap">
+                {translation}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 
@@ -427,7 +460,7 @@ export default function ArticleTypingPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pt-4">
+    <div className="w-full max-w-6xl mx-auto space-y-6 pt-4">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate('/articles')}>
@@ -501,7 +534,7 @@ export default function ArticleTypingPage() {
 
       {/* Text display */}
       <Card className="p-6">
-        <div className="max-h-[60vh] overflow-y-auto pr-2">
+        <div className="max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {mode === 'follow' ? renderFollowText() : renderDictationText()}
         </div>
       </Card>
