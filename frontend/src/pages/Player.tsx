@@ -4,6 +4,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { speak } from '@/lib/tts'
 import Waveform from '@/components/Waveform'
 import WordLookupModal from '@/components/WordLookupModal'
@@ -21,6 +22,7 @@ import {
   FileDown,
   ArrowLeft,
   Globe,
+  Star,
 } from 'lucide-react'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
@@ -44,6 +46,14 @@ export default function PlayerPage() {
   const [mediaPort, setMediaPort] = useState(0)
   const [showTranscribeLangModal, setShowTranscribeLangModal] = useState(false)
   const [transcribeLang, setTranscribeLang] = useState('auto')
+  const [favTarget, setFavTarget] = useState<{
+    startTime: number
+    endTime: number
+    text: string
+  } | null>(null)
+  const [favTags, setFavTags] = useState<{ id: number; name: string }[]>([])
+  const [favTagId, setFavTagId] = useState(0)
+  const [favNewTag, setFavNewTag] = useState('')
 
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
   const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
@@ -81,9 +91,21 @@ export default function PlayerPage() {
     const el = mediaRef.current
     if (!el) return
     store.setDuration(el.duration)
-    // 打开文件后续播上次位置；剩余 <15s 或 <5% 视为已看完，归零
     const fp = store.filePath
-    if (!fp || resumedForRef.current === fp) return
+    if (!fp) return
+    // 收藏片段跳转：定位到片段起点并循环，优先于续播位置
+    const pc = usePlayerStore.getState().playClip
+    if (pc && pc.filePath === fp) {
+      resumedForRef.current = fp
+      lastPosSaveRef.current = pc.startTime
+      el.currentTime = pc.startTime
+      store.setLoop(pc.startTime, pc.endTime)
+      store.setPlaying(true)
+      store.setPlayClip(null)
+      return
+    }
+    // 打开文件后续播上次位置；剩余 <15s 或 <5% 视为已看完，归零
+    if (resumedForRef.current === fp) return
     resumedForRef.current = fp
     lastPosSaveRef.current = 0
     window.api.recentGetPosition(fp).then((pos: number) => {
@@ -374,6 +396,31 @@ export default function PlayerPage() {
     setSelectedWord(clean)
     setCurrentSentence(sentence)
     setShowLookup(true)
+  }
+
+  const openFavorite = (sub: { startTime: number; endTime: number; text: string }) => {
+    setFavTarget({ startTime: sub.startTime, endTime: sub.endTime, text: sub.text })
+    setFavTagId(0)
+    setFavNewTag('')
+    window.api.favoriteTagsList().then(setFavTags)
+  }
+
+  const saveFavorite = async () => {
+    if (!favTarget || !store.filePath) return
+    let tagId = favTagId
+    const name = favNewTag.trim()
+    if (name) {
+      const id = await window.api.favoriteTagAdd(name)
+      if (id > 0) tagId = id
+    }
+    await window.api.favoriteAdd({
+      filePath: store.filePath,
+      startTime: favTarget.startTime,
+      endTime: favTarget.endTime,
+      text: favTarget.text,
+      tagId,
+    })
+    setFavTarget(null)
   }
 
   const formatTime = (s: number) => {
@@ -668,15 +715,27 @@ export default function PlayerPage() {
                     return <span key={i}>{part}</span>
                   })}
                   {isActive && (
-                    <button
-                      className="ml-2 text-primary hover:text-primary/80"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        speak(sub.text)
-                      }}
-                    >
-                      <Speaker className="h-3 w-3 inline" />
-                    </button>
+                    <>
+                      <button
+                        className="ml-2 text-primary hover:text-primary/80"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          speak(sub.text)
+                        }}
+                      >
+                        <Speaker className="h-3 w-3 inline" />
+                      </button>
+                      <button
+                        className="ml-1 text-primary hover:text-primary/80"
+                        title="收藏当前句"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openFavorite(sub)
+                        }}
+                      >
+                        <Star className="h-3 w-3 inline" />
+                      </button>
+                    </>
                   )}
                 </div>
               )
@@ -772,6 +831,49 @@ export default function PlayerPage() {
                 >
                   开始转录
                 </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* 收藏整句弹窗 */}
+        {favTarget && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={() => setFavTarget(null)}
+          >
+            <Card className="w-96 p-6" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Star className="h-5 w-5" /> 收藏整句
+              </h3>
+              <p className="text-sm mb-1 line-clamp-3">{favTarget.text}</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                {formatTime(favTarget.startTime)} - {formatTime(favTarget.endTime)}
+              </p>
+              <label className="text-sm font-medium">标签</label>
+              <select
+                className="w-full bg-background border rounded px-3 py-2 text-sm mt-1 mb-3"
+                value={favTagId}
+                onChange={(e) => setFavTagId(parseInt(e.target.value))}
+              >
+                <option value={0}>无标签</option>
+                {favTags.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <Input
+                placeholder="或输入新标签名称"
+                value={favNewTag}
+                onChange={(e) => setFavNewTag(e.target.value)}
+                className="mb-4"
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setFavTarget(null)}>
+                  取消
+                </Button>
+                <Button onClick={saveFavorite}>收藏</Button>
               </div>
             </Card>
           </div>

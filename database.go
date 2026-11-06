@@ -75,6 +75,21 @@ func createTables() error {
 			reviewed_at TEXT DEFAULT (datetime('now','localtime'))
 		);
 		CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
+		CREATE TABLE IF NOT EXISTS favorite_tags (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			created_at TEXT DEFAULT (datetime('now','localtime'))
+		);
+		CREATE TABLE IF NOT EXISTS favorite_clips (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			file_path TEXT NOT NULL,
+			start_time REAL NOT NULL,
+			end_time REAL NOT NULL,
+			text TEXT DEFAULT '',
+			tag_id INTEGER DEFAULT 0,
+			created_at TEXT DEFAULT (datetime('now','localtime'))
+		);
+		CREATE INDEX IF NOT EXISTS idx_favorite_clips_tag ON favorite_clips(tag_id);
 	`)
 	return err
 }

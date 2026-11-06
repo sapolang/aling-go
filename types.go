@@ -134,3 +134,20 @@ type DictAddResult struct {
 	Added   int `json:"added"`
 	Skipped int `json:"skipped"`
 }
+
+type FavoriteClip struct {
+	ID        int     `json:"id"`
+	FilePath  string  `json:"filePath"`
+	FileName  string  `json:"fileName"`
+	StartTime float64 `json:"startTime"`
+	EndTime   float64 `json:"endTime"`
+	Text      string  `json:"text"`
+	TagID     int     `json:"tagId"`
+	TagName   string  `json:"tagName"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type FavoriteTag struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}

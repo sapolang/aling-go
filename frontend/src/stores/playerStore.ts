@@ -7,6 +7,12 @@ interface SubtitleItem {
   text: string
 }
 
+interface PlayClipRequest {
+  filePath: string
+  startTime: number
+  endTime: number
+}
+
 interface PlayerStore {
   filePath: string | null
   playing: boolean
@@ -24,6 +30,7 @@ interface PlayerStore {
   waveformData: number[]
   waveformLoading: boolean
   subtitleOffset: number
+  playClip: PlayClipRequest | null
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -41,6 +48,7 @@ interface PlayerStore {
   setWaveformData: (data: number[]) => void
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
+  setPlayClip: (clip: PlayClipRequest | null) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -60,6 +68,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformData: [],
   waveformLoading: false,
   subtitleOffset: 0,
+  playClip: null,
 
   setFilePath: (filePath) =>
     set({
@@ -114,4 +123,5 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((s) => ({
       subtitleOffset: Math.round(Math.min(5, Math.max(-5, s.subtitleOffset + delta)) * 10) / 10,
     })),
+  setPlayClip: (playClip) => set({ playClip }),
 }))
