@@ -21,6 +21,7 @@ import {
   FileDown,
   ArrowLeft,
   Globe,
+  Headphones,
 } from 'lucide-react'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
@@ -396,7 +397,7 @@ export default function PlayerPage() {
     <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
       <div className="flex-1 flex flex-col gap-2">
         <div
-          className={`bg-black rounded-lg overflow-hidden relative flex items-center justify-center ${isAudio ? 'h-20' : 'aspect-video'}`}
+          className={`bg-black rounded-lg overflow-hidden relative flex items-center justify-center ${isAudio ? 'h-20' : 'aspect-video'} ${store.podcastMode ? 'hidden' : ''}`}
           onClick={() => store.setPlaying(!store.playing)}
         >
           {isAudio ? (
@@ -436,8 +437,34 @@ export default function PlayerPage() {
             })()}
         </div>
 
+        {store.podcastMode && store.filePath && (
+          <div className="rounded-lg border bg-gradient-to-br from-primary/15 via-muted/60 to-background flex flex-col items-center justify-center gap-3 py-10 px-4">
+            <Headphones className="h-16 w-16 text-primary" />
+            <div className="text-sm text-muted-foreground max-w-[80%] truncate">
+              {store.filePath.split('/').pop()}
+            </div>
+            {(() => {
+              const pa = store.played - store.subtitleOffset
+              const sub = store.subtitles.find((s) => pa >= s.startTime - 0.08 && pa <= s.endTime)
+              return sub ? (
+                <div className="text-2xl font-medium text-center max-w-[85%] leading-relaxed whitespace-pre-line">
+                  {sub.text}
+                </div>
+              ) : null
+            })()}
+          </div>
+        )}
+
         {store.filePath && (
-          <div className={isAudio ? 'h-[100px] shrink-0' : 'h-[48px] shrink-0'}>
+          <div
+            className={
+              store.podcastMode
+                ? 'h-[160px] shrink-0'
+                : isAudio
+                  ? 'h-[100px] shrink-0'
+                  : 'h-[48px] shrink-0'
+            }
+          >
             <Waveform
               data={store.waveformData}
               duration={store.duration}
@@ -507,6 +534,15 @@ export default function PlayerPage() {
                 </Button>
               </div>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={store.podcastMode ? 'text-primary' : ''}
+              onClick={() => store.setPodcastMode(!store.podcastMode)}
+              title="播客模式"
+            >
+              <Headphones className="h-4 w-4" />
+            </Button>
           </div>
         )}
 

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+const PODCAST_MODE_KEY = 'aling.podcastMode'
+
 interface SubtitleItem {
   id: number
   startTime: number
@@ -24,6 +26,7 @@ interface PlayerStore {
   waveformData: number[]
   waveformLoading: boolean
   subtitleOffset: number
+  podcastMode: boolean
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -41,6 +44,7 @@ interface PlayerStore {
   setWaveformData: (data: number[]) => void
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
+  setPodcastMode: (v: boolean) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -60,6 +64,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformData: [],
   waveformLoading: false,
   subtitleOffset: 0,
+  podcastMode:
+    typeof localStorage !== 'undefined' && localStorage.getItem(PODCAST_MODE_KEY) === '1',
 
   setFilePath: (filePath) =>
     set({
@@ -114,4 +120,12 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((s) => ({
       subtitleOffset: Math.round(Math.min(5, Math.max(-5, s.subtitleOffset + delta)) * 10) / 10,
     })),
+  setPodcastMode: (podcastMode) => {
+    try {
+      localStorage.setItem(PODCAST_MODE_KEY, podcastMode ? '1' : '0')
+    } catch {
+      // 忽略持久化失败（如隐私模式）
+    }
+    set({ podcastMode })
+  },
 }))
