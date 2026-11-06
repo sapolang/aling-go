@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+const AUTO_NEXT_KEY = 'aling.autoNextEpisode'
+
 interface SubtitleItem {
   id: number
   startTime: number
@@ -29,6 +31,7 @@ interface PlayerStore {
   waveformData: number[]
   waveformLoading: boolean
   subtitleOffset: number
+  autoNextEpisode: boolean
   subtitleDisplayMode: SubtitleDisplayMode
 
   setFilePath: (path: string | null) => void
@@ -47,6 +50,7 @@ interface PlayerStore {
   setWaveformData: (data: number[]) => void
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
+  setAutoNextEpisode: (v: boolean) => void
   setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
 }
 
@@ -67,6 +71,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformData: [],
   waveformLoading: false,
   subtitleOffset: 0,
+  // 默认开启；localStorage 存 '0' 表示关闭
+  autoNextEpisode:
+    typeof localStorage === 'undefined' || localStorage.getItem(AUTO_NEXT_KEY) !== '0',
   subtitleDisplayMode:
     (typeof localStorage !== 'undefined' &&
       (localStorage.getItem(SUBTITLE_MODE_KEY) as SubtitleDisplayMode)) ||
@@ -125,6 +132,14 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((s) => ({
       subtitleOffset: Math.round(Math.min(5, Math.max(-5, s.subtitleOffset + delta)) * 10) / 10,
     })),
+  setAutoNextEpisode: (autoNextEpisode) => {
+    try {
+      localStorage.setItem(AUTO_NEXT_KEY, autoNextEpisode ? '1' : '0')
+    } catch {
+      // 忽略持久化失败（如隐私模式）
+    }
+    set({ autoNextEpisode })
+  },
   setSubtitleDisplayMode: (subtitleDisplayMode) => {
     try {
       localStorage.setItem(SUBTITLE_MODE_KEY, subtitleDisplayMode)
