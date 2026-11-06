@@ -9,6 +9,11 @@ interface SubtitleItem {
   text: string
 }
 
+// 字幕显示模式：all=全部（双语）、en=仅英文、zh=仅中文、off=隐藏悬浮字幕
+export type SubtitleDisplayMode = 'all' | 'en' | 'zh' | 'off'
+
+const SUBTITLE_MODE_KEY = 'aling.subtitleDisplayMode'
+
 interface PlayerStore {
   filePath: string | null
   playing: boolean
@@ -27,6 +32,7 @@ interface PlayerStore {
   waveformLoading: boolean
   subtitleOffset: number
   autoNextEpisode: boolean
+  subtitleDisplayMode: SubtitleDisplayMode
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -45,6 +51,7 @@ interface PlayerStore {
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
   setAutoNextEpisode: (v: boolean) => void
+  setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -67,6 +74,10 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   // 默认开启；localStorage 存 '0' 表示关闭
   autoNextEpisode:
     typeof localStorage === 'undefined' || localStorage.getItem(AUTO_NEXT_KEY) !== '0',
+  subtitleDisplayMode:
+    (typeof localStorage !== 'undefined' &&
+      (localStorage.getItem(SUBTITLE_MODE_KEY) as SubtitleDisplayMode)) ||
+    'all',
 
   setFilePath: (filePath) =>
     set({
@@ -128,5 +139,13 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       // 忽略持久化失败（如隐私模式）
     }
     set({ autoNextEpisode })
+  },
+  setSubtitleDisplayMode: (subtitleDisplayMode) => {
+    try {
+      localStorage.setItem(SUBTITLE_MODE_KEY, subtitleDisplayMode)
+    } catch {
+      // 忽略持久化失败（如隐私模式）
+    }
+    set({ subtitleDisplayMode })
   },
 }))
