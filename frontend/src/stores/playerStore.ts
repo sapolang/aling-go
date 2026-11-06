@@ -7,6 +7,11 @@ interface SubtitleItem {
   text: string
 }
 
+// 字幕显示模式：all=全部（双语）、en=仅英文、zh=仅中文、off=隐藏悬浮字幕
+export type SubtitleDisplayMode = 'all' | 'en' | 'zh' | 'off'
+
+const SUBTITLE_MODE_KEY = 'aling.subtitleDisplayMode'
+
 interface PlayerStore {
   filePath: string | null
   playing: boolean
@@ -24,6 +29,7 @@ interface PlayerStore {
   waveformData: number[]
   waveformLoading: boolean
   subtitleOffset: number
+  subtitleDisplayMode: SubtitleDisplayMode
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -41,6 +47,7 @@ interface PlayerStore {
   setWaveformData: (data: number[]) => void
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
+  setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -60,6 +67,10 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformData: [],
   waveformLoading: false,
   subtitleOffset: 0,
+  subtitleDisplayMode:
+    (typeof localStorage !== 'undefined' &&
+      (localStorage.getItem(SUBTITLE_MODE_KEY) as SubtitleDisplayMode)) ||
+    'all',
 
   setFilePath: (filePath) =>
     set({
@@ -114,4 +125,12 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((s) => ({
       subtitleOffset: Math.round(Math.min(5, Math.max(-5, s.subtitleOffset + delta)) * 10) / 10,
     })),
+  setSubtitleDisplayMode: (subtitleDisplayMode) => {
+    try {
+      localStorage.setItem(SUBTITLE_MODE_KEY, subtitleDisplayMode)
+    } catch {
+      // 忽略持久化失败（如隐私模式）
+    }
+    set({ subtitleDisplayMode })
+  },
 }))
