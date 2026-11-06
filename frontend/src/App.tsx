@@ -14,6 +14,7 @@ const Review = lazy(() => import('@/pages/ReviewPage'))
 const ArticleList = lazy(() => import('@/pages/ArticleList'))
 const ArticleTyping = lazy(() => import('@/pages/ArticleTyping'))
 const Stats = lazy(() => import('@/pages/StatsPage'))
+const Favorites = lazy(() => import('@/pages/Favorites'))
 
 function Loading() {
   return (
@@ -43,6 +44,7 @@ function AppContent() {
           <Route path="/articles" element={<ArticleList />} />
           <Route path="/articles/:id" element={<ArticleTyping />} />
           <Route path="/stats" element={<Stats />} />
+          <Route path="/favorites" element={<Favorites />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Suspense>

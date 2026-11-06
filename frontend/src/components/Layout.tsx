@@ -18,10 +18,12 @@ import {
   PanelLeft,
   Type,
   BarChart3,
+  Star,
 } from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '文件库', icon: Home },
+  { path: '/favorites', label: '收藏片段', icon: Star },
   { path: '/words', label: '生词库', icon: BookOpen },
   { path: '/dict', label: '单词书', icon: Library },
   { path: '/card', label: '卡片背诵', icon: FlipVertical },

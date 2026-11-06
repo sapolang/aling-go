@@ -10,6 +10,12 @@ interface SubtitleItem {
   text: string
 }
 
+interface PlayClipRequest {
+  filePath: string
+  startTime: number
+  endTime: number
+}
+
 // 字幕显示模式：all=全部（双语）、en=仅英文、zh=仅中文、off=隐藏悬浮字幕
 export type SubtitleDisplayMode = 'all' | 'en' | 'zh' | 'off'
 
@@ -32,6 +38,7 @@ interface PlayerStore {
   waveformData: number[]
   waveformLoading: boolean
   subtitleOffset: number
+  playClip: PlayClipRequest | null
   podcastMode: boolean
   autoNextEpisode: boolean
   subtitleDisplayMode: SubtitleDisplayMode
@@ -52,6 +59,7 @@ interface PlayerStore {
   setWaveformData: (data: number[]) => void
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
+  setPlayClip: (clip: PlayClipRequest | null) => void
   setPodcastMode: (v: boolean) => void
   setAutoNextEpisode: (v: boolean) => void
   setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
@@ -74,6 +82,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformData: [],
   waveformLoading: false,
   subtitleOffset: 0,
+  playClip: null,
   podcastMode:
     typeof localStorage !== 'undefined' && localStorage.getItem(PODCAST_MODE_KEY) === '1',
   // 默认开启；localStorage 存 '0' 表示关闭
@@ -137,6 +146,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((s) => ({
       subtitleOffset: Math.round(Math.min(5, Math.max(-5, s.subtitleOffset + delta)) * 10) / 10,
     })),
+  setPlayClip: (playClip) => set({ playClip }),
   setPodcastMode: (podcastMode) => {
     try {
       localStorage.setItem(PODCAST_MODE_KEY, podcastMode ? '1' : '0')

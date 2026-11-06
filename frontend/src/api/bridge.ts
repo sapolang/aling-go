@@ -81,6 +81,16 @@ import {
   SetWhisperLang,
   GetDownloadProgress,
 } from '../../bindings/aling-go/whisperservice'
+
+import {
+  FavoriteList,
+  FavoriteAdd,
+  FavoriteDelete,
+  FavoriteUpdateTag,
+  FavoriteTagsList,
+  FavoriteTagAdd,
+  FavoriteTagDelete,
+} from '../../bindings/aling-go/favoriteservice'
 import { Events } from '@wailsio/runtime'
 
 export function initBridge(): void {
@@ -208,5 +218,21 @@ export function initBridge(): void {
         return JSON.parse(s)
       }),
     addWordsBatch: (wordsJson: string) => AddWordsBatch(wordsJson),
+
+    favoriteList: (tagId: number) =>
+      FavoriteList(tagId).then((s: string) => {
+        if (!s) return []
+        return JSON.parse(s)
+      }),
+    favoriteAdd: (clip: any) => FavoriteAdd(JSON.stringify(clip)),
+    favoriteDelete: (id: number) => FavoriteDelete(id),
+    favoriteUpdateTag: (id: number, tagId: number) => FavoriteUpdateTag(id, tagId),
+    favoriteTagsList: () =>
+      FavoriteTagsList().then((s: string) => {
+        if (!s) return []
+        return JSON.parse(s)
+      }),
+    favoriteTagAdd: (name: string) => FavoriteTagAdd(name),
+    favoriteTagDelete: (id: number) => FavoriteTagDelete(id),
   } as any
 }
