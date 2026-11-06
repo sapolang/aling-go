@@ -67,13 +67,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Fetch tags
+        run: git fetch --tags --force origin
       - name: Generate release notes
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          # 手动触发且 tag 尚未拉取时退回 HEAD，避免脚本失败
-          if git rev-parse --verify "${TAG}" >/dev/null 2>&1; then REF="${TAG}"; else REF="HEAD"; fi
+          # 手动触发时 tag 可能还没推送到仓库，此时基于当前提交生成
+          if git rev-parse --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            REF="${TAG}"
+          else
+            REF="HEAD"
+            echo "::warning::tag ${TAG} 尚不存在，将基于当前提交生成说明"
+          fi
+          SHA=$(git rev-parse --short "${REF}")
           PREV=$(git describe --tags --abbrev=0 "${REF}^" 2>/dev/null || true)
-          if [ -n "$PREV" ]; then RANGE="${PREV}..${TAG}"; else RANGE="${TAG}"; fi
+          if [ -n "$PREV" ]; then RANGE="${PREV}..${REF}"; else RANGE="${REF}"; fi
           echo "Generating notes for ${RANGE} (previous tag: ${PREV:-none})"
           {
             echo "## 更新内容"
@@ -81,7 +89,7 @@ jobs:
             git log --no-merges --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" "${RANGE}"
             echo
             echo
-            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${RANGE}"
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV:-${SHA}}...${SHA}"
           } > release-notes.md
           cat release-notes.md
       - uses: softprops/action-gh-release@v2
