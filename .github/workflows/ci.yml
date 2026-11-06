@@ -10,45 +10,119 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
+  # 生成前端需要的 bindings（产物是 gitignored，CI 里必须现生成）
+  # Wails v3 依赖 cgo / 平台 SDK，Go 相关 job 保持在 macOS（官方支持平台）
+  bindings:
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+
+      # 缓存 wails3 二进制，避免每次从源码重编（关键路径上最慢的一段）
+      - name: Cache Wails CLI
+        id: cache-wails
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/wails3
+          key: ${{ runner.os }}-wails3-${{ hashFiles('go.sum') }}
+
+      - name: Install Wails CLI
+        if: steps.cache-wails.outputs.cache-hit != 'true'
+        run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+
+      - name: Generate bindings
+        run: wails3 generate bindings -ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wails-bindings
+          path: frontend/bindings
+          retention-days: 1
+
+  # Go 侧检查，与 bindings / 前端并行
+  go-checks:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # main.go 有 //go:embed frontend/dist，干净 checkout 没有该目录（gitignored），
+      # 先放个占位文件让 embed 匹配成功
+      - name: Stub frontend/dist for go:embed
+        run: mkdir -p frontend/dist && touch frontend/dist/index.html
+
+      - name: go vet
+        run: go vet ./...
+
+      # 官方 action 下载预编译二进制并缓存分析结果，替代原来的 go install 编译
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.15.0
+          args: --timeout=5m
+
+      - name: Cache govulncheck
+        id: cache-govulncheck
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/govulncheck
+          key: ${{ runner.os }}-govulncheck-latest
+
+      - name: Install govulncheck
+        if: steps.cache-govulncheck.outputs.cache-hit != 'true'
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: govulncheck
+        run: "$(go env GOPATH)/bin/govulncheck ./..."
+
+      - name: go test
+        run: go test ./...
+
+  # 前端检查，需要 bindings 产物
+  frontend-checks:
+    needs: bindings
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wails-bindings
+          path: frontend/bindings
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '26'
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install Wails CLI (pinned to go.mod)
-        run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+
       - name: Install frontend deps
         run: npm ci
         working-directory: frontend
-      - name: Generate bindings
-        run: wails3 generate bindings -ts
+
       - name: Typecheck & build frontend
         run: npm run build
         working-directory: frontend
+
       - name: Frontend lint
         run: npm run lint
         working-directory: frontend
+
       - name: Prettier check
         run: npm run format:check
         working-directory: frontend
-      - name: go vet
-        run: go vet ./...
-      - name: golangci-lint
-        run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
-          "$(go env GOPATH)/bin/golangci-lint" run
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       - name: npm audit (production deps)
         run: npm audit --omit=dev --audit-level=high
         working-directory: frontend
-      - name: go test
-        run: go test ./...
