@@ -4,6 +4,7 @@ go 1.26.10
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/sashabaranov/go-openai v1.43.0
 	github.com/wailsapp/wails/v3 v3.1.0
 	modernc.org/sqlite v1.54.0
 )

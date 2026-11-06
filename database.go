@@ -90,6 +90,15 @@ func createTables() error {
 			created_at TEXT DEFAULT (datetime('now','localtime'))
 		);
 		CREATE INDEX IF NOT EXISTS idx_favorite_clips_tag ON favorite_clips(tag_id);
+		CREATE TABLE IF NOT EXISTS ai_translations (
+			hash TEXT PRIMARY KEY,
+			kind TEXT NOT NULL DEFAULT 'translate',
+			model TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL,
+			target TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now','localtime'))
+		);
+		CREATE INDEX IF NOT EXISTS idx_ai_translations_created ON ai_translations(created_at);
 	`)
 	return err
 }
