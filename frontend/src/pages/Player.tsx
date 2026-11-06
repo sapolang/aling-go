@@ -27,6 +27,9 @@ import {
   Globe,
   Star,
   Headphones,
+  Sparkles,
+  Languages,
+  BookOpen,
 } from 'lucide-react'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
@@ -71,6 +74,107 @@ export default function PlayerPage() {
   const [favTags, setFavTags] = useState<{ id: number; name: string }[]>([])
   const [favTagId, setFavTagId] = useState(0)
   const [favNewTag, setFavNewTag] = useState('')
+
+  // --- AI 选句翻译 / 详解 ---
+  const [selPop, setSelPop] = useState<{
+    text: string
+    context: string
+    x: number
+    y: number
+  } | null>(null)
+  const [aiTranslate, setAiTranslate] = useState<{
+    reqId: string
+    text: string
+    loading: boolean
+    error?: string
+  } | null>(null)
+  const [aiExplain, setAiExplain] = useState<{
+    loading: boolean
+    error?: string
+    data?: any
+    text?: string
+  } | null>(null)
+  const aiReqRef = useRef(0)
+  const aiActiveReq = useRef('')
+
+  useEffect(() => {
+    if (!isActive) return
+    const onMouseUp = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      // 点击浮层自身不算重新选区
+      if (target?.closest('[data-ai-pop]')) return
+      const sel = window.getSelection()
+      const raw = sel?.toString().trim() ?? ''
+      if (!raw || raw.length < 2) {
+        setSelPop(null)
+        return
+      }
+      const range = sel?.rangeCount ? sel.getRangeAt(0) : null
+      if (!range) return
+      const rect = range.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) return
+      const cur = store.subtitles[store.currentSubtitleIndex]
+      setSelPop({
+        text: raw,
+        context: cur ? cur.text : '',
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+      })
+      setAiTranslate(null)
+      setAiExplain(null)
+    }
+    document.addEventListener('mouseup', onMouseUp)
+    return () => document.removeEventListener('mouseup', onMouseUp)
+  }, [isActive, store.subtitles, store.currentSubtitleIndex])
+
+  useEffect(() => {
+    const offChunk = window.api.aiOnChunk(({ reqId, delta }: any) => {
+      if (reqId !== aiActiveReq.current) return
+      setAiTranslate((s) => (s ? { ...s, text: s.text + delta, loading: true } : s))
+    })
+    const offDone = window.api.aiOnDone(({ reqId, text, error }: any) => {
+      if (reqId !== aiActiveReq.current) return
+      setAiTranslate({ reqId, text: text || '', loading: false, error })
+    })
+    return () => {
+      offChunk()
+      offDone()
+    }
+  }, [])
+
+  const ensureAIConfig = async () => {
+    const cfg = await window.api.aiGetConfig()
+    if (!cfg.hasKey) {
+      setSelPop(null)
+      alert('请先在「设置 → AI 翻译」中填写 API Key')
+      navigate('/settings')
+      return false
+    }
+    return true
+  }
+
+  const handleAITranslate = async () => {
+    if (!selPop || !(await ensureAIConfig())) return
+    const id = `t${++aiReqRef.current}`
+    aiActiveReq.current = id
+    setAiExplain(null)
+    setAiTranslate({ reqId: id, text: '', loading: true })
+    const r = await window.api.aiTranslateStream(selPop.text, selPop.context, id)
+    if (r.error) {
+      setAiTranslate((s) => (s ? { ...s, loading: false, error: r.error } : s))
+      return
+    }
+    if (r.cached) setAiTranslate({ reqId: id, text: r.text, loading: false })
+  }
+
+  const handleAIExplain = async () => {
+    if (!selPop || !(await ensureAIConfig())) return
+    setAiTranslate(null)
+    setAiExplain({ loading: true, text: selPop.text })
+    const r = await window.api.aiExplain(selPop.text, selPop.context)
+    if (!r.ok) setAiExplain({ loading: false, error: r.error, text: selPop.text })
+    else setAiExplain({ loading: false, data: r.data, text: selPop.text })
+  }
 
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
   const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
@@ -962,6 +1066,132 @@ export default function PlayerPage() {
                 </Button>
               </div>
             </Card>
+          </div>
+        )}
+
+        {/* AI 选句操作浮层 */}
+        {selPop && (
+          <div
+            data-ai-pop
+            className="fixed z-40 -translate-x-1/2 -translate-y-full"
+            style={{ left: selPop.x, top: selPop.y - 8 }}
+          >
+            <Card className="p-2 shadow-lg">
+              <p className="text-xs text-muted-foreground max-w-[320px] line-clamp-2 mb-2 px-1">
+                {selPop.text}
+              </p>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={handleAITranslate}>
+                  <Languages className="h-3.5 w-3.5 mr-1" /> 翻译
+                </Button>
+                <Button size="sm" onClick={handleAIExplain}>
+                  <BookOpen className="h-3.5 w-3.5 mr-1" /> 详解
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelPop(null)}>
+                  <XIcon className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {(aiTranslate || aiExplain?.loading) && (
+                <div className="mt-2 px-1 max-w-[320px]">
+                  {aiTranslate && (
+                    <>
+                      {aiTranslate.loading && !aiTranslate.text && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" /> 翻译中...
+                        </span>
+                      )}
+                      {aiTranslate.text && (
+                        <p className="text-sm leading-snug whitespace-pre-wrap">
+                          {aiTranslate.text}
+                        </p>
+                      )}
+                      {aiTranslate.error && (
+                        <p className="text-xs text-destructive">{aiTranslate.error}</p>
+                      )}
+                    </>
+                  )}
+                  {aiExplain?.loading && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> 生成详解...
+                    </span>
+                  )}
+                  {aiExplain?.error && (
+                    <p className="text-xs text-destructive">{aiExplain.error}</p>
+                  )}
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* AI 详解抽屉 */}
+        {aiExplain?.data && (
+          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setAiExplain(null)}>
+            <div
+              className="absolute right-0 top-0 h-full w-[420px] max-w-[92vw] bg-background border-l shadow-xl overflow-y-auto p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Sparkles className="h-5 w-5" /> AI 详解
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setAiExplain(null)}>
+                  <XIcon className="h-4 w-4" />
+                </Button>
+              </div>
+              {aiExplain.text && (
+                <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                  {aiExplain.text}
+                </p>
+              )}
+              <div className="space-y-4">
+                <section>
+                  <h4 className="text-xs font-medium text-muted-foreground mb-1">译文</h4>
+                  <p className="text-base leading-relaxed">{aiExplain.data.translation}</p>
+                </section>
+                {aiExplain.data.grammar && (
+                  <section>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-1">语法结构</h4>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {aiExplain.data.grammar}
+                    </p>
+                  </section>
+                )}
+                {Array.isArray(aiExplain.data.keywords) && aiExplain.data.keywords.length > 0 && (
+                  <section>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-1.5">关键词</h4>
+                    <div className="space-y-2">
+                      {aiExplain.data.keywords.map((k: any, i: number) => (
+                        <div key={i} className="rounded border p-2">
+                          <p className="text-sm font-medium">
+                            {k.word}
+                            <span className="text-muted-foreground font-normal">
+                              {' '}
+                              — {k.meaning}
+                            </span>
+                          </p>
+                          {k.note && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{k.note}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {aiExplain.data.context && (
+                  <section>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-1">语境</h4>
+                    <p className="text-sm leading-relaxed">{aiExplain.data.context}</p>
+                  </section>
+                )}
+                {aiExplain.data.pitfalls && (
+                  <section>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-1">易错点</h4>
+                    <p className="text-sm leading-relaxed">{aiExplain.data.pitfalls}</p>
+                  </section>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

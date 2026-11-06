@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useThemeStore } from '@/stores/themeStore'
-import { Sun, Moon, Download, Upload, Trash2, AlertTriangle, Mic, Loader2 } from 'lucide-react'
+import {
+  Sun,
+  Moon,
+  Download,
+  Upload,
+  Trash2,
+  AlertTriangle,
+  Mic,
+  Loader2,
+  Sparkles,
+} from 'lucide-react'
 
 interface ExportedWord {
   word: string
@@ -32,6 +43,16 @@ export default function SettingsPage() {
   const [selectedModel, setSelectedModel] = useState('tiny')
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
+
+  // --- AI 翻译配置 ---
+  const [aiCfg, setAiCfg] = useState<{ baseUrl: string; model: string; hasKey: boolean } | null>(
+    null,
+  )
+  const [aiBaseURL, setAiBaseURL] = useState('')
+  const [aiModel, setAiModel] = useState('')
+  const [aiKey, setAiKey] = useState('')
+  const [aiTesting, setAiTesting] = useState(false)
+  const [aiTestMsg, setAiTestMsg] = useState<{ ok: boolean; message: string } | null>(null)
 
   const handleExport = async () => {
     try {
@@ -96,6 +117,12 @@ export default function SettingsPage() {
     })
     window.api.listWhisperModels().then(setWhisperModels)
 
+    window.api.aiGetConfig().then((cfg: any) => {
+      setAiCfg(cfg)
+      setAiBaseURL(cfg.baseUrl)
+      setAiModel(cfg.model)
+    })
+
     let resumeCleanup: (() => void) | null = null
     window.api.getDownloadProgress().then((d: string) => {
       if (d) {
@@ -130,6 +157,33 @@ export default function SettingsPage() {
       cleanup()
       setDownloading(false)
     }
+  }
+
+  const handleAISave = async () => {
+    const err = await window.api.aiSetConfig({ baseUrl: aiBaseURL, model: aiModel, apiKey: aiKey })
+    if (err) {
+      alert(err)
+      return
+    }
+    setAiKey('')
+    setAiCfg(await window.api.aiGetConfig())
+    alert('已保存')
+  }
+
+  const handleAITest = async () => {
+    setAiTesting(true)
+    setAiTestMsg(null)
+    const err = await window.api.aiSetConfig({ baseUrl: aiBaseURL, model: aiModel, apiKey: aiKey })
+    if (err) {
+      setAiTesting(false)
+      setAiTestMsg({ ok: false, message: err })
+      return
+    }
+    setAiKey('')
+    setAiCfg(await window.api.aiGetConfig())
+    const r = await window.api.aiTest()
+    setAiTestMsg(r)
+    setAiTesting(false)
   }
 
   const handleClear = async () => {
@@ -223,6 +277,59 @@ export default function SettingsPage() {
               </div>
             )
           })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Sparkles className="h-5 w-5" /> AI 翻译
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            用于播放器选句翻译与句子详解。兼容 OpenAI 协议的接口都可以接入（DeepSeek / 通义 / Kimi /
+            本地 Ollama）。
+          </p>
+          <div>
+            <label className="text-sm font-medium">接口地址</label>
+            <Input
+              value={aiBaseURL}
+              onChange={(e) => setAiBaseURL(e.target.value)}
+              placeholder="https://api.deepseek.com/v1"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">模型</label>
+            <Input
+              value={aiModel}
+              onChange={(e) => setAiModel(e.target.value)}
+              placeholder="deepseek-chat"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">API Key</label>
+            <Input
+              type="password"
+              value={aiKey}
+              onChange={(e) => setAiKey(e.target.value)}
+              placeholder={aiCfg?.hasKey ? '已配置，留空则不修改' : 'sk-...'}
+              className="mt-1"
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button onClick={handleAISave}>保存</Button>
+            <Button variant="outline" disabled={aiTesting} onClick={handleAITest}>
+              {aiTesting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} 测试连接
+            </Button>
+            {aiTestMsg && (
+              <span className={`text-xs ${aiTestMsg.ok ? 'text-green-600' : 'text-destructive'}`}>
+                {aiTestMsg.message}
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
