@@ -5,8 +5,6 @@ version: "2"
 run:
   timeout: 5m
   tests: false
-  exclude-dirs:
-    - node_modules
 
 linters:
   default: standard
@@ -32,8 +30,6 @@ linters:
       min-complexity: 30
     misspell:
       locale: US
-      ignore-words:
-        - cancelled
     revive:
       rules:
         - name: unreachable-code
