@@ -30,7 +30,7 @@ func (s *FavoriteService) ServiceShutdown() error { return nil }
 func (s *FavoriteService) FavoriteList(tagID int) string {
 	query := `
 		SELECT c.id, c.file_path, c.start_time, c.end_time, c.text, c.tag_id,
-		       COALESCE(t.name, ''), c.created_at
+		       COALESCE(t.name, ''), c.word, c.review_count, c.last_reviewed_at, c.next_review, c.created_at
 		FROM favorite_clips c
 		LEFT JOIN favorite_tags t ON t.id = c.tag_id
 	`
@@ -51,7 +51,7 @@ func (s *FavoriteService) FavoriteList(tagID int) string {
 	for rows.Next() {
 		var c FavoriteClip
 		if err := rows.Scan(&c.ID, &c.FilePath, &c.StartTime, &c.EndTime,
-			&c.Text, &c.TagID, &c.TagName, &c.CreatedAt); err != nil {
+			&c.Text, &c.TagID, &c.TagName, &c.Word, &c.ReviewCount, &c.LastReviewedAt, &c.NextReview, &c.CreatedAt); err != nil {
 			continue
 		}
 		c.FileName = filepath.Base(c.FilePath)
@@ -72,8 +72,8 @@ func (s *FavoriteService) FavoriteAdd(clipJSON string) int {
 		return 0
 	}
 	res, err := db.Exec(
-		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id) VALUES (?,?,?,?,?)",
-		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID,
+		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id, word) VALUES (?,?,?,?,?,?)",
+		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID, c.Word,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteAdd: %v\n", err)
@@ -93,6 +93,34 @@ func (s *FavoriteService) FavoriteDelete(id int) {
 func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
 	if _, err := db.Exec("UPDATE favorite_clips SET tag_id=? WHERE id=?", tagID, id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteUpdateTag: %v\n", err)
+	}
+}
+
+// FavoriteReview 记录一次片段复习并按三档自评安排下次复习
+// rating: 1=不认识（当天再复习）, 2=模糊（1 天后）, 3=认识（按复习次数递增）
+func (s *FavoriteService) FavoriteReview(id int, rating int) {
+	var reviewCount int
+	if err := db.QueryRow("SELECT COALESCE(review_count, 0) FROM favorite_clips WHERE id=?", id).Scan(&reviewCount); err != nil {
+		fmt.Fprintf(os.Stderr, "FavoriteReview: %v\n", err)
+		return
+	}
+	var days int
+	switch rating {
+	case 1:
+		days = 0
+	case 2:
+		days = 1
+	default:
+		days = 3 * (reviewCount + 1)
+		if days > 60 {
+			days = 60
+		}
+	}
+	if _, err := db.Exec(
+		"UPDATE favorite_clips SET review_count = COALESCE(review_count, 0) + 1, last_reviewed_at = datetime('now','localtime'), next_review = date('now','localtime', ?) WHERE id=?",
+		fmt.Sprintf("+%d days", days), id,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "FavoriteReview update: %v\n", err)
 	}
 }
 

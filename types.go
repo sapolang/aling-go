@@ -136,15 +136,19 @@ type DictAddResult struct {
 }
 
 type FavoriteClip struct {
-	ID        int     `json:"id"`
-	FilePath  string  `json:"filePath"`
-	FileName  string  `json:"fileName"`
-	StartTime float64 `json:"startTime"`
-	EndTime   float64 `json:"endTime"`
-	Text      string  `json:"text"`
-	TagID     int     `json:"tagId"`
-	TagName   string  `json:"tagName"`
-	CreatedAt string  `json:"createdAt"`
+	ID             int     `json:"id"`
+	FilePath       string  `json:"filePath"`
+	FileName       string  `json:"fileName"`
+	StartTime      float64 `json:"startTime"`
+	EndTime        float64 `json:"endTime"`
+	Text           string  `json:"text"`
+	TagID          int     `json:"tagId"`
+	TagName        string  `json:"tagName"`
+	Word           string  `json:"word"`
+	ReviewCount    int     `json:"reviewCount"`
+	LastReviewedAt string  `json:"lastReviewedAt"`
+	NextReview     string  `json:"nextReview"`
+	CreatedAt      string  `json:"createdAt"`
 }
 
 type FavoriteTag struct {

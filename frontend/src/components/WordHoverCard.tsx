@@ -17,6 +17,7 @@ interface Props {
   anchor: DOMRect
   onMouseEnter: () => void
   onMouseLeave: () => void
+  onAdded?: () => void
 }
 
 // ECDICT 标签码 → 中文考试标签
@@ -49,6 +50,7 @@ export default function WordHoverCard({
   anchor,
   onMouseEnter,
   onMouseLeave,
+  onAdded,
 }: Props) {
   const [loading, setLoading] = useState(true)
   const [entry, setEntry] = useState<DictEntry | null>(null)
@@ -101,7 +103,10 @@ export default function WordHoverCard({
       efactor: 2.5,
       interval: 0,
     })
-    if (id) setAdded(true)
+    if (id) {
+      setAdded(true)
+      onAdded?.()
+    }
   }
 
   const width = 320
