@@ -62,7 +62,7 @@ func initProgressTable() error {
 	return err
 }
 
-// Lookup 在 mini_dict 中查询单词：先精确匹配（大小写不敏感），
+// Lookup 在 entries 表中查询单词：先用小写 word_key 精确匹配，
 // 再对常见词形变化（复数、过去式、现在分词等）做简单还原回退。
 // 未命中时返回 nil。
 func Lookup(word string) *DictWord {
@@ -102,7 +102,7 @@ func Lookup(word string) *DictWord {
 	for _, c := range candidates {
 		var dw DictWord
 		err := dictDB.QueryRow(
-			"SELECT word, phonetic, translation, definition, pos, tag FROM mini_dict WHERE word = ? COLLATE NOCASE LIMIT 1",
+			"SELECT word, phonetic, translation, '' AS definition, '' AS pos, tags AS tag FROM entries WHERE word_key = ? LIMIT 1",
 			c,
 		).Scan(&dw.Word, &dw.Phonetic, &dw.Translation, &dw.Definition, &dw.Pos, &dw.Tag)
 		if err == nil {
@@ -113,7 +113,7 @@ func Lookup(word string) *DictWord {
 }
 
 func GetTags() ([]DictTag, error) {
-	rows, err := dictDB.Query("SELECT tag FROM mini_dict")
+	rows, err := dictDB.Query("SELECT tags FROM entries")
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func GetWordsByTag(tag string) ([]DictWord, error) {
 	likeTag := strings.ReplaceAll(tag, "%", "\\%")
 	likeTag = strings.ReplaceAll(likeTag, "_", "\\_")
 	rows, err := dictDB.Query(
-		"SELECT word, phonetic, translation, definition, pos, tag FROM mini_dict WHERE tag LIKE ? ESCAPE '\\' ORDER BY word",
+		"SELECT word, phonetic, translation, '' AS definition, '' AS pos, tags AS tag FROM entries WHERE tags LIKE ? ESCAPE '\\' ORDER BY word",
 		"%"+likeTag+"%",
 	)
 	if err != nil {
