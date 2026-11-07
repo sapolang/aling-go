@@ -89,6 +89,7 @@ func migrateFavoriteClips() {
 		{"word", "TEXT DEFAULT ''"},
 		{"review_count", "INTEGER DEFAULT 0"},
 		{"last_reviewed_at", "TEXT DEFAULT ''"},
+		{"next_review", "TEXT DEFAULT ''"},
 	}
 	for _, c := range cols {
 		_, _ = db.Exec("ALTER TABLE favorite_clips ADD COLUMN " + c.name + " " + c.def)

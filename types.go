@@ -147,6 +147,7 @@ type FavoriteClip struct {
 	Word           string  `json:"word"`
 	ReviewCount    int     `json:"reviewCount"`
 	LastReviewedAt string  `json:"lastReviewedAt"`
+	NextReview     string  `json:"nextReview"`
 	CreatedAt      string  `json:"createdAt"`
 }
 

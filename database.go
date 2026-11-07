@@ -90,6 +90,7 @@ func createTables() error {
 			word TEXT DEFAULT '',
 			review_count INTEGER DEFAULT 0,
 			last_reviewed_at TEXT DEFAULT '',
+			next_review TEXT DEFAULT '',
 			created_at TEXT DEFAULT (datetime('now','localtime'))
 		);
 		CREATE INDEX IF NOT EXISTS idx_favorite_clips_tag ON favorite_clips(tag_id);
