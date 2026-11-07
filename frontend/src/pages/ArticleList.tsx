@@ -38,7 +38,7 @@ export default function ArticleListPage() {
   const getProgress = (articleId: number) => allProgress[`${articleId}_follow`]
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pt-4">
+    <div className="max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-6 pt-4">
       <div className="flex items-center gap-2 mb-4">
         <BookOpen className="h-5 w-5 text-muted-foreground" />
         <h2 className="text-lg font-semibold">文章打字</h2>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { showToast } from '@/components/feedback'
 import { useThemeStore } from '@/stores/themeStore'
 import {
   Sun,
@@ -62,10 +63,10 @@ export default function SettingsPage() {
       )
       if (filePath) {
         await window.api.writeTextFile(filePath, jsonStr)
-        alert('导出成功！')
+        showToast('导出成功！')
       }
     } catch (err) {
-      alert('导出失败: ' + err)
+      showToast('导出失败: ' + err, 'error')
     }
   }
 
@@ -90,10 +91,10 @@ export default function SettingsPage() {
       )
       if (filePath) {
         await window.api.writeTextFile(filePath, csv)
-        alert('导出成功，可直接在 Anki 中导入')
+        showToast('导出成功，可直接在 Anki 中导入')
       }
     } catch (err) {
-      alert('导出失败: ' + err)
+      showToast('导出失败: ' + err, 'error')
     }
   }
 
@@ -105,7 +106,7 @@ export default function SettingsPage() {
       const result = await window.api.dbImport(content)
       setImportResult(`导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条（已存在）`)
     } catch (err) {
-      alert('导入失败: ' + err)
+      showToast('导入失败: ' + err, 'error')
     }
   }
 
@@ -152,7 +153,7 @@ export default function SettingsPage() {
       setWhisperStatus(status)
       window.api.listWhisperModels().then(setWhisperModels)
     } catch (err: any) {
-      alert('下载失败: ' + (err?.message || String(err)))
+      showToast('下载失败: ' + (err?.message || String(err)), 'error')
     } finally {
       cleanup()
       setDownloading(false)
@@ -162,12 +163,12 @@ export default function SettingsPage() {
   const handleAISave = async () => {
     const err = await window.api.aiSetConfig({ baseUrl: aiBaseURL, model: aiModel, apiKey: aiKey })
     if (err) {
-      alert(err)
+      showToast(err, 'error')
       return
     }
     setAiKey('')
     setAiCfg(await window.api.aiGetConfig())
-    alert('已保存')
+    showToast('已保存')
   }
 
   const handleAITest = async () => {
@@ -189,11 +190,11 @@ export default function SettingsPage() {
   const handleClear = async () => {
     await window.api.dbClear()
     setShowConfirm(false)
-    alert('已清空全部数据')
+    showToast('已清空全部数据')
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl lg:max-w-3xl xl:max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold">设置</h1>
 
       <Card>
@@ -201,7 +202,7 @@ export default function SettingsPage() {
           <CardTitle className="text-lg">外观</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium">{dark ? '暗色模式' : '亮色模式'}</p>
               <p className="text-sm text-muted-foreground">切换应用亮暗主题</p>
@@ -228,8 +229,8 @@ export default function SettingsPage() {
                 key={m.name}
                 className={`px-3 py-2 rounded text-sm ${active ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/50'}`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <span className="font-medium capitalize">{m.name}</span>
                     <span className="text-muted-foreground">{m.size}</span>
                     {m.downloaded && (
@@ -338,7 +339,7 @@ export default function SettingsPage() {
           <CardTitle className="text-lg">数据备份</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium">导出生词库</p>
               <p className="text-sm text-muted-foreground">将全部生词数据导出为 JSON 文件</p>
@@ -347,7 +348,7 @@ export default function SettingsPage() {
               <Download className="h-4 w-4 mr-1" /> 导出
             </Button>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium">导出为 CSV（Anki 兼容）</p>
               <p className="text-sm text-muted-foreground">
@@ -358,7 +359,7 @@ export default function SettingsPage() {
               <Download className="h-4 w-4 mr-1" /> CSV
             </Button>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium">导入生词库</p>
               <p className="text-sm text-muted-foreground">从 JSON 文件恢复生词数据，自动去重</p>
@@ -379,7 +380,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           {!showConfirm ? (
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <p className="font-medium">清空全部数据</p>
                 <p className="text-sm text-muted-foreground">删除所有生词和标签，此操作不可恢复</p>
@@ -390,7 +391,7 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-destructive">
+              <div className="flex items-center gap-2 text-destructive flex-wrap">
                 <AlertTriangle className="h-5 w-5" />
                 <p className="font-medium">确定要清空全部数据吗？此操作不可恢复！</p>
               </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useWordStore } from '@/stores/wordStore'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { gradeOptions, sm2, srsIntervalLabel } from '@/lib/srs'
 import { Speaker, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
 
 export default function WordCardPage() {
+  const navigate = useNavigate()
   const { reviewWords, reviewTotal, reviewCompleted, loadReview, updateWord, incrementCompleted } =
     useWordStore()
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -66,6 +68,11 @@ export default function WordCardPage() {
         quality,
       )
       await updateWord(current.id, {
+        word: current.word,
+        definition: current.definition,
+        phonetic: current.phonetic,
+        example: current.example,
+        tags: current.tags,
         level: quality === 1 ? 1 : quality === 3 ? 2 : 3,
         next_review: nextReview,
         repetitions: newRepetitions,
@@ -137,10 +144,13 @@ export default function WordCardPage() {
 
   if (reviewWords.length === 0 && reviewCompleted === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Card className="p-12 text-center">
+      <div className="flex items-center justify-center h-full px-4">
+        <Card className="p-8 sm:p-12 text-center">
           <p className="text-lg text-muted-foreground mb-2">今日没有待复习的词条</p>
-          <p className="text-sm text-muted-foreground">前往播放器学习新词或浏览生词库</p>
+          <p className="text-sm text-muted-foreground mb-4">前往播放器学习新词或浏览生词库</p>
+          <Button variant="outline" onClick={() => navigate('/dict')}>
+            去词库浏览
+          </Button>
         </Card>
       </div>
     )
@@ -148,10 +158,19 @@ export default function WordCardPage() {
 
   if (reviewWords.length === 0 && reviewCompleted > 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Card className="p-12 text-center">
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-4">
+        <Card className="p-8 sm:p-12 text-center">
           <p className="text-2xl font-bold mb-2">今日复习完成</p>
           <p className="text-lg text-muted-foreground mb-4">本次复习了 {reviewCompleted} 个词</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              loadReview()
+              setCurrentIndex(0)
+            }}
+          >
+            再来一轮
+          </Button>
         </Card>
       </div>
     )
@@ -160,7 +179,7 @@ export default function WordCardPage() {
   const progressPct = reviewTotal > 0 ? (reviewCompleted / reviewTotal) * 100 : 0
 
   return (
-    <div className="max-w-lg mx-auto space-y-4 pt-6">
+    <div className="max-w-lg lg:max-w-3xl xl:max-w-5xl 2xl:max-w-6xl mx-auto space-y-4 pt-6 px-1">
       <div className="space-y-1">
         <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
           <div
@@ -173,110 +192,104 @@ export default function WordCardPage() {
         </p>
       </div>
 
-      <div
-        className="cursor-pointer"
-        style={{ perspective: '1000px' }}
-        onClick={() => setFlipped(!flipped)}
-      >
-        <div
-          className="transition-transform duration-500 relative"
+      <div className="cursor-pointer" onClick={() => setFlipped(!flipped)}>
+        <Card
+          key={flipped ? 'back' : 'front'}
+          className="relative overflow-hidden shadow-none"
           style={{
-            transformStyle: 'preserve-3d',
-            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-            minHeight: '360px',
+            minHeight: 'clamp(280px, 45vh, 380px)',
+            animation: 'word-card-flip 260ms ease-out',
           }}
         >
-          <Card
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ backfaceVisibility: 'hidden' }}
-          >
-            <CardContent className="text-center p-8">
-              <h2 className="text-5xl font-bold mb-3">{current.word}</h2>
-              {current.phonetic && (
-                <p className="text-xl text-muted-foreground mb-6">/{current.phonetic}/</p>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  speak(current.word)
-                }}
-              >
-                <Speaker className="h-4 w-4 mr-1" /> 朗读
-              </Button>
-              <p className="text-xs text-muted-foreground mt-6">空格翻面 · ← → Enter 导航</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="absolute inset-0 overflow-hidden"
-            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
-          >
-            <CardContent className="text-center p-8 space-y-3 overflow-y-auto max-h-full">
-              <h2 className="text-2xl font-bold">{current.word}</h2>
-              {current.phonetic && (
-                <p className="text-sm text-muted-foreground">/{current.phonetic}/</p>
-              )}
-              <p className="text-xl font-semibold text-primary break-words">{current.definition}</p>
-              {current.example && (
-                <p className="text-base text-muted-foreground italic">"{current.example}"</p>
-              )}
-              {current.tags && (
-                <div className="flex justify-center gap-1 flex-wrap">
-                  {current.tags.split(',').map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag.trim()}
-                    </Badge>
-                  ))}
+          {!flipped ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <CardContent className="text-center p-6 sm:p-8">
+                <h2 className="text-4xl sm:text-5xl font-bold mb-3 break-all">{current.word}</h2>
+                {current.phonetic && (
+                  <p className="text-xl text-muted-foreground mb-6">/{current.phonetic}/</p>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    speak(current.word)
+                  }}
+                >
+                  <Speaker className="h-4 w-4 mr-1" /> 朗读
+                </Button>
+                <p className="text-xs text-muted-foreground mt-6">空格翻面 · ← → Enter 导航</p>
+              </CardContent>
+            </div>
+          ) : (
+            <div className="absolute inset-0 overflow-y-auto">
+              <CardContent className="text-center p-6 sm:p-8 space-y-3">
+                <h2 className="text-2xl font-bold break-all">{current.word}</h2>
+                {current.phonetic && (
+                  <p className="text-sm text-muted-foreground">/{current.phonetic}/</p>
+                )}
+                <p className="text-xl font-semibold text-primary break-words">
+                  {current.definition}
+                </p>
+                {current.example && (
+                  <p className="text-base text-muted-foreground italic">"{current.example}"</p>
+                )}
+                {current.tags && (
+                  <div className="flex justify-center gap-1 flex-wrap">
+                    {current.tags.split(',').map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        {tag.trim()}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-3 border-t border-border">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">
+                      写一写{' '}
+                      {writeCount > 0 && (
+                        <span className="text-green-500 font-medium">{writeCount} ✓</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 justify-center">
+                    <Input
+                      ref={writeRef}
+                      className={`w-40 h-8 text-center text-sm transition-colors ${writeError ? 'border-red-500 bg-red-50' : ''}`}
+                      placeholder="拼写单词"
+                      value={writeInput}
+                      onChange={(e) => {
+                        setWriteInput(e.target.value)
+                        setWriteError(false)
+                      }}
+                      onKeyDown={(e) => {
+                        e.stopPropagation()
+                        if (e.key === 'Enter') handleWrite()
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleWrite()
+                      }}
+                    >
+                      确认
+                    </Button>
+                  </div>
                 </div>
-              )}
-              <div className="pt-3 border-t border-border">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">
-                    写一写{' '}
-                    {writeCount > 0 && (
-                      <span className="text-green-500 font-medium">{writeCount} ✓</span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex gap-2 justify-center">
-                  <Input
-                    ref={writeRef}
-                    className={`w-40 h-8 text-center text-sm transition-colors ${writeError ? 'border-red-500 bg-red-50' : ''}`}
-                    placeholder="拼写单词"
-                    value={writeInput}
-                    onChange={(e) => {
-                      setWriteInput(e.target.value)
-                      setWriteError(false)
-                    }}
-                    onKeyDown={(e) => {
-                      e.stopPropagation()
-                      if (e.key === 'Enter') handleWrite()
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleWrite()
-                    }}
-                  >
-                    确认
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </div>
+          )}
+        </Card>
       </div>
 
       <div
-        className={`flex gap-3 justify-center transition-all duration-200 ${
+        className={`flex gap-3 justify-center flex-wrap transition-all duration-200 ${
           showButtons ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
@@ -294,7 +307,7 @@ export default function WordCardPage() {
         ))}
       </div>
 
-      <div className="flex justify-center gap-4">
+      <div className="flex justify-center gap-4 flex-wrap">
         <Button
           variant="outline"
           size="sm"

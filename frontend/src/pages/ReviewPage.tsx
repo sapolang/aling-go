@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useDictStore, DictWord } from '@/stores/dictStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { confirmDialog } from '@/components/feedback'
 import { speak } from '@/lib/tts'
 import { ChevronLeft, ThumbsUp, ThumbsDown, Plus, BookOpen, Speaker, Pencil } from 'lucide-react'
 
@@ -76,16 +77,30 @@ export default function ReviewPage() {
     setAddedSet((prev) => new Set(prev).add(word.word))
   }
 
-  const handleBack = async (resetProgress?: boolean) => {
+  const handleBack = async (resetProgress?: boolean, target = '/dict') => {
     if (resetProgress && tag) {
       await window.api.dbDictSaveProgress(tag, 0)
     }
     if (unknownWords.size > 0) {
-      if (window.confirm(`还有 ${unknownWords.size} 个不认识的词，是否添加到词库？`)) {
-        await addAllUnknown()
-      }
+      const ok = await confirmDialog({
+        title: '还有不认识的词',
+        description: `还有 ${unknownWords.size} 个不认识的词，是否添加到生词库？`,
+        confirmText: '添加到生词库',
+        cancelText: '直接返回',
+      })
+      if (ok) await addAllUnknown()
     }
-    navigate('/dict')
+    navigate(target)
+  }
+
+  const handleUnknown = () => {
+    markUnknown()
+    setFlipped(false)
+  }
+
+  const handleKnown = () => {
+    markKnown()
+    setFlipped(false)
   }
 
   useEffect(() => {
@@ -112,16 +127,14 @@ export default function ReviewPage() {
         if (tag) window.api.dbDictSaveProgress(tag, newIdx)
         return
       }
-      if (e.key === '1') {
+      if (e.key === '1' && flipped) {
         e.preventDefault()
-        markUnknown()
-        setFlipped(false)
+        handleUnknown()
         return
       }
-      if (e.key === '2') {
+      if (e.key === '2' && flipped) {
         e.preventDefault()
-        markKnown()
-        setFlipped(false)
+        handleKnown()
         return
       }
       if (e.key === '3' && current) {
@@ -159,13 +172,18 @@ export default function ReviewPage() {
         <p className="text-muted-foreground">
           认识 {knownWords.size} 词 · 不认识 {unknownWords.size} 词
         </p>
-        <Button onClick={() => handleBack(true)}>返回单词书</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => handleBack(true)}>
+            返回词库浏览
+          </Button>
+          <Button onClick={() => handleBack(true, '/card')}>去今日复习</Button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl lg:max-w-3xl xl:max-w-4xl mx-auto space-y-6">
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => handleBack()}>
@@ -271,12 +289,24 @@ export default function ReviewPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex justify-center gap-4">
-        <Button variant="outline" size="lg" className="gap-2" onClick={markUnknown}>
+      <div className="flex justify-center gap-4 flex-wrap">
+        <Button
+          variant="outline"
+          size="lg"
+          className="gap-2"
+          onClick={handleUnknown}
+          disabled={!flipped}
+        >
           <ThumbsDown className="h-5 w-5" /> 不认识{' '}
           <span className="text-[10px] opacity-50 ml-1">(1)</span>
         </Button>
-        <Button variant="outline" size="lg" className="gap-2" onClick={markKnown}>
+        <Button
+          variant="outline"
+          size="lg"
+          className="gap-2"
+          onClick={handleKnown}
+          disabled={!flipped}
+        >
           <ThumbsUp className="h-5 w-5" /> 认识{' '}
           <span className="text-[10px] opacity-50 ml-1">(2)</span>
         </Button>

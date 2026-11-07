@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useArticleStore } from '@/stores/articleStore'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { showToast } from '@/components/feedback'
 import { Speaker, ArrowLeft, Pencil, Eye, Check } from 'lucide-react'
 
 const CDN_BASE = 'https://files.typewords.cc'
@@ -450,7 +451,7 @@ export default function ArticleTypingPage() {
       phonetic: '',
     }))
     const count = await window.api.addWordsBatch(JSON.stringify(wordsToAdd))
-    alert(`已添加 ${count} 个生词`)
+    showToast(`已添加 ${count} 个生词`)
   }
 
   if (!currentArticle) {
@@ -460,15 +461,15 @@ export default function ArticleTypingPage() {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-6 pt-4">
+    <div className="w-full max-w-6xl xl:max-w-7xl mx-auto space-y-6 pt-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Button variant="ghost" size="icon" onClick={() => navigate('/articles')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1">
-          <h2 className="font-semibold">{currentArticle.title}</h2>
-          <p className="text-sm text-muted-foreground">{currentArticle.titleTranslate}</p>
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold truncate">{currentArticle.title}</h2>
+          <p className="text-sm text-muted-foreground truncate">{currentArticle.titleTranslate}</p>
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-0.5">
           <button
