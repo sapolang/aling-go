@@ -95,6 +95,7 @@ import {
   FavoriteAdd,
   FavoriteDelete,
   FavoriteUpdateTag,
+  FavoriteMarkReviewed,
   FavoriteTagsList,
   FavoriteTagAdd,
   FavoriteTagDelete,
@@ -235,6 +236,7 @@ export function initBridge(): void {
     favoriteAdd: (clip: any) => FavoriteAdd(JSON.stringify(clip)),
     favoriteDelete: (id: number) => FavoriteDelete(id),
     favoriteUpdateTag: (id: number, tagId: number) => FavoriteUpdateTag(id, tagId),
+    favoriteMarkReviewed: (id: number) => FavoriteMarkReviewed(id),
     favoriteTagsList: () =>
       FavoriteTagsList().then((s: string) => {
         if (!s) return []

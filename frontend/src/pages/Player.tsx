@@ -89,6 +89,7 @@ export default function PlayerPage() {
     endTime: number
     text: string
   } | null>(null)
+  const [favWord, setFavWord] = useState('')
   const [favTags, setFavTags] = useState<{ id: number; name: string }[]>([])
   const [favTagId, setFavTagId] = useState(0)
   const [favNewTag, setFavNewTag] = useState('')
@@ -832,8 +833,9 @@ export default function PlayerPage() {
     cancelHover()
   }, [store.currentSubtitleIndex])
 
-  const openFavorite = (sub: { startTime: number; endTime: number; text: string }) => {
+  const openFavorite = (sub: { startTime: number; endTime: number; text: string }, word = '') => {
     setFavTarget({ startTime: sub.startTime, endTime: sub.endTime, text: sub.text })
+    setFavWord(word)
     setFavTagId(0)
     setFavNewTag('')
     window.api.favoriteTagsList().then(setFavTags)
@@ -853,6 +855,7 @@ export default function PlayerPage() {
       endTime: favTarget.endTime,
       text: favTarget.text,
       tagId,
+      word: favWord.trim(),
     })
     setFavTarget(null)
   }
@@ -1369,7 +1372,7 @@ export default function PlayerPage() {
                       title="收藏当前句"
                       onClick={(e) => {
                         e.stopPropagation()
-                        openFavorite(sub)
+                        openFavorite(sub, hover?.sentence === sub.text ? hover.word : '')
                       }}
                     >
                       <Star className="h-3 w-3 inline" />
@@ -1619,6 +1622,13 @@ export default function PlayerPage() {
               <p className="text-xs text-muted-foreground mb-4">
                 {formatTime(favTarget.startTime)} - {formatTime(favTarget.endTime)}
               </p>
+              <label className="text-sm font-medium">关联单词（可选）</label>
+              <Input
+                placeholder="例如素材中正在查的词"
+                value={favWord}
+                onChange={(e) => setFavWord(e.target.value)}
+                className="mt-1 mb-3"
+              />
               <label className="text-sm font-medium">标签</label>
               <select
                 className="w-full bg-background border rounded px-3 py-2 text-sm mt-1 mb-3"

@@ -9,6 +9,7 @@ import (
 
 func migrateIfNeeded(dataDir string) {
 	migrateSRS()
+	migrateFavoriteClips()
 
 	migrateFlag := filepath.Join(dataDir, ".migrated")
 	if _, err := os.Stat(migrateFlag); err == nil {
@@ -80,5 +81,16 @@ func migrateSRS() {
 	}
 	for _, c := range cols {
 		_, _ = db.Exec("ALTER TABLE words ADD COLUMN " + c.name + " " + c.def)
+	}
+}
+
+func migrateFavoriteClips() {
+	cols := []struct{ name, def string }{
+		{"word", "TEXT DEFAULT ''"},
+		{"review_count", "INTEGER DEFAULT 0"},
+		{"last_reviewed_at", "TEXT DEFAULT ''"},
+	}
+	for _, c := range cols {
+		_, _ = db.Exec("ALTER TABLE favorite_clips ADD COLUMN " + c.name + " " + c.def)
 	}
 }

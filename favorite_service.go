@@ -30,7 +30,7 @@ func (s *FavoriteService) ServiceShutdown() error { return nil }
 func (s *FavoriteService) FavoriteList(tagID int) string {
 	query := `
 		SELECT c.id, c.file_path, c.start_time, c.end_time, c.text, c.tag_id,
-		       COALESCE(t.name, ''), c.created_at
+		       COALESCE(t.name, ''), c.word, c.review_count, c.last_reviewed_at, c.created_at
 		FROM favorite_clips c
 		LEFT JOIN favorite_tags t ON t.id = c.tag_id
 	`
@@ -51,7 +51,7 @@ func (s *FavoriteService) FavoriteList(tagID int) string {
 	for rows.Next() {
 		var c FavoriteClip
 		if err := rows.Scan(&c.ID, &c.FilePath, &c.StartTime, &c.EndTime,
-			&c.Text, &c.TagID, &c.TagName, &c.CreatedAt); err != nil {
+			&c.Text, &c.TagID, &c.TagName, &c.Word, &c.ReviewCount, &c.LastReviewedAt, &c.CreatedAt); err != nil {
 			continue
 		}
 		c.FileName = filepath.Base(c.FilePath)
@@ -72,8 +72,8 @@ func (s *FavoriteService) FavoriteAdd(clipJSON string) int {
 		return 0
 	}
 	res, err := db.Exec(
-		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id) VALUES (?,?,?,?,?)",
-		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID,
+		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id, word) VALUES (?,?,?,?,?,?)",
+		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID, c.Word,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteAdd: %v\n", err)
@@ -94,6 +94,22 @@ func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
 	if _, err := db.Exec("UPDATE favorite_clips SET tag_id=? WHERE id=?", tagID, id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteUpdateTag: %v\n", err)
 	}
+}
+
+// FavoriteMarkReviewed 记录一次片段复习，返回累计复习次数
+func (s *FavoriteService) FavoriteMarkReviewed(id int) int {
+	if _, err := db.Exec(
+		"UPDATE favorite_clips SET review_count = COALESCE(review_count, 0) + 1, last_reviewed_at = datetime('now','localtime') WHERE id=?",
+		id,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "FavoriteMarkReviewed: %v\n", err)
+		return 0
+	}
+	var count int
+	if err := db.QueryRow("SELECT COALESCE(review_count, 0) FROM favorite_clips WHERE id=?", id).Scan(&count); err != nil {
+		return 0
+	}
+	return count
 }
 
 // --- Tags ---
