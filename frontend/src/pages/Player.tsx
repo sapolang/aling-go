@@ -7,9 +7,11 @@ import { useThemeStore } from '@/stores/themeStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { showToast } from '@/components/feedback'
 import { speak } from '@/lib/tts'
 import Waveform from '@/components/Waveform'
 import WordLookupModal from '@/components/WordLookupModal'
+import WordHoverCard from '@/components/WordHoverCard'
 import {
   Play,
   Pause,
@@ -59,6 +61,11 @@ export default function PlayerPage() {
   const dark = useThemeStore((s) => s.dark)
   const [selectedWord, setSelectedWord] = useState('')
   const [currentSentence, setCurrentSentence] = useState('')
+  const [hover, setHover] = useState<{ word: string; sentence: string; anchor: DOMRect } | null>(
+    null,
+  )
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showLookup, setShowLookup] = useState(false)
   const [playError, setPlayError] = useState<string | null>(null)
   const [showSubMenu, setShowSubMenu] = useState(false)
@@ -146,7 +153,7 @@ export default function PlayerPage() {
     const cfg = await window.api.aiGetConfig()
     if (!cfg.hasKey) {
       setSelPop(null)
-      alert('请先在「设置 → AI 翻译」中填写 API Key')
+      showToast('请先在「设置 → AI 翻译」中填写 API Key', 'warning')
       navigate('/settings')
       return false
     }
@@ -495,7 +502,7 @@ export default function PlayerPage() {
         dlCleanup()
         store.setTranscribing(false)
         setTranscribingLabel('')
-        alert('模型下载失败: ' + (err?.message || String(err)))
+        showToast('模型下载失败: ' + (err?.message || String(err)), 'error')
         return
       }
       dlCleanup()
@@ -512,15 +519,16 @@ export default function PlayerPage() {
       }
       const subs = await window.api.whisperTranscribe(filePath)
       if (subs.length === 0) {
-        alert('转录完成，但未识别到语音。请在设置页检查模型和语言设置是否正确')
+        showToast('转录完成，但未识别到语音。请在设置页检查模型和语言设置是否正确', 'warning')
       }
       store.setSubtitles(subs)
       window.api.cacheSubtitles(filePath, subs)
     } catch (err: any) {
       const msg = err?.message || String(err)
       store.setTranscriptionProgress(-1)
-      if (msg.includes('fetch')) alert('模型下载失败，设 HF_MIRROR=https://hf-mirror.com 后重试')
-      else alert(`转录失败: ${msg}`)
+      if (msg.includes('fetch'))
+        showToast('模型下载失败，设 HF_MIRROR=https://hf-mirror.com 后重试', 'error')
+      else showToast(`转录失败: ${msg}`, 'error')
     } finally {
       cleanup()
       store.setTranscribing(false)
@@ -563,6 +571,40 @@ export default function PlayerPage() {
     setCurrentSentence(sentence)
     setShowLookup(true)
   }
+
+  // 悬停 150ms 后弹出释义，避免扫过字幕时闪烁
+  const scheduleHover = (word: string, sentence: string, el: HTMLElement) => {
+    const clean = word.replace(/[^a-zA-Z0-9\-']/g, '')
+    if (clean.length < 2) return
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    const anchor = el.getBoundingClientRect()
+    hoverTimer.current = setTimeout(() => setHover({ word: clean, sentence, anchor }), 150)
+  }
+
+  // 移出单词后延迟收起，留出时间把鼠标移进浮层
+  const scheduleHideHover = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    hoverHideTimer.current = setTimeout(() => setHover(null), 250)
+  }
+
+  const keepHover = () => {
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  const cancelHover = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    hoverTimer.current = null
+    hoverHideTimer.current = null
+    setHover(null)
+  }
+
+  // 播放推进导致当前句切换时，悬停提示的位置已失效
+  useEffect(() => {
+    cancelHover()
+  }, [store.currentSubtitleIndex])
 
   const openFavorite = (sub: { startTime: number; endTime: number; text: string }) => {
     setFavTarget({ startTime: sub.startTime, endTime: sub.endTime, text: sub.text })
@@ -644,7 +686,25 @@ export default function PlayerPage() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed whitespace-pre-line">
-                    {text}
+                    {text.split(/(\s+)/).map((part, i) => {
+                      const clean = part.replace(/[^a-zA-Z0-9\-']/g, '')
+                      if (clean.length > 1)
+                        return (
+                          <span
+                            key={i}
+                            className="cursor-pointer hover:text-primary hover:underline"
+                            onMouseEnter={(e) => scheduleHover(part, sub.text, e.currentTarget)}
+                            onMouseLeave={scheduleHideHover}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleWordClick(part, sub.text)
+                            }}
+                          >
+                            {part}
+                          </span>
+                        )
+                      return <span key={i}>{part}</span>
+                    })}
                   </span>
                 </div>
               ) : null
@@ -937,6 +997,8 @@ export default function PlayerPage() {
                         <span
                           key={i}
                           className="cursor-pointer hover:text-primary hover:underline"
+                          onMouseEnter={(e) => scheduleHover(part, sub.text, e.currentTarget)}
+                          onMouseLeave={scheduleHideHover}
                           onClick={(e) => {
                             e.stopPropagation()
                             handleWordClick(part, sub.text)
@@ -983,18 +1045,9 @@ export default function PlayerPage() {
     <div className={`${isActive ? 'h-full' : 'hidden'}`}>
       <div className="h-full flex flex-col gap-4">
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          {store.filePath && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                store.closeFile()
-                navigate('/')
-              }}
-            >
-              <ArrowLeft className="h-4 w-4 mr-1" /> 返回列表
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> 返回列表
+          </Button>
           <Button onClick={handleLoadSrt} variant="outline" size="sm">
             <Subtitles className="h-4 w-4 mr-1" /> 加载SRT字幕
           </Button>
@@ -1012,6 +1065,16 @@ export default function PlayerPage() {
             <p className="text-lg">打开一个文件开始播放</p>
             <p className="text-sm">前往「文件库」页面导入文件</p>
           </div>
+        )}
+
+        {hover && (
+          <WordHoverCard
+            word={hover.word}
+            sentence={hover.sentence}
+            anchor={hover.anchor}
+            onMouseEnter={keepHover}
+            onMouseLeave={scheduleHideHover}
+          />
         )}
 
         {showLookup && selectedWord && (

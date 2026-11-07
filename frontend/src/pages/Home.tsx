@@ -6,6 +6,7 @@ import { useWordStore } from '@/stores/wordStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { showToast, confirmDialog } from '@/components/feedback'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
 import {
@@ -49,11 +50,6 @@ interface ContextMenuState {
   isFolder: boolean
 }
 
-interface ToastState {
-  message: string
-  variant: 'success' | 'warning' | 'error'
-}
-
 export default function HomePage() {
   const store = useLibraryStore()
   const player = usePlayerStore()
@@ -71,8 +67,6 @@ export default function HomePage() {
     itemPath: '',
     isFolder: false,
   })
-  const [toast, setToast] = useState<ToastState | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>()
   const [resumeEntry, setResumeEntry] = useState<{
     path: string
     name: string
@@ -103,12 +97,6 @@ export default function HomePage() {
         setResumeEntry(hit || null)
       })
       .catch(() => {})
-  }, [])
-
-  const showToast = useCallback((message: string, variant: ToastState['variant'] = 'success') => {
-    setToast({ message, variant })
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 3000)
   }, [])
 
   const closeContextMenu = useCallback(() => {
@@ -142,18 +130,27 @@ export default function HomePage() {
   }
 
   const handleDelete = async (paths?: string[]) => {
+    const itemsToDelete = paths || Array.from(store.selectedPaths)
+    if (itemsToDelete.length === 0) return
+
+    const folderIds: string[] = []
+    const filePaths: string[] = []
+    const allFolders = new Set(store.folders.map((f) => f.id))
+    itemsToDelete.forEach((p) => {
+      if (allFolders.has(p)) folderIds.push(p)
+      else filePaths.push(p)
+    })
+
+    const ok = await confirmDialog({
+      title: `删除 ${itemsToDelete.length} 项？`,
+      description:
+        folderIds.length > 0 ? '文件夹内的文件将移到未归类。此操作不可撤销。' : '此操作不可撤销。',
+      confirmText: '删除',
+      destructive: true,
+    })
+    if (!ok) return
+
     try {
-      const itemsToDelete = paths || Array.from(store.selectedPaths)
-      if (itemsToDelete.length === 0) return
-
-      const folderIds: string[] = []
-      const filePaths: string[] = []
-      const allFolders = new Set(store.folders.map((f) => f.id))
-      itemsToDelete.forEach((p) => {
-        if (allFolders.has(p)) folderIds.push(p)
-        else filePaths.push(p)
-      })
-
       if (filePaths.length > 0) await window.api.libraryRemove(filePaths)
       for (const id of folderIds) {
         await window.api.folderDelete(id)
@@ -207,13 +204,6 @@ export default function HomePage() {
       console.error('[CreateFolder] ERROR:', err)
       showToast('创建文件夹失败', 'error')
     }
-  }
-
-  const handleDeleteFolder = async (id: string) => {
-    if (!confirm('确定要删除此文件夹吗？文件夹内的文件将移到未归类。')) return
-    await window.api.folderDelete(id)
-    await store.load()
-    store.clearSelection()
   }
 
   const handleOpenFile = async (file: LibraryFile) => {
@@ -429,6 +419,7 @@ export default function HomePage() {
             <ArrowUpDown className="h-4 w-4 mr-1" />{' '}
             {sortOptions.find((o) => o.key === store.sortBy)?.label}
           </Button>
+          {sortOpen && <div className="fixed inset-0 z-40" onClick={() => setSortOpen(false)} />}
           {sortOpen && (
             <div
               className="absolute right-0 top-full mt-1 bg-popover border rounded shadow-lg py-1 z-50 min-w-[160px]"
@@ -452,7 +443,7 @@ export default function HomePage() {
       </div>
 
       {/* Category Tabs */}
-      <div className="flex items-center gap-1 border-b pb-2">
+      <div className="flex items-center gap-1 border-b pb-2 flex-wrap gap-y-1">
         {currentFolder && (
           <Button variant="ghost" size="sm" className="mr-2" onClick={handleExitFolder}>
             <ArrowLeft className="h-4 w-4 mr-1" /> 返回
@@ -510,7 +501,10 @@ export default function HomePage() {
 
       {/* Edit mode controls */}
       {store.editing && (
-        <div className="flex items-center gap-2 p-2 bg-muted/50 rounded relative">
+        <div className="flex items-center gap-2 flex-wrap p-2 bg-muted/50 rounded relative">
+          {showMoveMenu && (
+            <div className="fixed inset-0 z-40" onClick={() => setShowMoveMenu(false)} />
+          )}
           <Button size="sm" variant="ghost" onClick={handleSelectAll}>
             {isAllSelected ? (
               <CheckSquare className="h-4 w-4 mr-1" />
@@ -651,9 +645,9 @@ export default function HomePage() {
       {store.viewMode === 'list' && (
         <div className="border rounded-lg overflow-hidden">
           <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
-            <div className="col-span-5">名称</div>
-            <div className="col-span-3">类型</div>
-            <div className="col-span-4">添加时间</div>
+            <div className="col-span-6 sm:col-span-5">名称</div>
+            <div className="hidden sm:block sm:col-span-3">类型</div>
+            <div className="col-span-6 sm:col-span-4 text-right sm:text-left">添加时间</div>
           </div>
           <div className="divide-y">
             {visibleFolders.map((folder) => (
@@ -765,21 +759,6 @@ export default function HomePage() {
             </button>
           </div>
         </>
-      )}
-
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2 rounded-lg shadow-lg text-sm transition-all ${
-            toast.variant === 'success'
-              ? 'bg-green-600 text-white'
-              : toast.variant === 'warning'
-                ? 'bg-amber-500 text-white'
-                : 'bg-red-600 text-white'
-          }`}
-        >
-          {toast.message}
-        </div>
       )}
     </div>
   )
@@ -1012,7 +991,7 @@ function ListFolderRow({
       onTouchMove={longPress.onTouchMove}
       onTouchEnd={longPress.onTouchEnd}
     >
-      <div className="col-span-5 flex items-center gap-2">
+      <div className="col-span-6 sm:col-span-5 flex items-center gap-2">
         {editing &&
           (selected ? (
             <CheckSquare className="h-4 w-4 text-primary" />
@@ -1022,8 +1001,8 @@ function ListFolderRow({
         <FolderIcon className="h-4 w-4 text-yellow-500 shrink-0" />
         <span className="truncate">{folder.name}</span>
       </div>
-      <div className="col-span-3 text-muted-foreground text-xs">文件夹</div>
-      <div className="col-span-4 text-muted-foreground text-xs">
+      <div className="hidden sm:block sm:col-span-3 text-muted-foreground text-xs">文件夹</div>
+      <div className="col-span-6 sm:col-span-4 text-muted-foreground text-xs text-right sm:text-left">
         {new Date(folder.createdAt).toLocaleDateString('zh-CN')}
       </div>
     </div>
@@ -1067,7 +1046,7 @@ function ListFileRow({
       onTouchMove={longPress.onTouchMove}
       onTouchEnd={longPress.onTouchEnd}
     >
-      <div className="col-span-5 flex items-center gap-2">
+      <div className="col-span-6 sm:col-span-5 flex items-center gap-2">
         {editing &&
           (selected ? (
             <CheckSquare className="h-4 w-4 text-primary" />
@@ -1077,10 +1056,10 @@ function ListFileRow({
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="truncate">{file.name}</span>
       </div>
-      <div className="col-span-3 text-muted-foreground text-xs">
+      <div className="hidden sm:block sm:col-span-3 text-muted-foreground text-xs">
         {file.type === 'video' ? '视频' : file.type === 'audio' ? '音频' : 'PDF'}
       </div>
-      <div className="col-span-4 text-muted-foreground text-xs">
+      <div className="col-span-6 sm:col-span-4 text-muted-foreground text-xs text-right sm:text-left">
         {new Date(file.addedAt).toLocaleDateString('zh-CN')}
       </div>
     </div>
