@@ -3,6 +3,7 @@ import { create } from 'zustand'
 const PODCAST_MODE_KEY = 'aling.podcastMode'
 const AUTO_NEXT_KEY = 'aling.autoNextEpisode'
 const AUTO_PAUSE_KEY = 'aling.autoPause'
+const HOVER_PAUSE_KEY = 'aling.hoverPause'
 const SUBTITLE_OFFSET_PREFIX = 'aling.subtitleOffset:'
 
 // 字幕偏移按文件记住，换回同一个文件时无需重新对准
@@ -62,6 +63,7 @@ interface PlayerStore {
   podcastMode: boolean
   autoNextEpisode: boolean
   autoPause: boolean
+  hoverPause: boolean
   subtitleDisplayMode: SubtitleDisplayMode
 
   setFilePath: (path: string | null) => void
@@ -84,6 +86,7 @@ interface PlayerStore {
   setPodcastMode: (v: boolean) => void
   setAutoNextEpisode: (v: boolean) => void
   setAutoPause: (v: boolean) => void
+  setHoverPause: (v: boolean) => void
   setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
 }
 
@@ -111,6 +114,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   autoNextEpisode:
     typeof localStorage === 'undefined' || localStorage.getItem(AUTO_NEXT_KEY) !== '0',
   autoPause: typeof localStorage !== 'undefined' && localStorage.getItem(AUTO_PAUSE_KEY) === '1',
+  // 默认开启；localStorage 存 '0' 表示关闭
+  hoverPause: typeof localStorage === 'undefined' || localStorage.getItem(HOVER_PAUSE_KEY) !== '0',
   subtitleDisplayMode:
     (typeof localStorage !== 'undefined' &&
       (localStorage.getItem(SUBTITLE_MODE_KEY) as SubtitleDisplayMode)) ||
@@ -195,6 +200,14 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       // 忽略持久化失败（如隐私模式）
     }
     set({ autoPause })
+  },
+  setHoverPause: (hoverPause) => {
+    try {
+      localStorage.setItem(HOVER_PAUSE_KEY, hoverPause ? '1' : '0')
+    } catch {
+      // 忽略持久化失败（如隐私模式）
+    }
+    set({ hoverPause })
   },
   setSubtitleDisplayMode: (subtitleDisplayMode) => {
     try {

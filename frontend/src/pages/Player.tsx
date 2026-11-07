@@ -39,6 +39,13 @@ import { timeToSeconds } from '@/lib/srt'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+const SUBTITLE_MODE_LABELS: Record<SubtitleDisplayMode, string> = {
+  all: '全部',
+  en: '仅英文',
+  zh: '仅中文',
+  off: '隐藏',
+}
+
 // 匹配 CJK 表意文字、假名、谚文及全角标点，用于区分中/英字幕行
 const CJK_RE = /[\u2e80-\u9fff\uf900-\ufaff\u3000-\u303f\u3040-\u30ff\uac00-\ud7af]/
 
@@ -89,6 +96,8 @@ export default function PlayerPage() {
     anchor: -1,
     current: -1,
   })
+  // 字幕列表是否跟随播放自动滚动；用户手动滚动后暂停跟随
+  const [autoFollow, setAutoFollow] = useState(true)
 
   // --- AI 选句翻译 / 详解 ---
   const [selPop, setSelPop] = useState<{
@@ -264,6 +273,8 @@ export default function PlayerPage() {
   // 自动暂停：记录上一帧所在句和播放时间，用于判断是否刚刚越过句尾
   const prevSubIdxRef = useRef(-1)
   const lastTickTimeRef = useRef(0)
+  // 悬停查词时暂停播放；鼠标离开后恢复
+  const hoverPauseRef = useRef(false)
 
   onTimeUpdateRef.current = () => {
     const el = mediaRef.current
@@ -408,11 +419,14 @@ export default function PlayerPage() {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
     prevSubIdxRef.current = -1
     lastTickTimeRef.current = 0
+    hoverPauseRef.current = false
+    setAutoFollow(true)
   }, [store.filePath, store.subtitles])
 
-  // --- 当前字幕切换时自动滚动到容器中间 ---
+  // --- 当前字幕切换时自动滚动到容器中间（用户手动浏览时暂停跟随） ---
   const lastSubIdx = useRef(-2)
   useEffect(() => {
+    if (!autoFollow) return
     const el = scrollRef.current
     if (!el || displaySubtitles.length === 0) return
     const t = store.played - store.subtitleOffset
@@ -421,7 +435,19 @@ export default function PlayerPage() {
     lastSubIdx.current = idx
     const child = el.children[idx] as HTMLElement
     if (child) child.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [store.played, store.subtitleOffset, displaySubtitles])
+  }, [store.played, store.subtitleOffset, displaySubtitles, autoFollow])
+
+  // 回到当前句并恢复自动跟随
+  const resumeFollow = () => {
+    lastSubIdx.current = -2
+    setAutoFollow(true)
+    const el = scrollRef.current
+    if (!el || displaySubtitles.length === 0) return
+    const t = store.played - store.subtitleOffset
+    const idx = displaySubtitles.findIndex((s) => t >= s.startTime - 0.08 && t < s.endTime)
+    const child = idx >= 0 ? (el.children[idx] as HTMLElement) : null
+    if (child) child.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
 
   // --- Close sub menu on outside click ---
   useEffect(() => {
@@ -440,6 +466,7 @@ export default function PlayerPage() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.code === 'Space') {
         e.preventDefault()
+        hoverPauseRef.current = false
         store.playing ? el.pause() : el.play()
         store.setPlaying(!store.playing)
       }
@@ -455,6 +482,20 @@ export default function PlayerPage() {
         e.preventDefault()
         st.setAutoPause(!st.autoPause)
         showToast(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停', 'info')
+      }
+      if (e.code === 'KeyE') {
+        e.preventDefault()
+        const modes: SubtitleDisplayMode[] = ['all', 'en', 'zh', 'off']
+        const next = modes[(modes.indexOf(st.subtitleDisplayMode) + 1) % modes.length]
+        st.setSubtitleDisplayMode(next)
+        showToast(`字幕显示：${SUBTITLE_MODE_LABELS[next]}`, 'info')
+      }
+      if (e.code === 'KeyP') {
+        e.preventDefault()
+        const next =
+          PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(st.playbackRate) + 1) % PLAYBACK_RATES.length]
+        st.setPlaybackRate(next)
+        showToast(`播放速度 ${next}x`, 'info')
       }
       if (subs.length === 0) return
       const t = el.currentTime - off
@@ -492,6 +533,11 @@ export default function PlayerPage() {
           const next = subs.findIndex((s) => s.startTime + off > t + 0.3)
           if (next !== -1) seekToSub(next)
         }
+      }
+      if (e.code === 'KeyR') {
+        e.preventDefault()
+        // R 重播当前句
+        seekToSub(curIdx >= 0 ? curIdx : lastBefore(t))
       }
     }
     window.addEventListener('keydown', handleKey)
@@ -649,12 +695,35 @@ export default function PlayerPage() {
     store.setSubtitles([])
   }
 
+  // 悬停查词暂停：只在本来正在播放时暂停，鼠标离开后自动续播
+  const pauseForHover = () => {
+    const st = usePlayerStore.getState()
+    const el = mediaRef.current
+    if (!st.hoverPause || hoverPauseRef.current || !el || el.paused) return
+    el.pause()
+    st.setPlaying(false)
+    hoverPauseRef.current = true
+  }
+
+  const resumeAfterHover = () => {
+    if (!hoverPauseRef.current) return
+    hoverPauseRef.current = false
+    const st = usePlayerStore.getState()
+    const el = mediaRef.current
+    if (!el || !st.filePath) return
+    el.play().catch(() => {})
+    st.setPlaying(true)
+  }
+
   const handleWordClick = (word: string, sentence: string) => {
     const clean = word.replace(/[^a-zA-Z0-9\-']/g, '')
     if (!clean) return
     // 点词即查时暂停播放，方便看释义
+    hoverPauseRef.current = false
+    cancelHover()
     mediaRef.current?.pause()
     store.setPlaying(false)
+    speak(clean)
     setSelectedWord(clean)
     setCurrentSentence(sentence)
     setShowLookup(true)
@@ -668,14 +737,20 @@ export default function PlayerPage() {
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
     if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
     const anchor = el.getBoundingClientRect()
-    hoverTimer.current = setTimeout(() => setHover({ word: clean, sentence, anchor }), 150)
+    hoverTimer.current = setTimeout(() => {
+      pauseForHover()
+      setHover({ word: clean, sentence, anchor })
+    }, 150)
   }
 
   // 移出单词后延迟收起，留出时间把鼠标移进浮层
   const scheduleHideHover = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
     if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
-    hoverHideTimer.current = setTimeout(() => setHover(null), 250)
+    hoverHideTimer.current = setTimeout(() => {
+      setHover(null)
+      resumeAfterHover()
+    }, 250)
   }
 
   const keepHover = () => {
@@ -859,13 +934,21 @@ export default function PlayerPage() {
 
         {store.filePath && (
           <div className="flex items-center justify-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => store.setPlaying(!store.playing)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                hoverPauseRef.current = false
+                store.setPlaying(!store.playing)
+              }}
+            >
               {store.playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
             <select
               value={store.playbackRate}
               onChange={(e) => store.setPlaybackRate(parseFloat(e.target.value))}
               className="bg-background border rounded px-2 py-1 text-sm"
+              title="快捷键 P 循环切换倍速"
             >
               {PLAYBACK_RATES.map((r) => (
                 <option key={r} value={r}>
@@ -962,113 +1045,131 @@ export default function PlayerPage() {
       >
         <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
           <h3 className="text-sm font-semibold">字幕</h3>
-          <div className="relative">
-            <button
-              className="p-1 hover:bg-muted rounded"
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowSubMenu(!showSubMenu)
-              }}
-              title="字幕操作"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            {showSubMenu && (
-              <div
-                className="absolute right-0 top-full mt-1 bg-popover border rounded shadow-lg py-1 z-50 min-w-[140px]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
-                  onClick={() => {
-                    setShowSubMenu(false)
-                    exportSubtitles()
-                  }}
-                >
-                  <Download className="h-3.5 w-3.5" /> 导出 SRT
-                </button>
-                <button
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
-                  onClick={() => {
-                    setShowSubMenu(false)
-                    handleLoadSrt()
-                  }}
-                >
-                  <FileDown className="h-3.5 w-3.5" /> 导入 SRT
-                </button>
-                <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
-                  <div className="text-xs text-muted-foreground mb-1">显示模式</div>
-                  <div className="flex gap-1">
-                    {(
-                      [
-                        ['all', '全部'],
-                        ['en', '仅英'],
-                        ['zh', '仅中'],
-                        ['off', '隐藏'],
-                      ] as const
-                    ).map(([m, label]) => (
-                      <button
-                        key={m}
-                        className={`flex-1 px-1 py-1 text-xs rounded ${store.subtitleDisplayMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
-                        onClick={() => store.setSubtitleDisplayMode(m)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                    <span>字幕偏移</span>
-                    <span>{store.subtitleOffset.toFixed(1)}s</span>
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
-                      title="字幕提前 0.1s（快捷键 ,）"
-                      onClick={() => store.adjustSubtitleOffset(-0.1)}
-                    >
-                      -0.1s
-                    </button>
-                    <button
-                      className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
-                      onClick={() => store.adjustSubtitleOffset(-store.subtitleOffset)}
-                    >
-                      重置
-                    </button>
-                    <button
-                      className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
-                      title="字幕延后 0.1s（快捷键 .）"
-                      onClick={() => store.adjustSubtitleOffset(0.1)}
-                    >
-                      +0.1s
-                    </button>
-                  </div>
-                </div>
-                {store.subtitles.length > 0 && (
-                  <>
-                    <button
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
-                      onClick={() => {
-                        setShowSubMenu(false)
-                        retranscribe()
-                      }}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" /> 重新转录
-                    </button>
-                    <button
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left text-destructive"
-                      onClick={() => {
-                        setShowSubMenu(false)
-                        closeSubtitles()
-                      }}
-                    >
-                      <XIcon className="h-3.5 w-3.5" /> 关闭字幕
-                    </button>
-                  </>
-                )}
-              </div>
+          <div className="flex items-center gap-3">
+            {!autoFollow && (
+              <button className="text-xs text-primary hover:underline" onClick={resumeFollow}>
+                回到当前句
+              </button>
             )}
+            <div className="relative">
+              <button
+                className="p-1 hover:bg-muted rounded"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowSubMenu(!showSubMenu)
+                }}
+                title="字幕操作"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+              {showSubMenu && (
+                <div
+                  className="absolute right-0 top-full mt-1 bg-popover border rounded shadow-lg py-1 z-50 min-w-[140px]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
+                    onClick={() => {
+                      setShowSubMenu(false)
+                      exportSubtitles()
+                    }}
+                  >
+                    <Download className="h-3.5 w-3.5" /> 导出 SRT
+                  </button>
+                  <button
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
+                    onClick={() => {
+                      setShowSubMenu(false)
+                      handleLoadSrt()
+                    }}
+                  >
+                    <FileDown className="h-3.5 w-3.5" /> 导入 SRT
+                  </button>
+                  <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
+                    <div className="text-xs text-muted-foreground mb-1">显示模式</div>
+                    <div className="flex gap-1">
+                      {(
+                        [
+                          ['all', '全部'],
+                          ['en', '仅英'],
+                          ['zh', '仅中'],
+                          ['off', '隐藏'],
+                        ] as const
+                      ).map(([m, label]) => (
+                        <button
+                          key={m}
+                          className={`flex-1 px-1 py-1 text-xs rounded ${store.subtitleDisplayMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
+                          onClick={() => store.setSubtitleDisplayMode(m)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 border-t border-border mt-1">
+                    <button
+                      className="flex items-center justify-between w-full text-xs hover:text-foreground"
+                      onClick={() => store.setHoverPause(!store.hoverPause)}
+                    >
+                      <span className="text-muted-foreground">悬停查词时暂停</span>
+                      <span className={store.hoverPause ? 'text-primary' : 'text-muted-foreground'}>
+                        {store.hoverPause ? '开' : '关'}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>字幕偏移</span>
+                      <span>{store.subtitleOffset.toFixed(1)}s</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
+                        title="字幕提前 0.1s（快捷键 ,）"
+                        onClick={() => store.adjustSubtitleOffset(-0.1)}
+                      >
+                        -0.1s
+                      </button>
+                      <button
+                        className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
+                        onClick={() => store.adjustSubtitleOffset(-store.subtitleOffset)}
+                      >
+                        重置
+                      </button>
+                      <button
+                        className="flex-1 px-1 py-1 text-xs hover:bg-accent rounded"
+                        title="字幕延后 0.1s（快捷键 .）"
+                        onClick={() => store.adjustSubtitleOffset(0.1)}
+                      >
+                        +0.1s
+                      </button>
+                    </div>
+                  </div>
+                  {store.subtitles.length > 0 && (
+                    <>
+                      <button
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
+                        onClick={() => {
+                          setShowSubMenu(false)
+                          retranscribe()
+                        }}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" /> 重新转录
+                      </button>
+                      <button
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left text-destructive"
+                        onClick={() => {
+                          setShowSubMenu(false)
+                          closeSubtitles()
+                        }}
+                      >
+                        <XIcon className="h-3.5 w-3.5" /> 关闭字幕
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         {displaySubtitles.length > 1 && (
@@ -1076,7 +1177,18 @@ export default function PlayerPage() {
             按住时间戳上下拖动，可选多句循环
           </div>
         )}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-3">
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-3 pb-3"
+          onWheel={(e) => {
+            if (autoFollow && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
+              setAutoFollow(false)
+            }
+          }}
+          onTouchMove={() => {
+            if (autoFollow) setAutoFollow(false)
+          }}
+        >
           {store.subtitles.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
               <p className="text-xs text-muted-foreground">暂无字幕</p>
@@ -1117,6 +1229,7 @@ export default function PlayerPage() {
                     onMouseDown={(e) => {
                       e.stopPropagation()
                       e.preventDefault()
+                      hoverPauseRef.current = false
                       dragRef.current = { active: true, anchor: idx, current: idx }
                       setDragRange({ start: idx, end: idx })
                       cancelHover()
