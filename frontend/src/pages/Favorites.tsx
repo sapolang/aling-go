@@ -87,15 +87,12 @@ export default function FavoritesPage() {
     })
   }, [clips])
 
-  // 当前分组被筛掉后回到「全部片段」
-  useEffect(() => {
-    if (activeWord !== null && !groups.some((g) => g.word === activeWord)) {
-      setActiveWord(null)
-    }
-  }, [groups, activeWord])
+  // 当前分组被筛掉时按「全部片段」展示
+  const effectiveWord =
+    activeWord !== null && groups.some((g) => g.word === activeWord) ? activeWord : null
 
   const shownClips =
-    activeWord === null ? clips : groups.find((g) => g.word === activeWord)?.items || []
+    effectiveWord === null ? clips : groups.find((g) => g.word === effectiveWord)?.items || []
 
   const mediaUrl =
     playingClip && mediaPort
@@ -256,7 +253,7 @@ export default function FavoritesPage() {
           <Card className="w-56 shrink-0 p-2">
             <button
               className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between ${
-                activeWord === null ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                effectiveWord === null ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
               }`}
               onClick={() => setActiveWord(null)}
             >
@@ -268,7 +265,9 @@ export default function FavoritesPage() {
                 <button
                   key={g.word || '__ungrouped__'}
                   className={`w-full text-left px-3 py-2 rounded-md ${
-                    activeWord === g.word ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                    effectiveWord === g.word
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted'
                   }`}
                   onClick={() => setActiveWord(g.word)}
                 >
