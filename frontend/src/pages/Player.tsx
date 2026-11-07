@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
+import { useWordStore } from '@/stores/wordStore'
 import type { LibraryFile } from '@/stores/libraryStore'
 import type { SubtitleDisplayMode } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -18,6 +19,8 @@ import {
   Repeat,
   SkipForward,
   CirclePause,
+  Pin,
+  PinOff,
   Subtitles,
   Loader2,
   Volume2 as Speaker,
@@ -98,6 +101,47 @@ export default function PlayerPage() {
   })
   // 字幕列表是否跟随播放自动滚动；用户手动滚动后暂停跟随
   const [autoFollow, setAutoFollow] = useState(true)
+  // 视频内嵌控制条：鼠标静止 2 秒后淡出，可钉住常显
+  const [controlsPinned, setControlsPinned] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const controlsPinnedRef = useRef(false)
+  const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearControlsTimer = () => {
+    if (controlsHideTimerRef.current) {
+      clearTimeout(controlsHideTimerRef.current)
+      controlsHideTimerRef.current = null
+    }
+  }
+
+  const showPlayerControls = () => {
+    setControlsVisible(true)
+    clearControlsTimer()
+    if (!controlsPinnedRef.current) {
+      controlsHideTimerRef.current = setTimeout(() => setControlsVisible(false), 2000)
+    }
+  }
+
+  const scheduleHideControls = () => {
+    clearControlsTimer()
+    if (!controlsPinnedRef.current && store.playing) {
+      controlsHideTimerRef.current = setTimeout(() => setControlsVisible(false), 2000)
+    }
+  }
+
+  const toggleControlsPin = () => {
+    const next = !controlsPinnedRef.current
+    controlsPinnedRef.current = next
+    setControlsPinned(next)
+    if (next) {
+      clearControlsTimer()
+      setControlsVisible(true)
+    } else {
+      showPlayerControls()
+    }
+  }
+
+  useEffect(() => clearControlsTimer, [])
 
   // --- AI 选句翻译 / 详解 ---
   const [selPop, setSelPop] = useState<{
@@ -218,6 +262,24 @@ export default function PlayerPage() {
   useEffect(() => {
     window.api.getWhisperLang().then(setTranscribeLang)
   }, [])
+
+  // 生词库词表：已收藏的词在字幕中高亮显示
+  const savedWordList = useWordStore((s) => s.words)
+  const loadWords = useWordStore((s) => s.loadWords)
+  const savedWords = useMemo(
+    () => new Set(savedWordList.map((w) => w.word.toLowerCase())),
+    [savedWordList],
+  )
+  useEffect(() => {
+    void loadWords()
+  }, [])
+
+  const isSavedWord = (part: string) => {
+    let clean = part.toLowerCase().replace(/[^a-z0-9\-']/g, '')
+    if (clean.endsWith("'s")) clean = clean.slice(0, -2)
+    return clean.length > 1 && savedWords.has(clean)
+  }
+  const savedWordMark = 'text-amber-500 underline decoration-dotted underline-offset-2'
 
   // 当前循环区间覆盖的字幕行，用于在列表中持续高亮
   const loopRange = useMemo(() => {
@@ -810,69 +872,192 @@ export default function PlayerPage() {
       ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
       : ''
 
+  // 播放控制按钮组：视频时内嵌到画面底部，音频时放在播放器下方
+  const renderTransportControls = () => (
+    <div className="flex items-center justify-center gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          hoverPauseRef.current = false
+          store.setPlaying(!store.playing)
+          showPlayerControls()
+        }}
+      >
+        {store.playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+      </Button>
+      <select
+        value={store.playbackRate}
+        onChange={(e) => store.setPlaybackRate(parseFloat(e.target.value))}
+        className="bg-background border rounded px-2 py-1 text-sm"
+        title="快捷键 P 循环切换倍速"
+      >
+        {PLAYBACK_RATES.map((r) => (
+          <option key={r} value={r}>
+            {r}x
+          </option>
+        ))}
+      </select>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={store.loopStart !== null ? 'text-primary' : ''}
+        onClick={() =>
+          store.loopStart !== null ? store.setLoop(null, null) : store.setLoop(store.played, null)
+        }
+      >
+        <Repeat className="h-4 w-4" />
+      </Button>
+      {store.loopStart !== null && (
+        <div className="flex items-center gap-1 text-xs">
+          <span>A: {formatTime(store.loopStart)}</span>
+          {store.loopEnd !== null ? (
+            <>
+              <span className="text-muted-foreground">B: {formatTime(store.loopEnd)}</span>
+              <button
+                className="px-1 text-muted-foreground hover:text-destructive"
+                title="清除循环区间"
+                onClick={() => store.setLoop(null, null)}
+              >
+                <XIcon className="h-3 w-3" />
+              </button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => store.setLoop(store.loopStart, store.played)}
+            >
+              B: {formatTime(store.played)}
+            </Button>
+          )}
+        </div>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={store.podcastMode ? 'text-primary' : ''}
+        onClick={() => store.setPodcastMode(!store.podcastMode)}
+        title="播客模式"
+      >
+        <Headphones className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={store.autoNextEpisode ? 'text-primary' : ''}
+        title={store.autoNextEpisode ? '自动下一集：开' : '自动下一集：关'}
+        onClick={() => store.setAutoNextEpisode(!store.autoNextEpisode)}
+      >
+        <SkipForward className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={store.autoPause ? 'text-primary' : ''}
+        title={store.autoPause ? '播完本句自动暂停：开（U）' : '播完本句自动暂停：关（U）'}
+        onClick={() => store.setAutoPause(!store.autoPause)}
+      >
+        <CirclePause className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+
+  const videoControlsShown = controlsPinned || !store.playing || controlsVisible
+
   // --- Player view ---
   const renderPlayer = () => (
     <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
       <div className="flex-1 flex flex-col gap-2">
         <div
-          className={`bg-black rounded-lg overflow-hidden relative flex items-center justify-center ${isAudio ? 'h-20' : 'aspect-video'} ${store.podcastMode ? 'hidden' : ''}`}
-          onClick={() => store.setPlaying(!store.playing)}
+          className="relative"
+          onMouseMove={isAudio ? undefined : showPlayerControls}
+          onMouseLeave={isAudio ? undefined : scheduleHideControls}
         >
-          {isAudio ? (
-            <audio
-              ref={mediaRef as any}
-              src={mediaUrl}
-              controls
-              style={{ width: '90%', height: 50 }}
-            />
-          ) : (
-            <video
-              ref={mediaRef as any}
-              src={mediaUrl}
-              className="w-full h-full absolute inset-0 object-contain"
-              playsInline
-            />
-          )}
-          {playError && (
-            <div className="absolute inset-0 flex items-center justify-center text-destructive bg-black/80">
-              播放失败: {playError}
+          <div
+            className={`bg-black rounded-lg overflow-hidden relative flex items-center justify-center ${isAudio ? 'h-20' : 'aspect-video'} ${store.podcastMode ? 'hidden' : ''}`}
+            onClick={() => {
+              store.setPlaying(!store.playing)
+              showPlayerControls()
+            }}
+          >
+            {isAudio ? (
+              <audio
+                ref={mediaRef as any}
+                src={mediaUrl}
+                controls
+                style={{ width: '90%', height: 50 }}
+              />
+            ) : (
+              <video
+                ref={mediaRef as any}
+                src={mediaUrl}
+                className="w-full h-full absolute inset-0 object-contain"
+                playsInline
+              />
+            )}
+            {playError && (
+              <div className="absolute inset-0 flex items-center justify-center text-destructive bg-black/80">
+                播放失败: {playError}
+              </div>
+            )}
+            {!isAudio &&
+              store.subtitleDisplayMode !== 'off' &&
+              (() => {
+                const pa = store.played - store.subtitleOffset
+                const sub = store.subtitles.find((s) => pa >= s.startTime - 0.08 && pa <= s.endTime)
+                const text = sub ? filterSubtitleText(sub.text, store.subtitleDisplayMode) : ''
+                return sub && text ? (
+                  <div
+                    className={`absolute bottom-0 left-0 right-0 p-4 flex justify-center ${videoControlsShown ? 'pb-16' : 'pb-6'}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed whitespace-pre-line">
+                      {text.split(/(\s+)/).map((part, i) => {
+                        const clean = part.replace(/[^a-zA-Z0-9\-']/g, '')
+                        if (clean.length > 1)
+                          return (
+                            <span
+                              key={i}
+                              className={`${isSavedWord(part) ? savedWordMark + ' ' : ''}cursor-pointer hover:text-primary hover:underline`}
+                              onMouseEnter={(e) => scheduleHover(part, sub.text, e.currentTarget)}
+                              onMouseLeave={scheduleHideHover}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleWordClick(part, sub.text)
+                              }}
+                            >
+                              {part}
+                            </span>
+                          )
+                        return <span key={i}>{part}</span>
+                      })}
+                    </span>
+                  </div>
+                ) : null
+              })()}
+          </div>
+
+          {!isAudio && store.filePath && !store.podcastMode && (
+            <div
+              className={`absolute inset-x-0 bottom-0 px-2 pb-2 pt-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-200 ${videoControlsShown ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-center gap-2 [&_button]:text-white [&_button:hover]:bg-white/10 [&_select]:bg-black/40 [&_select]:text-white [&_select]:border-white/30">
+                {renderTransportControls()}
+              </div>
+              <button
+                className="absolute right-2 top-1 p-1 text-white/70 hover:text-white"
+                title={controlsPinned ? '取消固定控制条' : '固定控制条'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleControlsPin()
+                }}
+              >
+                {controlsPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+              </button>
             </div>
           )}
-          {!isAudio &&
-            store.subtitleDisplayMode !== 'off' &&
-            (() => {
-              const pa = store.played - store.subtitleOffset
-              const sub = store.subtitles.find((s) => pa >= s.startTime - 0.08 && pa <= s.endTime)
-              const text = sub ? filterSubtitleText(sub.text, store.subtitleDisplayMode) : ''
-              return sub && text ? (
-                <div
-                  className="absolute bottom-0 left-0 right-0 p-4 pb-6 flex justify-center"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed whitespace-pre-line">
-                    {text.split(/(\s+)/).map((part, i) => {
-                      const clean = part.replace(/[^a-zA-Z0-9\-']/g, '')
-                      if (clean.length > 1)
-                        return (
-                          <span
-                            key={i}
-                            className="cursor-pointer hover:text-primary hover:underline"
-                            onMouseEnter={(e) => scheduleHover(part, sub.text, e.currentTarget)}
-                            onMouseLeave={scheduleHideHover}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleWordClick(part, sub.text)
-                            }}
-                          >
-                            {part}
-                          </span>
-                        )
-                      return <span key={i}>{part}</span>
-                    })}
-                  </span>
-                </div>
-              ) : null
-            })()}
         </div>
 
         {store.podcastMode && store.filePath && (
@@ -932,96 +1117,7 @@ export default function PlayerPage() {
           </div>
         )}
 
-        {store.filePath && (
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                hoverPauseRef.current = false
-                store.setPlaying(!store.playing)
-              }}
-            >
-              {store.playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-            </Button>
-            <select
-              value={store.playbackRate}
-              onChange={(e) => store.setPlaybackRate(parseFloat(e.target.value))}
-              className="bg-background border rounded px-2 py-1 text-sm"
-              title="快捷键 P 循环切换倍速"
-            >
-              {PLAYBACK_RATES.map((r) => (
-                <option key={r} value={r}>
-                  {r}x
-                </option>
-              ))}
-            </select>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={store.loopStart !== null ? 'text-primary' : ''}
-              onClick={() =>
-                store.loopStart !== null
-                  ? store.setLoop(null, null)
-                  : store.setLoop(store.played, null)
-              }
-            >
-              <Repeat className="h-4 w-4" />
-            </Button>
-            {store.loopStart !== null && (
-              <div className="flex items-center gap-1 text-xs">
-                <span>A: {formatTime(store.loopStart)}</span>
-                {store.loopEnd !== null ? (
-                  <>
-                    <span className="text-muted-foreground">B: {formatTime(store.loopEnd)}</span>
-                    <button
-                      className="px-1 text-muted-foreground hover:text-destructive"
-                      title="清除循环区间"
-                      onClick={() => store.setLoop(null, null)}
-                    >
-                      <XIcon className="h-3 w-3" />
-                    </button>
-                  </>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => store.setLoop(store.loopStart, store.played)}
-                  >
-                    B: {formatTime(store.played)}
-                  </Button>
-                )}
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={store.podcastMode ? 'text-primary' : ''}
-              onClick={() => store.setPodcastMode(!store.podcastMode)}
-              title="播客模式"
-            >
-              <Headphones className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={store.autoNextEpisode ? 'text-primary' : ''}
-              title={store.autoNextEpisode ? '自动下一集：开' : '自动下一集：关'}
-              onClick={() => store.setAutoNextEpisode(!store.autoNextEpisode)}
-            >
-              <SkipForward className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={store.autoPause ? 'text-primary' : ''}
-              title={store.autoPause ? '播完本句自动暂停：开（U）' : '播完本句自动暂停：关（U）'}
-              onClick={() => store.setAutoPause(!store.autoPause)}
-            >
-              <CirclePause className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        {(isAudio || store.podcastMode) && store.filePath && renderTransportControls()}
 
         {store.transcribing && store.transcriptionProgress >= 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1243,7 +1339,7 @@ export default function PlayerPage() {
                       return (
                         <span
                           key={i}
-                          className="cursor-pointer hover:text-primary hover:underline"
+                          className={`${isSavedWord(part) ? savedWordMark + ' ' : ''}cursor-pointer hover:text-primary hover:underline`}
                           onMouseEnter={(e) => scheduleHover(part, sub.text, e.currentTarget)}
                           onMouseLeave={scheduleHideHover}
                           onClick={(e) => {
@@ -1321,6 +1417,7 @@ export default function PlayerPage() {
             anchor={hover.anchor}
             onMouseEnter={keepHover}
             onMouseLeave={scheduleHideHover}
+            onAdded={loadWords}
           />
         )}
 
@@ -1328,7 +1425,10 @@ export default function PlayerPage() {
           <WordLookupModal
             word={selectedWord}
             sentence={currentSentence}
-            onClose={() => setShowLookup(false)}
+            onClose={() => {
+              setShowLookup(false)
+              void loadWords()
+            }}
           />
         )}
 
