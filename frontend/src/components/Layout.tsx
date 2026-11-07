@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { confirmDialog } from '@/components/feedback'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import {
@@ -25,8 +26,8 @@ const navItems = [
   { path: '/', label: '文件库', icon: Home },
   { path: '/favorites', label: '收藏片段', icon: Star },
   { path: '/words', label: '生词库', icon: BookOpen },
-  { path: '/dict', label: '单词书', icon: Library },
-  { path: '/card', label: '卡片背诵', icon: FlipVertical },
+  { path: '/dict', label: '词库浏览', icon: Library },
+  { path: '/card', label: '今日复习', icon: FlipVertical },
   { path: '/stats', label: '学习统计', icon: BarChart3 },
   { path: '/articles', label: '文章打字', icon: Type },
   { path: '/settings', label: '设置', icon: Settings },
@@ -52,18 +53,43 @@ export function Layout({
   const loadReviewCount = useWordStore((s) => s.loadReviewCount)
   const [collapsed, setCollapsed] = useState(false)
 
+  // 窄窗口下自动收起侧栏，给内容留出空间
   useEffect(() => {
-    if (isPlayerRoute) setCollapsed(true)
-  }, [isPlayerRoute])
+    const mq = window.matchMedia('(max-width: 1023px)')
+    if (mq.matches) setCollapsed(true)
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setCollapsed(true)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
   useEffect(() => {
     loadReviewCount()
   }, [location.pathname, loadReviewCount])
 
+  const handleCloseFile = async () => {
+    if (playing || transcribing) {
+      const ok = await confirmDialog({
+        title: '关闭当前文件？',
+        description: transcribing
+          ? '正在转录，关闭后会中断转录任务。'
+          : '播放进度会保留，下次打开可继续。',
+        confirmText: '关闭',
+        cancelText: '继续播放',
+        destructive: true,
+      })
+      if (!ok) return
+    }
+    closeFile()
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       <aside
-        className={`border-r bg-muted/30 flex flex-col shrink-0 transition-all duration-200 ${collapsed ? 'w-14' : 'w-56'}`}
+        className={`border-r bg-muted/30 flex flex-col shrink-0 transition-all duration-200 ${
+          isPlayerRoute ? 'hidden' : collapsed ? 'w-14' : 'w-56'
+        }`}
       >
         <div className="p-4 border-b flex items-center justify-between">
           {collapsed ? (
@@ -87,7 +113,10 @@ export function Layout({
         <nav className="flex-1 p-2 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
-            const active = location.pathname === item.path
+            const active =
+              item.path === '/'
+                ? location.pathname === '/'
+                : location.pathname === item.path || location.pathname.startsWith(item.path + '/')
             const badge =
               item.path === '/card'
                 ? Math.max(0, reviewCount - (location.pathname === '/card' ? reviewCompleted : 0))
@@ -120,7 +149,9 @@ export function Layout({
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className={`flex-1 overflow-y-auto ${isPlayerRoute ? 'p-3' : 'p-6'}`}>
+          {children}
+        </main>
 
         {/* Mini 播放条 — 有文件时始终显示 */}
         {filePath && !isPlayerRoute && (
@@ -129,21 +160,26 @@ export function Layout({
               {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
             <span className="text-sm truncate flex-1">{filePath.split('/').pop()}</span>
-            {transcribing ? (
+            {transcribing && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" /> 转录中 {progress}%
               </span>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-                onClick={() => navigate('/player')}
-              >
-                打开播放器
-              </Button>
             )}
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={closeFile}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => navigate('/player')}
+            >
+              打开播放器
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={handleCloseFile}
+              title="关闭文件"
+            >
               <X className="h-3 w-3" />
             </Button>
           </div>

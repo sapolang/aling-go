@@ -76,3 +76,15 @@
     background: transparent;
   }
 }
+
+/* 卡片翻面动画：单层 2D 翻转，避免 preserve-3d 生成 CATransformLayer 触发系统警告 */
+@keyframes word-card-flip {
+  from {
+    transform: perspective(900px) rotateY(-75deg);
+    opacity: 0.3;
+  }
+  to {
+    transform: perspective(900px) rotateY(0deg);
+    opacity: 1;
+  }
+}

@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Search, Trash2, Edit, Plus } from 'lucide-react'
+import { confirmDialog } from '@/components/feedback'
 import AddWordModal from '@/components/AddWordModal'
 
 const levelLabels = ['待学习', '遗忘', '模糊', '熟悉']
@@ -33,6 +34,14 @@ export default function WordListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [showAdd, setShowAdd] = useState(false)
   const [editWord, setEditWord] = useState<any>(null)
+  const [listHeight, setListHeight] = useState(600)
+
+  useEffect(() => {
+    const update = () => setListHeight(Math.max(240, window.innerHeight - 280))
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
 
   useEffect(() => {
     loadWords()
@@ -71,8 +80,15 @@ export default function WordListPage() {
     }
   }
 
-  const handleDeleteBatch = () => {
+  const handleDeleteBatch = async () => {
     if (selectedIds.size === 0) return
+    const ok = await confirmDialog({
+      title: `删除 ${selectedIds.size} 个生词？`,
+      description: '这些生词将连同学习记录一起移除，此操作不可撤销。',
+      confirmText: '删除',
+      destructive: true,
+    })
+    if (!ok) return
     deleteBatch(Array.from(selectedIds))
     setSelectedIds(new Set())
   }
@@ -99,7 +115,7 @@ export default function WordListPage() {
               </div>
               <p className="text-sm text-muted-foreground truncate">{w.definition}</p>
             </div>
-            <div className="flex gap-1 items-center">
+            <div className="hidden md:flex gap-1 items-center flex-wrap justify-end">
               {w.tags
                 .split(',')
                 .filter(Boolean)
@@ -120,7 +136,15 @@ export default function WordListPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-destructive"
-                onClick={() => deleteWord(w.id)}
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: '删除这个生词？',
+                    description: `${w.word} 将被移除，此操作不可撤销。`,
+                    confirmText: '删除',
+                    destructive: true,
+                  })
+                  if (ok) deleteWord(w.id)
+                }}
               >
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -140,8 +164,8 @@ export default function WordListPage() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-8"
@@ -187,7 +211,7 @@ export default function WordListPage() {
             <p>{searchQuery ? '没有匹配结果' : '生词库为空'}</p>
           </Card>
         ) : (
-          <List height={600} itemCount={filteredWords.length} itemSize={80} width="100%">
+          <List height={listHeight} itemCount={filteredWords.length} itemSize={80} width="100%">
             {Row}
           </List>
         )}

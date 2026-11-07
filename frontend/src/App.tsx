@@ -1,6 +1,8 @@
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useRef } from 'react'
+import { Window } from '@wailsio/runtime'
 import { Layout } from '@/components/Layout'
+import { FeedbackHost } from '@/components/feedback'
 import { useThemeStore } from '@/stores/themeStore'
 import { initBridge } from '@/api/bridge'
 
@@ -26,10 +28,31 @@ function AppContent() {
   const location = useLocation()
   const dark = useThemeStore((s) => s.dark)
   const isPlayer = location.pathname === '/player'
+  const maximizedByPlayer = useRef(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
+
+  // 进入播放页时放大窗口，离开时恢复原窗口大小
+  useEffect(() => {
+    let cancelled = false
+    if (isPlayer) {
+      Window.IsMaximised()
+        .then((maximised: boolean) => {
+          if (cancelled || maximised) return
+          maximizedByPlayer.current = true
+          return Window.Maximise()
+        })
+        .catch(() => {})
+    } else if (maximizedByPlayer.current) {
+      maximizedByPlayer.current = false
+      Window.UnMaximise().catch(() => {})
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [isPlayer])
 
   return (
     <Layout isPlayerRoute={isPlayer}>
@@ -65,6 +88,7 @@ export default function App() {
   return (
     <HashRouter>
       <AppContent />
+      <FeedbackHost />
     </HashRouter>
   )
 }

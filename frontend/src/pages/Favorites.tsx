@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Star, Play, Trash2, Plus, X } from 'lucide-react'
+import { confirmDialog } from '@/components/feedback'
 
 interface FavoriteClip {
   id: number
@@ -57,6 +58,13 @@ export default function FavoritesPage() {
   }
 
   const deleteTag = async (id: number) => {
+    const ok = await confirmDialog({
+      title: '删除这个标签？',
+      description: '标签下的收藏片段会保留，并变为未分类。',
+      confirmText: '删除',
+      destructive: true,
+    })
+    if (!ok) return
     await window.api.favoriteTagDelete(id)
     if (selectedTag === id) setSelectedTag(0)
     loadTags()
@@ -66,6 +74,13 @@ export default function FavoritesPage() {
   }
 
   const deleteClip = async (id: number) => {
+    const ok = await confirmDialog({
+      title: '删除这个收藏片段？',
+      description: '删除后无法恢复。',
+      confirmText: '删除',
+      destructive: true,
+    })
+    if (!ok) return
     await window.api.favoriteDelete(id)
     setClips((prev) => prev.filter((c) => c.id !== id))
   }
@@ -93,8 +108,8 @@ export default function FavoritesPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Star className="h-6 w-6" /> 收藏片段
         </h1>
