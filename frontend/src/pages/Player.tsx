@@ -17,6 +17,7 @@ import {
   Pause,
   Repeat,
   SkipForward,
+  CirclePause,
   Subtitles,
   Loader2,
   Volume2 as Speaker,
@@ -81,6 +82,13 @@ export default function PlayerPage() {
   const [favTags, setFavTags] = useState<{ id: number; name: string }[]>([])
   const [favTagId, setFavTagId] = useState(0)
   const [favNewTag, setFavNewTag] = useState('')
+  // 字幕列表拖选：记录起止行，松开后成段循环
+  const [dragRange, setDragRange] = useState<{ start: number; end: number } | null>(null)
+  const dragRef = useRef<{ active: boolean; anchor: number; current: number }>({
+    active: false,
+    anchor: -1,
+    current: -1,
+  })
 
   // --- AI 选句翻译 / 详解 ---
   const [selPop, setSelPop] = useState<{
@@ -202,11 +210,60 @@ export default function PlayerPage() {
     window.api.getWhisperLang().then(setTranscribeLang)
   }, [])
 
+  // 当前循环区间覆盖的字幕行，用于在列表中持续高亮
+  const loopRange = useMemo(() => {
+    if (store.loopStart === null || store.loopEnd === null) return null
+    const off = store.subtitleOffset
+    let start = -1
+    let end = -1
+    displaySubtitles.forEach((s, i) => {
+      if (s.endTime + off > store.loopStart! && s.startTime + off < store.loopEnd!) {
+        if (start === -1) start = i
+        end = i
+      }
+    })
+    return start === -1 ? null : { start, end }
+  }, [store.loopStart, store.loopEnd, store.subtitleOffset, displaySubtitles])
+
+  // 拖选结束：选多行成段循环，单行保持原来的跳转行为
+  const dragFinalizeRef = useRef<() => void>(() => {})
+  dragFinalizeRef.current = () => {
+    const drag = dragRef.current
+    if (!drag.active) return
+    dragRef.current = { active: false, anchor: -1, current: -1 }
+    const start = Math.min(drag.anchor, drag.current)
+    const end = Math.max(drag.anchor, drag.current)
+    setDragRange(null)
+    cancelHover()
+    const a = displaySubtitles[start]
+    const b = displaySubtitles[end]
+    if (!a || !b) return
+    const st = usePlayerStore.getState()
+    const off = st.subtitleOffset
+    if (end > start) {
+      st.setLoop(a.startTime + off, b.endTime + off)
+      st.requestSeek(a.startTime + off)
+      st.setPlaying(true)
+      showToast(`已循环第 ${start + 1}–${end + 1} 句`, 'info')
+    } else {
+      st.requestSeek(a.startTime + off)
+    }
+  }
+
+  useEffect(() => {
+    const onUp = () => dragFinalizeRef.current()
+    window.addEventListener('mouseup', onUp)
+    return () => window.removeEventListener('mouseup', onUp)
+  }, [])
+
   // --- Refs for event handlers (avoid stale closures) ---
   const onTimeUpdateRef = useRef<() => void>(() => {})
   const onMetaRef = useRef<() => void>(() => {})
   const lastPosSaveRef = useRef(0)
   const resumedForRef = useRef('')
+  // 自动暂停：记录上一帧所在句和播放时间，用于判断是否刚刚越过句尾
+  const prevSubIdxRef = useRef(-1)
+  const lastTickTimeRef = useRef(0)
 
   onTimeUpdateRef.current = () => {
     const el = mediaRef.current
@@ -217,6 +274,30 @@ export default function PlayerPage() {
     const t = el.currentTime - store.subtitleOffset
     const idx = store.subtitles.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
     if (idx !== -1) store.setCurrentSubtitleIndex(idx)
+
+    // 播完本句自动暂停：本帧越过上一句句尾时停在边界处（循环模式优先级更高）
+    const prevIdx = prevSubIdxRef.current
+    const prevTick = lastTickTimeRef.current
+    lastTickTimeRef.current = el.currentTime
+    // 拖动进度/跳句会造成时间突跳，此时不做自动暂停判定，避免刚跳过去就被拉回
+    const jumped = prevTick > 0 && Math.abs(el.currentTime - prevTick) > 1
+    if (store.autoPause && !el.paused && prevIdx >= 0 && !store.loopEnd && !jumped) {
+      const prevSub = store.subtitles[prevIdx]
+      const boundary = prevSub ? prevSub.endTime + store.subtitleOffset : -1
+      if (prevSub && prevTick < boundary && el.currentTime >= boundary) {
+        el.pause()
+        el.currentTime = boundary
+        store.setPlayed(boundary)
+        store.setPlaying(false)
+        if (store.filePath) {
+          lastPosSaveRef.current = boundary
+          window.api.recentUpdatePosition(store.filePath, boundary)
+        }
+        prevSubIdxRef.current = -1
+        return
+      }
+    }
+    prevSubIdxRef.current = idx
     if (store.loopEnd && el.currentTime >= store.loopEnd) {
       el.currentTime = store.loopStart || 0
     }
@@ -325,6 +406,8 @@ export default function PlayerPage() {
   // --- Reset scroll to top when file changes ---
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
+    prevSubIdxRef.current = -1
+    lastTickTimeRef.current = 0
   }, [store.filePath, store.subtitles])
 
   // --- 当前字幕切换时自动滚动到容器中间 ---
@@ -368,6 +451,11 @@ export default function PlayerPage() {
       const off = st.subtitleOffset
       if (e.code === 'Comma') st.adjustSubtitleOffset(-0.1)
       if (e.code === 'Period') st.adjustSubtitleOffset(0.1)
+      if (e.code === 'KeyU') {
+        e.preventDefault()
+        st.setAutoPause(!st.autoPause)
+        showToast(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停', 'info')
+      }
       if (subs.length === 0) return
       const t = el.currentTime - off
       const curIdx = subs.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
@@ -574,6 +662,7 @@ export default function PlayerPage() {
 
   // 悬停 150ms 后弹出释义，避免扫过字幕时闪烁
   const scheduleHover = (word: string, sentence: string, el: HTMLElement) => {
+    if (dragRef.current.active) return
     const clean = word.replace(/[^a-zA-Z0-9\-']/g, '')
     if (clean.length < 2) return
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
@@ -799,13 +888,26 @@ export default function PlayerPage() {
             {store.loopStart !== null && (
               <div className="flex items-center gap-1 text-xs">
                 <span>A: {formatTime(store.loopStart)}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => store.setLoop(store.loopStart, store.played)}
-                >
-                  B: {formatTime(store.played)}
-                </Button>
+                {store.loopEnd !== null ? (
+                  <>
+                    <span className="text-muted-foreground">B: {formatTime(store.loopEnd)}</span>
+                    <button
+                      className="px-1 text-muted-foreground hover:text-destructive"
+                      title="清除循环区间"
+                      onClick={() => store.setLoop(null, null)}
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </button>
+                  </>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => store.setLoop(store.loopStart, store.played)}
+                  >
+                    B: {formatTime(store.played)}
+                  </Button>
+                )}
               </div>
             )}
             <Button
@@ -825,6 +927,15 @@ export default function PlayerPage() {
               onClick={() => store.setAutoNextEpisode(!store.autoNextEpisode)}
             >
               <SkipForward className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={store.autoPause ? 'text-primary' : ''}
+              title={store.autoPause ? '播完本句自动暂停：开（U）' : '播完本句自动暂停：关（U）'}
+              onClick={() => store.setAutoPause(!store.autoPause)}
+            >
+              <CirclePause className="h-4 w-4" />
             </Button>
           </div>
         )}
@@ -960,6 +1071,11 @@ export default function PlayerPage() {
             )}
           </div>
         </div>
+        {displaySubtitles.length > 1 && (
+          <div className="px-3 pb-1 text-[11px] text-muted-foreground/70 shrink-0">
+            按住时间戳上下拖动，可选多句循环
+          </div>
+        )}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-3">
           {store.subtitles.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
@@ -977,17 +1093,35 @@ export default function PlayerPage() {
               </div>
             </div>
           ) : (
-            displaySubtitles.map((sub) => {
+            displaySubtitles.map((sub, idx) => {
               const pa = store.played - store.subtitleOffset
               const isActive = pa >= sub.startTime - 0.08 && pa < sub.endTime
               const isPast = pa > sub.endTime
+              const range = dragRange ?? loopRange
+              const inRange = range !== null && idx >= range.start && idx <= range.end
               return (
                 <div
                   key={sub.id}
-                  className={`p-2 rounded text-lg cursor-pointer transition-colors mb-1 ${isActive ? 'bg-primary/10 border-l-2 border-primary font-medium' : isPast ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}
+                  onMouseEnter={() => {
+                    if (!dragRef.current.active) return
+                    dragRef.current.current = idx
+                    const a = dragRef.current.anchor
+                    setDragRange({ start: Math.min(a, idx), end: Math.max(a, idx) })
+                  }}
+                  className={`p-2 rounded text-lg cursor-pointer transition-colors mb-1 ${inRange ? 'bg-primary/15 ring-1 ring-inset ring-primary/30' : isActive ? 'bg-primary/10 border-l-2 border-primary font-medium' : isPast ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}
                   onClick={() => store.requestSeek(sub.startTime + store.subtitleOffset)}
                 >
-                  <span className="text-xs text-muted-foreground mr-2">
+                  <span
+                    className="text-xs text-muted-foreground mr-2 cursor-grab select-none"
+                    title="按住上下拖动，可选多句循环"
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      dragRef.current = { active: true, anchor: idx, current: idx }
+                      setDragRange({ start: idx, end: idx })
+                      cancelHover()
+                    }}
+                  >
                     {formatTime(sub.startTime)}
                   </span>
                   {sub.displayText.split(/(\s+)/).map((part, i) => {
