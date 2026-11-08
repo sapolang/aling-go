@@ -1046,7 +1046,7 @@ export default function PlayerPage() {
               className={`absolute inset-x-0 bottom-0 px-2 pb-2 pt-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-200 ${videoControlsShown ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-center gap-2 [&_button]:text-white [&_button:hover]:bg-white/10 [&_select]:bg-black/40 [&_select]:text-white [&_select]:border-white/30">
+              <div className="flex items-center justify-center gap-2 [&_button]:text-white [&_button:hover]:bg-white/10 [&_button:hover]:text-white [&_select]:bg-black/40 [&_select]:text-white [&_select]:border-white/30">
                 {renderTransportControls()}
               </div>
               <button
