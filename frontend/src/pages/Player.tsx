@@ -342,6 +342,8 @@ export default function PlayerPage() {
   onTimeUpdateRef.current = () => {
     const el = mediaRef.current
     if (!el) return
+    // 时长兜底同步：loadedmetadata 未触发或时长后到时，保证波形等组件能拿到 duration
+    if (!store.duration && el.duration) store.setDuration(el.duration)
     store.setPlayed(el.currentTime)
     store.setPlaying(!el.paused)
     // 字幕匹配使用偏移后的时间：offset>0 表示字幕整体延后
@@ -394,6 +396,7 @@ export default function PlayerPage() {
       resumedForRef.current = fp
       lastPosSaveRef.current = pc.startTime
       el.currentTime = pc.startTime
+      store.setPlayed(pc.startTime)
       store.setLoop(pc.startTime, pc.endTime)
       store.setPlaying(true)
       store.setPlayClip(null)
@@ -413,6 +416,8 @@ export default function PlayerPage() {
       }
       el.currentTime = pos
       lastPosSaveRef.current = pos
+      // 立即同步 played，不等 timeupdate，避免波形/进度条停留在开头
+      store.setPlayed(pos)
     })
   }
 
@@ -463,7 +468,7 @@ export default function PlayerPage() {
   useEffect(() => {
     const el = mediaRef.current
     if (!el) return
-    if (store.playing) el.play().catch(() => {})
+    if (store.playing) el.play().catch((e) => console.warn('play() 被拒绝:', e))
     else el.pause()
     el.playbackRate = store.playbackRate
   }, [store.playing, store.playbackRate])
@@ -1139,7 +1144,7 @@ export default function PlayerPage() {
       </div>
 
       <div
-        className="w-full lg:w-96 border rounded-lg bg-card flex flex-col"
+        className="w-full lg:w-2/5 lg:min-w-96 lg:max-w-[600px] border rounded-lg bg-card flex flex-col"
         style={{ maxHeight: 'calc(100vh - 180px)' }}
       >
         <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">

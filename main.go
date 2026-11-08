@@ -67,6 +67,13 @@ func main() {
 		MinWidth:         800,
 		MinHeight:        500,
 		BackgroundColour: application.RGBA{Red: 27, Green: 38, Blue: 54, Alpha: 255},
+		Mac: application.MacWindow{
+			WebviewPreferences: application.MacWebviewPreferences{
+				// WKWebView 默认要求用户手势才能播放有声媒体，打开文件后的
+				// 自动播放（canplay 回调里的 play()）会被静默拒绝
+				EnableAutoplayWithoutUserAction: application.Enabled,
+			},
+		},
 	})
 
 	win.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
