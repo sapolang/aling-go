@@ -144,13 +144,9 @@ export default function PlayerPage() {
 
   useEffect(() => clearControlsTimer, [])
 
-  // --- AI 选句翻译 / 详解 ---
-  const [selPop, setSelPop] = useState<{
-    text: string
-    context: string
-    x: number
-    y: number
-  } | null>(null)
+  // --- AI 当前句翻译 / 详解 ---
+  // aiTarget 由播放控制栏的 AI 按钮显式触发，内容为当前字幕句
+  const [aiTarget, setAiTarget] = useState<{ text: string; context: string } | null>(null)
   const [aiTranslate, setAiTranslate] = useState<{
     reqId: string
     text: string
@@ -165,36 +161,6 @@ export default function PlayerPage() {
   } | null>(null)
   const aiReqRef = useRef(0)
   const aiActiveReq = useRef('')
-
-  useEffect(() => {
-    if (!isActive) return
-    const onMouseUp = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null
-      // 点击浮层自身不算重新选区
-      if (target?.closest('[data-ai-pop]')) return
-      const sel = window.getSelection()
-      const raw = sel?.toString().trim() ?? ''
-      if (!raw || raw.length < 2) {
-        setSelPop(null)
-        return
-      }
-      const range = sel?.rangeCount ? sel.getRangeAt(0) : null
-      if (!range) return
-      const rect = range.getBoundingClientRect()
-      if (rect.width === 0 && rect.height === 0) return
-      const cur = store.subtitles[store.currentSubtitleIndex]
-      setSelPop({
-        text: raw,
-        context: cur ? cur.text : '',
-        x: rect.left + rect.width / 2,
-        y: rect.top,
-      })
-      setAiTranslate(null)
-      setAiExplain(null)
-    }
-    document.addEventListener('mouseup', onMouseUp)
-    return () => document.removeEventListener('mouseup', onMouseUp)
-  }, [isActive, store.subtitles, store.currentSubtitleIndex])
 
   useEffect(() => {
     const offChunk = window.api.aiOnChunk(({ reqId, delta }: any) => {
@@ -214,7 +180,7 @@ export default function PlayerPage() {
   const ensureAIConfig = async () => {
     const cfg = await window.api.aiGetConfig()
     if (!cfg.hasKey) {
-      setSelPop(null)
+      setAiTarget(null)
       showToast('请先在「设置 → AI 翻译」中填写 API Key', 'warning')
       navigate('/settings')
       return false
@@ -223,12 +189,12 @@ export default function PlayerPage() {
   }
 
   const handleAITranslate = async () => {
-    if (!selPop || !(await ensureAIConfig())) return
+    if (!aiTarget || !(await ensureAIConfig())) return
     const id = `t${++aiReqRef.current}`
     aiActiveReq.current = id
     setAiExplain(null)
     setAiTranslate({ reqId: id, text: '', loading: true })
-    const r = await window.api.aiTranslateStream(selPop.text, selPop.context, id)
+    const r = await window.api.aiTranslateStream(aiTarget.text, aiTarget.context, id)
     if (r.error) {
       setAiTranslate((s) => (s ? { ...s, loading: false, error: r.error } : s))
       return
@@ -237,12 +203,12 @@ export default function PlayerPage() {
   }
 
   const handleAIExplain = async () => {
-    if (!selPop || !(await ensureAIConfig())) return
+    if (!aiTarget || !(await ensureAIConfig())) return
     setAiTranslate(null)
-    setAiExplain({ loading: true, text: selPop.text })
-    const r = await window.api.aiExplain(selPop.text, selPop.context)
-    if (!r.ok) setAiExplain({ loading: false, error: r.error, text: selPop.text })
-    else setAiExplain({ loading: false, data: r.data, text: selPop.text })
+    setAiExplain({ loading: true, text: aiTarget.text })
+    const r = await window.api.aiExplain(aiTarget.text, aiTarget.context)
+    if (!r.ok) setAiExplain({ loading: false, error: r.error, text: aiTarget.text })
+    else setAiExplain({ loading: false, data: r.data, text: aiTarget.text })
   }
 
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
@@ -489,6 +455,7 @@ export default function PlayerPage() {
     lastTickTimeRef.current = 0
     hoverPauseRef.current = false
     setAutoFollow(true)
+    setAiTarget(null)
   }, [store.filePath, store.subtitles])
 
   // --- 当前字幕切换时自动滚动到容器中间（用户手动浏览时暂停跟随） ---
@@ -967,6 +934,28 @@ export default function PlayerPage() {
         onClick={() => store.setAutoPause(!store.autoPause)}
       >
         <CirclePause className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={store.currentSubtitleIndex < 0}
+        className={aiTarget ? 'text-primary' : ''}
+        title="AI 翻译/详解当前句"
+        onClick={() => {
+          if (aiTarget) {
+            setAiTarget(null)
+            return
+          }
+          const cur = store.subtitles[store.currentSubtitleIndex]
+          if (!cur) return
+          // 详解/翻译对象为当前句英文部分，上下文保留完整句
+          const en = filterSubtitleText(cur.text, 'en') || cur.text
+          setAiTarget({ text: en, context: cur.text })
+          setAiTranslate(null)
+          setAiExplain(null)
+        }}
+      >
+        <Sparkles className="h-4 w-4" />
       </Button>
     </div>
   )
@@ -1487,16 +1476,12 @@ export default function PlayerPage() {
           </div>
         )}
 
-        {/* AI 选句操作浮层 */}
-        {selPop && (
-          <div
-            data-ai-pop
-            className="fixed z-40 -translate-x-1/2 -translate-y-full"
-            style={{ left: selPop.x, top: selPop.y - 8 }}
-          >
+        {/* AI 当前句翻译/详解面板（由控制栏 Sparkles 按钮触发） */}
+        {aiTarget && (
+          <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-40">
             <Card className="p-2 shadow-lg">
               <p className="text-xs text-muted-foreground max-w-[320px] line-clamp-2 mb-2 px-1">
-                {selPop.text}
+                {aiTarget.text}
               </p>
               <div className="flex gap-1">
                 <Button size="sm" variant="outline" onClick={handleAITranslate}>
@@ -1505,7 +1490,7 @@ export default function PlayerPage() {
                 <Button size="sm" onClick={handleAIExplain}>
                   <BookOpen className="h-3.5 w-3.5 mr-1" /> 详解
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setSelPop(null)}>
+                <Button size="sm" variant="ghost" onClick={() => setAiTarget(null)}>
                   <XIcon className="h-3.5 w-3.5" />
                 </Button>
               </div>
