@@ -24,6 +24,9 @@ export default function ArticleListPage() {
   useEffect(() => {
     if (categories.length > 0 && !currentCategory) {
       loadArticles(categories[0].enName).then(() => loadAllProgress())
+    } else if (categories.length > 0) {
+      // 从打字页返回时列表不会重新拉取文章，但进度需要刷新，避免展示上次的旧数据
+      loadAllProgress()
     }
   }, [categories, currentCategory, loadArticles, loadAllProgress])
 
@@ -94,7 +97,7 @@ export default function ArticleListPage() {
                       <p className="text-sm text-muted-foreground truncate">{a.titleTranslate}</p>
                     )}
                   </div>
-                  {progress?.completed && (
+                  {progress?.completed ? (
                     <div className="text-xs text-muted-foreground shrink-0 text-right">
                       <span className="text-green-600 dark:text-green-400">
                         {Math.round(progress.bestAccuracy * 100)}%
@@ -102,6 +105,13 @@ export default function ArticleListPage() {
                       {' · '}
                       <span>{Math.round(progress.bestWpm)} WPM</span>
                     </div>
+                  ) : (
+                    progress &&
+                    progress.position > 0 && (
+                      <div className="text-xs text-muted-foreground shrink-0 text-right">
+                        已打 {Math.round((progress.position / Math.max(a.text.length, 1)) * 100)}%
+                      </div>
+                    )
                   )}
                 </CardContent>
               </Card>

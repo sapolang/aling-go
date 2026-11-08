@@ -200,48 +200,38 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 		return nil
 	}
 
+	// 内置精简编译的 ffmpeg 不支持 f32le pipe 输出，改为生成临时 WAV 文件再解析
+	tmpFile, err := os.CreateTemp("", "aling-wave-*.wav")
+	if err != nil {
+		s.app.Logger.Debug("GetWaveformData temp file error", "error", err)
+		return nil
+	}
+	tmpPath := tmpFile.Name()
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
+
 	cmd := exec.Command(ffmpeg,
 		"-i", filePath,
 		"-ac", "1",
-		"-f", "f32le",
-		"-ar", "8000",
-		"pipe:1",
+		"-ar", "1000",
+		"-f", "wav",
+		tmpPath,
 	)
-	stdout, err := cmd.StdoutPipe()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		s.app.Logger.Debug("GetWaveformData ffmpeg error", "error", err, "output", string(out))
+		return nil
+	}
+
+	samples, err := readWavPCM16(tmpPath)
 	if err != nil {
-		s.app.Logger.Debug("GetWaveformData stdout pipe error", "error", err)
+		s.app.Logger.Debug("GetWaveformData wav parse error", "error", err)
 		return nil
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		s.app.Logger.Debug("GetWaveformData stderr pipe error", "error", err)
-		return nil
-	}
-
-	if err := cmd.Start(); err != nil {
-		s.app.Logger.Debug("GetWaveformData start error", "error", err)
+	if len(samples) == 0 {
 		return nil
 	}
 
-	go func() { _, _ = io.Copy(io.Discard, stderr) }()
-
-	rawBytes, err := io.ReadAll(stdout)
-	if err != nil {
-		s.app.Logger.Debug("GetWaveformData read error", "error", err)
-		return nil
-	}
-
-	_ = cmd.Wait()
-
-	if len(rawBytes) == 0 {
-		return nil
-	}
-
-	sampleCount := len(rawBytes) / 4
-	if sampleCount == 0 {
-		return nil
-	}
-
+	sampleCount := len(samples)
 	samplesPerSegment := float64(sampleCount) / float64(waveformSampleCount)
 	result := make([]float64, waveformSampleCount)
 
@@ -257,8 +247,7 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 		}
 		peak := float64(0)
 		for j := start; j < end; j++ {
-			bits := binary.LittleEndian.Uint32(rawBytes[j*4 : (j+1)*4])
-			val := math.Abs(float64(math.Float32frombits(bits)))
+			val := math.Abs(float64(samples[j]) / 32768.0)
 			if val > peak {
 				peak = val
 			}
@@ -284,4 +273,64 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 	}
 
 	return result
+}
+
+// readWavPCM16 按 WAV chunk 结构读取 PCM16 采样（兼容 fmt/data 之外的其他 chunk）
+func readWavPCM16(path string) ([]int16, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	var riff [12]byte
+	if _, err := io.ReadFull(f, riff[:]); err != nil {
+		return nil, err
+	}
+	if string(riff[0:4]) != "RIFF" || string(riff[8:12]) != "WAVE" {
+		return nil, fmt.Errorf("not a WAVE file")
+	}
+
+	var bitsPerSample uint16 = 16
+	for {
+		var hdr [8]byte
+		if _, err := io.ReadFull(f, hdr[:]); err != nil {
+			return nil, err
+		}
+		chunkSize := binary.LittleEndian.Uint32(hdr[4:8])
+		switch string(hdr[0:4]) {
+		case "fmt ":
+			buf := make([]byte, chunkSize)
+			if _, err := io.ReadFull(f, buf); err != nil {
+				return nil, err
+			}
+			if len(buf) >= 16 {
+				bitsPerSample = binary.LittleEndian.Uint16(buf[14:16])
+			}
+		case "data":
+			if bitsPerSample != 16 {
+				return nil, fmt.Errorf("unsupported bits per sample: %d", bitsPerSample)
+			}
+			raw := make([]byte, chunkSize)
+			if _, err := io.ReadFull(f, raw); err != nil {
+				return nil, err
+			}
+			// PCM16 采样即小端序有符号 16 位整数，位模式等价转换
+			samples := make([]int16, len(raw)/2)
+			for i := range samples {
+				samples[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2])) //nolint:gosec // G115: 位模式转换，非数值截断
+			}
+			return samples, nil
+		default:
+			if _, err := f.Seek(int64(chunkSize), io.SeekCurrent); err != nil {
+				return nil, err
+			}
+		}
+		// chunk 按偶数字节对齐
+		if chunkSize%2 == 1 {
+			if _, err := f.Seek(1, io.SeekCurrent); err != nil {
+				return nil, err
+			}
+		}
+	}
 }
