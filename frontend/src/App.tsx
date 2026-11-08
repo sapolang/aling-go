@@ -4,7 +4,6 @@ import { Window, Screens } from '@wailsio/runtime'
 import { Layout } from '@/components/Layout'
 import { FeedbackHost } from '@/components/feedback'
 import { useThemeStore } from '@/stores/themeStore'
-import { initBridge } from '@/api/bridge'
 
 const Home = lazy(() => import('@/pages/Home'))
 const Player = lazy(() => import('@/pages/Player'))
@@ -134,10 +133,6 @@ function AppContent() {
 }
 
 export default function App() {
-  useEffect(() => {
-    initBridge()
-  }, [])
-
   return (
     <HashRouter>
       <AppContent />
