@@ -76,6 +76,11 @@ func (s *PlatformService) GetPlatform() string {
 	return goRuntime.GOOS
 }
 
+// GetVersion 返回应用版本号（构建时注入，本地未注入时为 dev）
+func (s *PlatformService) GetVersion() string {
+	return appVersion
+}
+
 // --- File Ops ---
 
 func (s *PlatformService) ReadTextFile(path string) string {
