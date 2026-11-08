@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
-import { Suspense, lazy, useEffect, useRef } from 'react'
-import { Window } from '@wailsio/runtime'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Window, Screens } from '@wailsio/runtime'
 import { Layout } from '@/components/Layout'
 import { FeedbackHost } from '@/components/feedback'
 import { useThemeStore } from '@/stores/themeStore'
@@ -24,30 +24,76 @@ function Loading() {
   )
 }
 
+// 等窗口尺寸稳定：连续 idleMs 毫秒没有 resize 事件（最多等 maxMs）
+function waitForResizeSettle(idleMs = 120, maxMs = 450): Promise<void> {
+  return new Promise((resolve) => {
+    let last = Date.now()
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      window.removeEventListener('resize', onResize)
+      clearInterval(poll)
+      clearTimeout(maxTimer)
+      resolve()
+    }
+    const onResize = () => {
+      last = Date.now()
+    }
+    const poll = setInterval(() => {
+      if (Date.now() - last >= idleMs) finish()
+    }, 30)
+    const maxTimer = setTimeout(finish, maxMs)
+    window.addEventListener('resize', onResize)
+  })
+}
+
 function AppContent() {
   const location = useLocation()
   const dark = useThemeStore((s) => s.dark)
   const isPlayer = location.pathname === '/player'
-  const maximizedByPlayer = useRef(false)
+  const [playerReady, setPlayerReady] = useState(true)
+  const prevBounds = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
-  // 进入播放页时放大窗口，离开时恢复原窗口大小
+  // 进入播放页时把窗口一步铺满屏幕可用区域：Window.Maximise() 在 macOS 上是
+  // 带动画的 zoom，动画期间 webview 逐帧 resize、播放器跟着逐帧重排导致卡顿；
+  // SetSize/SetPosition 瞬时生效，整个过程最多一两次 resize。离开时用进入前
+  // 记录的窗口位置尺寸还原。尺寸稳定前用遮罩盖住，避免露出中间状态。
   useEffect(() => {
     let cancelled = false
     if (isPlayer) {
-      Window.IsMaximised()
-        .then((maximised: boolean) => {
-          if (cancelled || maximised) return
-          maximizedByPlayer.current = true
-          return Window.Maximise()
-        })
+      setPlayerReady(false)
+      ;(async () => {
+        try {
+          if (await Window.IsMaximised()) return
+          const [size, pos, screen] = await Promise.all([
+            Window.Size(),
+            Window.Position(),
+            Screens.GetCurrent(),
+          ])
+          prevBounds.current = { x: pos.x, y: pos.y, w: size.width, h: size.height }
+          const wa = screen?.WorkArea
+          if (wa) {
+            await Window.SetSize(wa.Width, wa.Height)
+            await Window.SetPosition(wa.X, wa.Y)
+          }
+          await waitForResizeSettle()
+        } catch {
+          // 取屏或设置失败时直接展示，不阻塞进入播放页
+        } finally {
+          if (!cancelled) setPlayerReady(true)
+        }
+      })()
+    } else if (prevBounds.current) {
+      const b = prevBounds.current
+      prevBounds.current = null
+      Window.SetSize(b.w, b.h)
+        .then(() => Window.SetPosition(b.x, b.y))
         .catch(() => {})
-    } else if (maximizedByPlayer.current) {
-      maximizedByPlayer.current = false
-      Window.UnMaximise().catch(() => {})
     }
     return () => {
       cancelled = true
@@ -76,6 +122,13 @@ function AppContent() {
       <Suspense fallback={null}>
         <Player />
       </Suspense>
+
+      {/* 窗口尺寸稳定前的过渡遮罩（播放器正常渲染，只是被盖住） */}
+      {isPlayer && !playerReady && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background text-muted-foreground">
+          正在打开播放器...
+        </div>
+      )}
     </Layout>
   )
 }
