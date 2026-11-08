@@ -28,6 +28,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Info,
 } from 'lucide-react'
 
 interface ExportedWord {
@@ -49,6 +50,7 @@ export default function SettingsPage() {
   const setBinding = useShortcutStore((s) => s.setBinding)
   const resetBinding = useShortcutStore((s) => s.resetBinding)
   const resetAll = useShortcutStore((s) => s.resetAll)
+  const [appVersion, setAppVersion] = useState('dev')
   const [recordingId, setRecordingId] = useState<ShortcutActionId | null>(null)
   const [shortcutConflict, setShortcutConflict] = useState<{
     actionId: ShortcutActionId
@@ -149,6 +151,8 @@ export default function SettingsPage() {
       setAiBaseURL(cfg.baseUrl)
       setAiModel(cfg.model)
     })
+
+    window.api.getVersion().then(setAppVersion)
 
     let resumeCleanup: (() => void) | null = null
     window.api.getDownloadProgress().then((d: string) => {
@@ -655,6 +659,23 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Info className="h-5 w-5" /> 关于
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-medium">语练</p>
+              <p className="text-sm text-muted-foreground">英语输入输出训练台</p>
+            </div>
+            <span className="text-sm font-mono text-muted-foreground">v{appVersion}</span>
+          </div>
         </CardContent>
       </Card>
     </div>

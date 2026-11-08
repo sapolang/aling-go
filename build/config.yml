@@ -7,7 +7,7 @@ info:
   description: "语练 - Language Learning Tool"
   copyright: ""
   comments: ""
-  version: "1.0.0"
+  version: "0.1.9"
 
 dev_mode:
   root_path: .

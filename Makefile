@@ -2,6 +2,10 @@
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
+# 版本号与 build/config.yml 保持一致（发布时 CI 按 tag 注入）
+VERSION ?= $(shell sed -n 's/^  version: "\(.*\)"$$/\1/p' build/config.yml)
+ARCH ?= $(shell go env GOARCH)
+DMG_FILE = bin/$(APP_NAME)-$(VERSION)-$(ARCH).dmg
 
 # macOS (default): make build         → .app
 # macOS DMG:       make dmg           → .dmg
@@ -28,18 +32,18 @@ dmg: sidecar package
 		echo "Installing create-dmg..."; \
 		brew install create-dmg; \
 	fi
-	rm -f bin/$(APP_NAME).dmg
+	rm -f $(DMG_FILE)
 	create-dmg \
-		--volname "$(APP_NAME)" \
+		--volname "$(APP_NAME) $(VERSION)" \
 		--window-pos 200 120 \
 		--window-size 600 300 \
 		--icon-size 100 \
 		--icon "$(APP_NAME).app" 150 120 \
 		--app-drop-link 450 120 \
-		bin/$(APP_NAME).dmg \
+		$(DMG_FILE) \
 		"bin/$(APP_NAME).app"
-	@echo "DMG: bin/$(APP_NAME).dmg"
-	du -sh bin/$(APP_NAME).dmg
+	@echo "DMG: $(DMG_FILE)"
+	du -sh $(DMG_FILE)
 
 exe:
 	wails3 build
@@ -65,7 +69,7 @@ clean:
 	rm -rf build/bin
 	rm -rf sidecar/.whisper-cpp
 	rm -f $(SIDECAR_BIN)
-	rm -f bin/$(APP_NAME).dmg
+	rm -f bin/$(APP_NAME)-*.dmg
 	rm -rf frontend/dist
 
 vet:

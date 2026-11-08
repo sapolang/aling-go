@@ -52,6 +52,7 @@ export function Layout({
   const reviewCompleted = useWordStore((s) => s.reviewCompleted)
   const loadReviewCount = useWordStore((s) => s.loadReviewCount)
   const [collapsed, setCollapsed] = useState(false)
+  const [appVersion, setAppVersion] = useState('dev')
 
   // 窄窗口下自动收起侧栏，给内容留出空间
   useEffect(() => {
@@ -67,6 +68,10 @@ export function Layout({
   useEffect(() => {
     loadReviewCount()
   }, [location.pathname, loadReviewCount])
+
+  useEffect(() => {
+    window.api.getVersion().then(setAppVersion)
+  }, [])
 
   const handleCloseFile = async () => {
     if (playing || transcribing) {
@@ -143,7 +148,7 @@ export function Layout({
           })}
         </nav>
         <div className="p-3 border-t flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{collapsed ? '' : 'v1.0.0'}</span>
+          <span className="text-xs text-muted-foreground">{collapsed ? '' : `v${appVersion}`}</span>
           <ThemeToggle />
         </div>
       </aside>

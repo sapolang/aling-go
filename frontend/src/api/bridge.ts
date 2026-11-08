@@ -5,6 +5,7 @@ import {
   ReadTextFile,
   WriteTextFile,
   GetPlatform,
+  GetVersion,
   OpenExternal,
 } from '../../bindings/aling-go/platformservice'
 
@@ -172,6 +173,7 @@ export function initBridge(): void {
     getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
     getWaveformData: (filePath: string) => GetWaveformData(filePath),
     getPlatform: () => GetPlatform(),
+    getVersion: () => GetVersion(),
     getMediaPort: () => GetMediaPort(),
 
     dbDictTags: () => DbDictTags(),
