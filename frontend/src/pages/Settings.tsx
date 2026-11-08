@@ -2,8 +2,17 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { showToast } from '@/components/feedback'
+import { confirmDialog, showToast } from '@/components/feedback'
 import { useThemeStore } from '@/stores/themeStore'
+import {
+  SHORTCUT_ACTIONS,
+  SHORTCUT_GROUP_LABELS,
+  SHORTCUT_GROUP_ORDER,
+  formatBinding,
+  sameBinding,
+  useShortcutStore,
+} from '@/stores/shortcutStore'
+import type { ShortcutActionId, ShortcutGroupId } from '@/stores/shortcutStore'
 import {
   Sun,
   Moon,
@@ -14,6 +23,11 @@ import {
   Mic,
   Loader2,
   Sparkles,
+  Keyboard,
+  RotateCcw,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
 } from 'lucide-react'
 
 interface ExportedWord {
@@ -31,6 +45,18 @@ function escapeCSV(value: unknown): string {
 
 export default function SettingsPage() {
   const { dark, toggle } = useThemeStore()
+  const shortcutBindings = useShortcutStore((s) => s.bindings)
+  const setBinding = useShortcutStore((s) => s.setBinding)
+  const resetBinding = useShortcutStore((s) => s.resetBinding)
+  const resetAll = useShortcutStore((s) => s.resetAll)
+  const [recordingId, setRecordingId] = useState<ShortcutActionId | null>(null)
+  const [shortcutConflict, setShortcutConflict] = useState<{
+    actionId: ShortcutActionId
+    conflictId: ShortcutActionId
+  } | null>(null)
+  const [expandedShortcutGroups, setExpandedShortcutGroups] = useState<Set<ShortcutGroupId>>(
+    () => new Set<ShortcutGroupId>(),
+  )
   const [importResult, setImportResult] = useState<string | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [whisperStatus, setWhisperStatus] = useState<{
@@ -140,6 +166,98 @@ export default function SettingsPage() {
     }
   }, [])
 
+  // --- 快捷键录制：捕获阶段拦截，避免触发按钮原生行为与页面滚动 ---
+  useEffect(() => {
+    if (!recordingId) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.repeat) return
+      if (e.key === 'Escape') {
+        setShortcutConflict(null)
+        setRecordingId(null)
+        return
+      }
+      if (e.metaKey || e.ctrlKey) {
+        showToast('不支持 Cmd / Ctrl 组合', 'warning')
+        return
+      }
+      if (e.isComposing) return
+      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn'].includes(e.key)) return
+      if (e.code === 'Tab') {
+        showToast('Tab 键不可用', 'warning')
+        return
+      }
+      if (e.code === 'Backspace') {
+        setBinding(recordingId, null)
+        setShortcutConflict(null)
+        setRecordingId(null)
+        showToast('已清除绑定')
+        return
+      }
+
+      const binding = { code: e.code, shift: e.shiftKey, alt: e.altKey }
+      const conflict = setBinding(recordingId, binding)
+      if (conflict) {
+        setShortcutConflict({ actionId: recordingId, conflictId: conflict })
+        const label = SHORTCUT_ACTIONS.find((action) => action.id === conflict)?.label ?? conflict
+        showToast(`已被「${label}」占用`, 'warning')
+        return
+      }
+      setShortcutConflict(null)
+      setRecordingId(null)
+      showToast(`已设为 ${formatBinding(binding)}`)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [recordingId, setBinding])
+
+  const handleResetAllShortcuts = async () => {
+    // 先退出录制，避免确认框打开后按键仍被录制器捕获
+    setRecordingId(null)
+    setShortcutConflict(null)
+    const ok = await confirmDialog({
+      title: '恢复默认快捷键',
+      description: '将播放器所有快捷键恢复为默认键位，自定义设置会丢失。',
+      confirmText: '恢复默认',
+    })
+    if (!ok) return
+    resetAll()
+    showToast('已恢复默认快捷键')
+  }
+
+  const handleResetShortcut = (id: ShortcutActionId) => {
+    setRecordingId((current) => (current === id ? null : current))
+    setShortcutConflict(null)
+    resetBinding(id)
+    showToast('已恢复默认键位')
+  }
+
+  const modifiedShortcutCount = SHORTCUT_ACTIONS.filter((action) => {
+    const binding = shortcutBindings[action.id]
+    return binding ? !sameBinding(binding, action.defaultBinding) : true
+  }).length
+
+  const toggleShortcutGroup = (group: ShortcutGroupId) => {
+    setRecordingId(null)
+    setShortcutConflict(null)
+    setExpandedShortcutGroups((current) => {
+      const next = new Set(current)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
+      return next
+    })
+  }
+
+  const allShortcutGroupsExpanded = expandedShortcutGroups.size === SHORTCUT_GROUP_ORDER.length
+  const toggleAllShortcutGroups = () => {
+    setRecordingId(null)
+    setShortcutConflict(null)
+    setExpandedShortcutGroups(
+      allShortcutGroupsExpanded ? new Set<ShortcutGroupId>() : new Set(SHORTCUT_GROUP_ORDER),
+    )
+  }
+
   const handleDownloadModel = async (name?: string) => {
     const modelName = name || selectedModel
     setSelectedModel(modelName)
@@ -211,6 +329,138 @@ export default function SettingsPage() {
               {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Keyboard className="h-5 w-5" /> 播放器快捷键
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <p className="text-xs text-muted-foreground max-w-md">
+              点击键位后按下新组合键；Backspace 清除绑定，Esc 取消录制。支持单键或 Shift / Alt
+              组合，不支持 Cmd / Ctrl。快捷键仅在播放页生效。
+            </p>
+            <div className="flex items-center gap-2">
+              {modifiedShortcutCount > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  已修改 {modifiedShortcutCount} 项
+                </span>
+              )}
+              <Button variant="ghost" size="sm" onClick={toggleAllShortcutGroups}>
+                {allShortcutGroupsExpanded ? (
+                  <ChevronUp className="h-3.5 w-3.5 mr-1" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                )}
+                {allShortcutGroupsExpanded ? '全部收起' : '全部展开'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={modifiedShortcutCount === 0}
+                onClick={handleResetAllShortcuts}
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> 恢复默认
+              </Button>
+            </div>
+          </div>
+
+          {SHORTCUT_GROUP_ORDER.map((group) => {
+            const actions = SHORTCUT_ACTIONS.filter((action) => action.group === group)
+            if (actions.length === 0) return null
+            const expanded = expandedShortcutGroups.has(group)
+            const modified = actions.filter((action) => {
+              const binding = shortcutBindings[action.id]
+              return binding ? !sameBinding(binding, action.defaultBinding) : true
+            }).length
+            return (
+              <div key={group} className="rounded-md border">
+                <button
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                  onClick={() => toggleShortcutGroup(group)}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-medium">
+                    {expanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    {SHORTCUT_GROUP_LABELS[group]}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {modified > 0 && <span className="text-primary">{modified} 项已修改 · </span>}
+                    {actions.length} 项
+                  </span>
+                </button>
+                {expanded && (
+                  <div className="space-y-1.5 px-2 pb-2">
+                    {actions.map((action) => {
+                      const binding = shortcutBindings[action.id]
+                      const recording = recordingId === action.id
+                      const isDefault = binding
+                        ? sameBinding(binding, action.defaultBinding)
+                        : false
+                      const conflictId =
+                        shortcutConflict?.actionId === action.id
+                          ? shortcutConflict.conflictId
+                          : null
+                      const conflictLabel = conflictId
+                        ? (SHORTCUT_ACTIONS.find((item) => item.id === conflictId)?.label ??
+                          '其他动作')
+                        : null
+                      return (
+                        <div key={action.id} className="rounded px-2 py-1 hover:bg-muted/40">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm">{action.label}</span>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant={
+                                  recording ? (conflictId ? 'destructive' : 'default') : 'outline'
+                                }
+                                size="sm"
+                                className={`min-w-[7rem] font-mono ${recording && !conflictId ? 'animate-pulse' : ''}`}
+                                title="点击后按新键；Backspace 清除，Esc 取消"
+                                onClick={() => {
+                                  setShortcutConflict(null)
+                                  setRecordingId(recording ? null : action.id)
+                                }}
+                              >
+                                {recording
+                                  ? '按下新键…'
+                                  : binding
+                                    ? formatBinding(binding)
+                                    : '未设置'}
+                              </Button>
+                              {!isDefault && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="恢复默认键位"
+                                  onClick={() => handleResetShortcut(action.id)}
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {conflictLabel && (
+                            <p className="text-xs text-destructive text-right mt-1">
+                              与「{conflictLabel}」冲突，请换一个键位
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 

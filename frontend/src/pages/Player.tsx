@@ -5,11 +5,20 @@ import { useWordStore } from '@/stores/wordStore'
 import type { LibraryFile } from '@/stores/libraryStore'
 import type { SubtitleDisplayMode } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
+import {
+  SHORTCUT_ACTIONS,
+  SHORTCUT_GROUP_LABELS,
+  SHORTCUT_GROUP_ORDER,
+  findActionForEvent,
+  formatBinding,
+  useShortcutStore,
+} from '@/stores/shortcutStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { showToast } from '@/components/feedback'
 import { speak } from '@/lib/tts'
+import { Window } from '@wailsio/runtime'
 import Waveform from '@/components/Waveform'
 import WordLookupModal from '@/components/WordLookupModal'
 import WordHoverCard from '@/components/WordHoverCard'
@@ -36,11 +45,28 @@ import {
   Sparkles,
   Languages,
   BookOpen,
+  Keyboard,
 } from 'lucide-react'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+// 长按时允许连续触发的动作；切换类动作忽略系统按键重复，避免反复开关
+const REPEATABLE_SHORTCUTS = new Set<string>([
+  'seekBack',
+  'seekForward',
+  'seekBackFine',
+  'seekForwardFine',
+  'volumeUp',
+  'volumeDown',
+  'offsetMinus',
+  'offsetPlus',
+  'offsetMinusCoarse',
+  'offsetPlusCoarse',
+  'fontSizeUp',
+  'fontSizeDown',
+])
 
 const SUBTITLE_MODE_LABELS: Record<SubtitleDisplayMode, string> = {
   all: '全部',
@@ -69,6 +95,7 @@ export default function PlayerPage() {
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const store = usePlayerStore()
+  const shortcutBindings = useShortcutStore((s) => s.bindings)
   const dark = useThemeStore((s) => s.dark)
   const [selectedWord, setSelectedWord] = useState('')
   const [currentSentence, setCurrentSentence] = useState('')
@@ -78,6 +105,7 @@ export default function PlayerPage() {
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showLookup, setShowLookup] = useState(false)
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [playError, setPlayError] = useState<string | null>(null)
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
@@ -445,6 +473,14 @@ export default function PlayerPage() {
     el.playbackRate = store.playbackRate
   }, [store.playing, store.playbackRate])
 
+  // --- 音量与静音偏好 ---
+  useEffect(() => {
+    const el = mediaRef.current
+    if (!el) return
+    el.volume = store.volume
+    el.muted = store.muted
+  }, [store.volume, store.muted, store.filePath])
+
   // --- Consume seek command ---
   useEffect(() => {
     const el = mediaRef.current
@@ -499,46 +535,110 @@ export default function PlayerPage() {
   }, [showSubMenu])
 
   // --- Keyboard shortcuts ---
+  // UI 状态用 ref 同步，避免每次播放/弹窗状态变化都重建监听器
+  const aiTargetRef = useRef(aiTarget)
+  const blockingModalRef = useRef(false)
+  const closeTopLayerRef = useRef<() => boolean>(() => false)
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (!isActive) return
-      const el = mediaRef.current
-      if (!el) return
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.code === 'Space') {
-        e.preventDefault()
-        hoverPauseRef.current = false
-        store.playing ? el.pause() : el.play()
-        store.setPlaying(!store.playing)
+    aiTargetRef.current = aiTarget
+    blockingModalRef.current = !!(
+      showShortcutHelp ||
+      showLookup ||
+      aiTarget ||
+      aiTranslate ||
+      aiExplain ||
+      favTarget ||
+      showTranscribeLangModal
+    )
+    closeTopLayerRef.current = () => {
+      if (showShortcutHelp) {
+        setShowShortcutHelp(false)
+        return true
       }
-      if (e.code === 'ArrowLeft') el.currentTime = Math.max(0, el.currentTime - 5)
-      if (e.code === 'ArrowRight') el.currentTime = Math.min(el.duration || 0, el.currentTime + 5)
-      // --- 逐句复读与字幕微调（用 getState 避免闭包捕获旧状态） ---
+      if (showLookup) {
+        setShowLookup(false)
+        return true
+      }
+      if (aiExplain) {
+        setAiExplain(null)
+        return true
+      }
+      if (aiTranslate) {
+        setAiTranslate(null)
+        return true
+      }
+      if (favTarget) {
+        setFavTarget(null)
+        return true
+      }
+      if (showTranscribeLangModal) {
+        setShowTranscribeLangModal(false)
+        return true
+      }
+      if (showSubMenu) {
+        setShowSubMenu(false)
+        return true
+      }
+      if (aiTarget) {
+        setAiTarget(null)
+        return true
+      }
+      return false
+    }
+  })
+
+  useEffect(() => {
+    if (!isActive) return
+
+    const handleKey = (e: KeyboardEvent) => {
+      // 屏蔽 Cmd/Ctrl 组合与输入法候选期间的按键
+      if (e.metaKey || e.ctrlKey || e.isComposing) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+
+      const action = findActionForEvent(useShortcutStore.getState().bindings, e)
+      if (!action) return
+
+      // 系统按键重复只允许用于连续型动作
+      if (e.repeat && !REPEATABLE_SHORTCUTS.has(action)) {
+        e.preventDefault()
+        return
+      }
+
+      // Esc 始终按层级关闭浮层，不受弹窗拦截影响
+      if (action === 'exit') {
+        e.preventDefault()
+        closeTopLayerRef.current()
+        return
+      }
+      if (blockingModalRef.current) return
+
+      e.preventDefault()
+
+      if (action === 'help') {
+        setShowShortcutHelp(true)
+        return
+      }
+
+      const el = mediaRef.current
       const st = usePlayerStore.getState()
+      if (!el || !st.filePath) return
+
+      // 焦点在按钮/链接上时，Space 交给原生 click，避免重复触发
+      if ((target?.tagName === 'BUTTON' || target?.tagName === 'A') && action === 'playPause') {
+        return
+      }
+
       const subs = st.subtitles
       const off = st.subtitleOffset
-      if (e.code === 'Comma') st.adjustSubtitleOffset(-0.1)
-      if (e.code === 'Period') st.adjustSubtitleOffset(0.1)
-      if (e.code === 'KeyU') {
-        e.preventDefault()
-        st.setAutoPause(!st.autoPause)
-        showToast(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停', 'info')
-      }
-      if (e.code === 'KeyE') {
-        e.preventDefault()
-        const modes: SubtitleDisplayMode[] = ['all', 'en', 'zh', 'off']
-        const next = modes[(modes.indexOf(st.subtitleDisplayMode) + 1) % modes.length]
-        st.setSubtitleDisplayMode(next)
-        showToast(`字幕显示：${SUBTITLE_MODE_LABELS[next]}`, 'info')
-      }
-      if (e.code === 'KeyP') {
-        e.preventDefault()
-        const next =
-          PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(st.playbackRate) + 1) % PLAYBACK_RATES.length]
-        st.setPlaybackRate(next)
-        showToast(`播放速度 ${next}x`, 'info')
-      }
-      if (subs.length === 0) return
       const t = el.currentTime - off
       const curIdx = subs.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
       const lastBefore = (time: number) => {
@@ -551,39 +651,216 @@ export default function PlayerPage() {
       }
       const seekToSub = (i: number) => {
         if (i < 0 || i >= subs.length) return
-        el.currentTime = subs[i].startTime + off
-        el.play().catch(() => {})
+        const time = subs[i].startTime + off
+        el.currentTime = time
+        st.setPlayed(time)
         st.setPlaying(true)
       }
-      if (e.code === 'BracketLeft') {
-        e.preventDefault()
-        if (e.shiftKey) {
-          // Shift+[ 上一句
-          if (curIdx > 0) seekToSub(curIdx - 1)
-          else if (curIdx === -1) seekToSub(Math.max(0, lastBefore(t) - 1))
-        } else {
-          // [ 重播当前句（不在句内时重播最近的一句）
-          seekToSub(curIdx >= 0 ? curIdx : lastBefore(t))
+      const currentSubIndex = () => {
+        const idx = curIdx >= 0 ? curIdx : lastBefore(t)
+        return idx >= 0 && idx < subs.length ? idx : -1
+      }
+      // 单句循环对应的区间在切句后自动清除，避免用户被拉回原句
+      const clearSentenceLoop = () => {
+        const idx = currentSubIndex()
+        const cur = subs[idx]
+        if (cur && st.loopStart === cur.startTime + off && st.loopEnd === cur.endTime + off) {
+          st.setLoop(null, null)
         }
       }
-      if (e.code === 'BracketRight') {
-        e.preventDefault()
-        // ] 下一句
-        if (curIdx >= 0) seekToSub(curIdx + 1)
-        else {
-          const next = subs.findIndex((s) => s.startTime + off > t + 0.3)
-          if (next !== -1) seekToSub(next)
+
+      switch (action) {
+        case 'playPause':
+          hoverPauseRef.current = false
+          st.setPlaying(!st.playing)
+          break
+        case 'seekBack':
+        case 'seekBackFine': {
+          clearSentenceLoop()
+          const delta = action === 'seekBack' ? 5 : 1
+          const time = Math.max(0, el.currentTime - delta)
+          el.currentTime = time
+          st.setPlayed(time)
+          break
         }
-      }
-      if (e.code === 'KeyR') {
-        e.preventDefault()
-        // R 重播当前句
-        seekToSub(curIdx >= 0 ? curIdx : lastBefore(t))
+        case 'seekForward':
+        case 'seekForwardFine': {
+          clearSentenceLoop()
+          const delta = action === 'seekForward' ? 5 : 1
+          const time = Math.min(el.duration || 0, el.currentTime + delta)
+          el.currentTime = time
+          st.setPlayed(time)
+          break
+        }
+        case 'rateCycle': {
+          const next =
+            PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(st.playbackRate) + 1) % PLAYBACK_RATES.length]
+          st.setPlaybackRate(next)
+          showToast(`播放速度 ${next}x`, 'info')
+          break
+        }
+        case 'volumeUp':
+        case 'volumeDown': {
+          st.adjustVolume(action === 'volumeUp' ? 0.1 : -0.1)
+          const next = usePlayerStore.getState()
+          showToast(next.muted ? '已静音' : `音量 ${Math.round(next.volume * 100)}%`, 'info')
+          break
+        }
+        case 'mute':
+          st.toggleMuted()
+          showToast(st.muted ? '已取消静音' : '已静音', 'info')
+          break
+        case 'prevSentence': {
+          const idx = currentSubIndex()
+          if (idx <= 0) break
+          clearSentenceLoop()
+          seekToSub(idx - 1)
+          break
+        }
+        case 'replaySentence': {
+          const idx = currentSubIndex()
+          if (idx < 0) break
+          seekToSub(idx)
+          break
+        }
+        case 'nextSentence': {
+          const next = curIdx >= 0 ? curIdx + 1 : subs.findIndex((s) => s.startTime + off > t + 0.3)
+          if (next < 0 || next >= subs.length) break
+          clearSentenceLoop()
+          seekToSub(next)
+          break
+        }
+        case 'toggleSentenceLoop': {
+          const idx = currentSubIndex()
+          if (idx < 0) break
+          const sub = subs[idx]
+          const start = sub.startTime + off
+          const end = sub.endTime + off
+          if (st.loopStart === start && st.loopEnd === end) {
+            st.setLoop(null, null)
+            showToast('已关闭单句循环', 'info')
+          } else {
+            st.setLoop(start, end)
+            showToast('单句循环：开', 'info')
+          }
+          break
+        }
+        case 'clearLoop':
+          st.setLoop(null, null)
+          showToast('已清除循环区间', 'info')
+          break
+        case 'autoPause':
+          st.setAutoPause(!st.autoPause)
+          showToast(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停', 'info')
+          break
+        case 'subtitleMode': {
+          const modes: SubtitleDisplayMode[] = ['all', 'en', 'zh', 'off']
+          const next = modes[(modes.indexOf(st.subtitleDisplayMode) + 1) % modes.length]
+          st.setSubtitleDisplayMode(next)
+          showToast(`字幕显示：${SUBTITLE_MODE_LABELS[next]}`, 'info')
+          break
+        }
+        case 'translationToggle': {
+          const next = st.subtitleDisplayMode === 'all' ? 'en' : 'all'
+          st.setSubtitleDisplayMode(next)
+          showToast(next === 'en' ? '已隐藏翻译' : '已显示翻译', 'info')
+          break
+        }
+        case 'offsetMinus':
+        case 'offsetPlus':
+        case 'offsetMinusCoarse':
+        case 'offsetPlusCoarse': {
+          const delta =
+            action === 'offsetMinus'
+              ? -0.1
+              : action === 'offsetPlus'
+                ? 0.1
+                : action === 'offsetMinusCoarse'
+                  ? -1
+                  : 1
+          st.adjustSubtitleOffset(delta)
+          showToast(`字幕偏移 ${usePlayerStore.getState().subtitleOffset.toFixed(1)}s`, 'info')
+          break
+        }
+        case 'fontSizeUp':
+        case 'fontSizeDown': {
+          st.adjustSubtitleFontScale(action === 'fontSizeUp' ? 0.1 : -0.1)
+          const scale = usePlayerStore.getState().subtitleFontScale
+          showToast(`字幕字号 ${Math.round(scale * 100)}%`, 'info')
+          break
+        }
+        case 'favoriteSentence': {
+          const idx = currentSubIndex()
+          if (idx < 0) {
+            showToast('当前没有可收藏的字幕句', 'warning')
+            break
+          }
+          const sub = subs[idx]
+          setFavTarget({ startTime: sub.startTime, endTime: sub.endTime, text: sub.text })
+          setFavWord('')
+          setFavTagId(0)
+          setFavNewTag('')
+          window.api.favoriteTagsList().then(setFavTags)
+          break
+        }
+        case 'aiSentence': {
+          if (aiTargetRef.current) {
+            setAiTarget(null)
+            setAiTranslate(null)
+            setAiExplain(null)
+            break
+          }
+          const idx = currentSubIndex()
+          if (idx < 0) {
+            showToast('当前没有可操作的字幕句', 'warning')
+            break
+          }
+          const sub = subs[idx]
+          const en = filterSubtitleText(sub.text, 'en') || sub.text
+          setAiTarget({ text: en, context: sub.text })
+          setAiTranslate(null)
+          setAiExplain(null)
+          break
+        }
+        case 'speakSentence': {
+          const idx = currentSubIndex()
+          if (idx < 0) {
+            showToast('当前没有可朗读的字幕句', 'warning')
+            break
+          }
+          const sub = subs[idx]
+          speak(filterSubtitleText(sub.text, 'en') || sub.text)
+          showToast('正在朗读当前句', 'info')
+          break
+        }
+        case 'toggleFullscreen':
+          void Window.IsFullscreen()
+            .then(async (is) => {
+              await Window.ToggleFullscreen()
+              showToast(is ? '已退出全屏' : '已进入全屏', 'info')
+            })
+            .catch(() => showToast('全屏切换失败', 'warning'))
+          break
+        case 'podcastMode':
+          st.setPodcastMode(!st.podcastMode)
+          showToast(st.podcastMode ? '已退出播客模式' : '已进入播客模式', 'info')
+          break
+        case 'autoNextEpisode':
+          st.setAutoNextEpisode(!st.autoNextEpisode)
+          showToast(st.autoNextEpisode ? '已关闭自动下一集' : '已开启自动下一集', 'info')
+          break
+        case 'hoverPause':
+          st.setHoverPause(!st.hoverPause)
+          showToast(st.hoverPause ? '已关闭悬停暂停' : '已开启悬停暂停', 'info')
+          break
+        default:
+          break
       }
     }
+
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isActive, store.playing])
+  }, [isActive])
 
   // 打开媒体文件：设置路径、加载波形、加载字幕（缓存优先，回退同名 SRT）
   const openMediaFile = async (filePath: string) => {
@@ -859,6 +1136,7 @@ export default function PlayerPage() {
       <Button
         variant="ghost"
         size="sm"
+        title="播放 / 暂停（Space）"
         onClick={() => {
           hoverPauseRef.current = false
           store.setPlaying(!store.playing)
@@ -883,6 +1161,7 @@ export default function PlayerPage() {
         variant="ghost"
         size="sm"
         className={store.loopStart !== null ? 'text-primary' : ''}
+        title="循环区间（R 切换单句循环）"
         onClick={() =>
           store.loopStart !== null ? store.setLoop(null, null) : store.setLoop(store.played, null)
         }
@@ -907,6 +1186,7 @@ export default function PlayerPage() {
             <Button
               variant="ghost"
               size="sm"
+              title="设置 B 点"
               onClick={() => store.setLoop(store.loopStart, store.played)}
             >
               B: {formatTime(store.played)}
@@ -919,7 +1199,7 @@ export default function PlayerPage() {
         size="sm"
         className={store.podcastMode ? 'text-primary' : ''}
         onClick={() => store.setPodcastMode(!store.podcastMode)}
-        title="播客模式"
+        title="播客模式（V）"
       >
         <Headphones className="h-4 w-4" />
       </Button>
@@ -927,7 +1207,7 @@ export default function PlayerPage() {
         variant="ghost"
         size="sm"
         className={store.autoNextEpisode ? 'text-primary' : ''}
-        title={store.autoNextEpisode ? '自动下一集：开' : '自动下一集：关'}
+        title={store.autoNextEpisode ? '自动下一集：开（N）' : '自动下一集：关（N）'}
         onClick={() => store.setAutoNextEpisode(!store.autoNextEpisode)}
       >
         <SkipForward className="h-4 w-4" />
@@ -936,7 +1216,7 @@ export default function PlayerPage() {
         variant="ghost"
         size="sm"
         className={store.autoPause ? 'text-primary' : ''}
-        title={store.autoPause ? '播完本句自动暂停：开（U）' : '播完本句自动暂停：关（U）'}
+        title={store.autoPause ? '播完本句自动暂停：开（Q）' : '播完本句自动暂停：关（Q）'}
         onClick={() => store.setAutoPause(!store.autoPause)}
       >
         <CirclePause className="h-4 w-4" />
@@ -946,7 +1226,7 @@ export default function PlayerPage() {
         size="sm"
         disabled={store.currentSubtitleIndex < 0}
         className={aiTarget ? 'text-primary' : ''}
-        title="AI 翻译/详解当前句"
+        title="AI 翻译/详解当前句（T）"
         onClick={() => {
           if (aiTarget) {
             setAiTarget(null)
@@ -962,6 +1242,14 @@ export default function PlayerPage() {
         }}
       >
         <Sparkles className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        title="快捷键帮助（?）"
+        onClick={() => setShowShortcutHelp(true)}
+      >
+        <Keyboard className="h-4 w-4" />
       </Button>
     </div>
   )
@@ -1015,7 +1303,10 @@ export default function PlayerPage() {
                     className={`absolute bottom-0 left-0 right-0 p-4 flex justify-center ${videoControlsShown ? 'pb-16' : 'pb-6'}`}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <span className="bg-black/70 text-white px-4 py-2 rounded text-3xl text-center max-w-[90%] leading-relaxed whitespace-pre-line">
+                    <span
+                      className="bg-black/70 text-white px-4 py-2 rounded text-center max-w-[90%] leading-relaxed whitespace-pre-line"
+                      style={{ fontSize: `${1.875 * store.subtitleFontScale}rem` }}
+                    >
                       {text.split(/(\s+)/).map((part, i) => {
                         const clean = part.replace(/[^a-zA-Z0-9\-']/g, '')
                         if (clean.length > 1)
@@ -1073,7 +1364,10 @@ export default function PlayerPage() {
               const pa = store.played - store.subtitleOffset
               const sub = store.subtitles.find((s) => pa >= s.startTime - 0.08 && pa <= s.endTime)
               return sub ? (
-                <div className="text-2xl font-medium text-center max-w-[85%] leading-relaxed whitespace-pre-line">
+                <div
+                  className="text-2xl font-medium text-center max-w-[85%] leading-relaxed whitespace-pre-line"
+                  style={{ fontSize: `${1.5 * store.subtitleFontScale}rem` }}
+                >
                   {sub.text}
                 </div>
               ) : null
@@ -1185,7 +1479,9 @@ export default function PlayerPage() {
                     <FileDown className="h-3.5 w-3.5" /> 导入 SRT
                   </button>
                   <div className="px-3 pt-2 pb-1 border-t border-border mt-1">
-                    <div className="text-xs text-muted-foreground mb-1">显示模式</div>
+                    <div className="text-xs text-muted-foreground mb-1" title="快捷键 E 循环切换">
+                      显示模式
+                    </div>
                     <div className="flex gap-1">
                       {(
                         [
@@ -1208,6 +1504,7 @@ export default function PlayerPage() {
                   <div className="px-3 py-1 border-t border-border mt-1">
                     <button
                       className="flex items-center justify-between w-full text-xs hover:text-foreground"
+                      title="悬停查词时暂停（H）"
                       onClick={() => store.setHoverPause(!store.hoverPause)}
                     >
                       <span className="text-muted-foreground">悬停查词时暂停</span>
@@ -1320,6 +1617,7 @@ export default function PlayerPage() {
                     setDragRange({ start: Math.min(a, idx), end: Math.max(a, idx) })
                   }}
                   className={`p-2 rounded text-lg cursor-pointer transition-colors mb-1 ${inRange ? 'bg-primary/15 ring-1 ring-inset ring-primary/30' : isActive ? 'bg-primary/10 border-l-2 border-primary font-medium' : isPast ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}
+                  style={{ fontSize: `${1.125 * store.subtitleFontScale}rem` }}
                   onClick={() => store.requestSeek(sub.startTime + store.subtitleOffset)}
                 >
                   <span
@@ -1369,7 +1667,7 @@ export default function PlayerPage() {
                   {isActive && (
                     <button
                       className="ml-1 text-primary hover:text-primary/80"
-                      title="收藏当前句"
+                      title="收藏当前句（F）"
                       onClick={(e) => {
                         e.stopPropagation()
                         openFavorite(sub, hover?.sentence === sub.text ? hover.word : '')
@@ -1601,6 +1899,60 @@ export default function PlayerPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 快捷键帮助面板 */}
+        {showShortcutHelp && (
+          <div
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            onClick={() => setShowShortcutHelp(false)}
+          >
+            <Card
+              className="w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Keyboard className="h-5 w-5" /> 播放器快捷键
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowShortcutHelp(false)}>
+                  <XIcon className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                {SHORTCUT_GROUP_ORDER.map((group) => {
+                  const actions = SHORTCUT_ACTIONS.filter((action) => action.group === group)
+                  if (actions.length === 0) return null
+                  return (
+                    <div key={group}>
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">
+                        {SHORTCUT_GROUP_LABELS[group]}
+                      </h4>
+                      <div className="space-y-1.5">
+                        {actions.map((action) => {
+                          const binding = shortcutBindings[action.id]
+                          return (
+                            <div
+                              key={action.id}
+                              className="flex items-center justify-between gap-3 text-sm"
+                            >
+                              <span className="text-muted-foreground">{action.label}</span>
+                              <kbd className="inline-flex min-w-[2.5rem] shrink-0 items-center justify-center rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
+                                {binding ? formatBinding(binding) : '未设置'}
+                              </kbd>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="mt-5 text-xs text-muted-foreground">
+                快捷键仅在播放页生效；输入框聚焦时自动停用，Esc 按层级关闭浮层。
+              </p>
+            </Card>
           </div>
         )}
 
