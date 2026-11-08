@@ -204,11 +204,17 @@ export default function PlayerPage() {
 
   const handleAIExplain = async () => {
     if (!aiTarget || !(await ensureAIConfig())) return
+    const target = aiTarget
     setAiTranslate(null)
-    setAiExplain({ loading: true, text: aiTarget.text })
-    const r = await window.api.aiExplain(aiTarget.text, aiTarget.context)
-    if (!r.ok) setAiExplain({ loading: false, error: r.error, text: aiTarget.text })
-    else setAiExplain({ loading: false, data: r.data, text: aiTarget.text })
+    setAiExplain({ loading: true, text: target.text })
+    const r = await window.api.aiExplain(target.text, target.context)
+    if (!r.ok) {
+      setAiExplain({ loading: false, error: r.error, text: target.text })
+      return
+    }
+    setAiExplain({ loading: false, data: r.data, text: target.text })
+    // 详解抽屉已展示完整内容，收起操作面板避免两者同时悬浮
+    setAiTarget(null)
   }
 
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
