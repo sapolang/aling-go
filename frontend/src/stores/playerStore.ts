@@ -5,6 +5,25 @@ const AUTO_NEXT_KEY = 'aling.autoNextEpisode'
 const AUTO_PAUSE_KEY = 'aling.autoPause'
 const HOVER_PAUSE_KEY = 'aling.hoverPause'
 const SUBTITLE_OFFSET_PREFIX = 'aling.subtitleOffset:'
+const VOLUME_KEY = 'aling.volume'
+const MUTED_KEY = 'aling.muted'
+const FONT_SCALE_KEY = 'aling.subtitleFontScale'
+
+// 音量：0~1，默认满音量
+const loadVolume = (): number => {
+  if (typeof localStorage === 'undefined') return 1
+  const value = parseFloat(localStorage.getItem(VOLUME_KEY) ?? '')
+  if (!Number.isFinite(value)) return 1
+  return Math.round(Math.min(1, Math.max(0, value)) * 10) / 10
+}
+
+// 字幕字号缩放：0.8~1.6，默认 1
+const loadFontScale = (): number => {
+  if (typeof localStorage === 'undefined') return 1
+  const value = parseFloat(localStorage.getItem(FONT_SCALE_KEY) ?? '')
+  if (!Number.isFinite(value)) return 1
+  return Math.round(Math.min(1.6, Math.max(0.8, value)) * 10) / 10
+}
 
 // 字幕偏移按文件记住，换回同一个文件时无需重新对准
 const loadSubtitleOffset = (filePath: string | null): number => {
@@ -65,6 +84,9 @@ interface PlayerStore {
   autoPause: boolean
   hoverPause: boolean
   subtitleDisplayMode: SubtitleDisplayMode
+  volume: number
+  muted: boolean
+  subtitleFontScale: number
 
   setFilePath: (path: string | null) => void
   setPlaying: (playing: boolean) => void
@@ -88,6 +110,9 @@ interface PlayerStore {
   setAutoPause: (v: boolean) => void
   setHoverPause: (v: boolean) => void
   setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
+  adjustVolume: (delta: number) => void
+  toggleMuted: () => void
+  adjustSubtitleFontScale: (delta: number) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -120,6 +145,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     (typeof localStorage !== 'undefined' &&
       (localStorage.getItem(SUBTITLE_MODE_KEY) as SubtitleDisplayMode)) ||
     'all',
+  volume: loadVolume(),
+  muted: typeof localStorage !== 'undefined' && localStorage.getItem(MUTED_KEY) === '1',
+  subtitleFontScale: loadFontScale(),
 
   setFilePath: (filePath) =>
     set({
@@ -217,4 +245,37 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     }
     set({ subtitleDisplayMode })
   },
+  adjustVolume: (delta) =>
+    set((s) => {
+      const volume = Math.round(Math.min(1, Math.max(0, s.volume + delta)) * 10) / 10
+      const muted = delta > 0 ? false : s.muted
+      try {
+        localStorage.setItem(VOLUME_KEY, String(volume))
+        localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
+      } catch {
+        // 忽略持久化失败（如隐私模式）
+      }
+      return { volume, muted }
+    }),
+  toggleMuted: () =>
+    set((s) => {
+      const muted = !s.muted
+      try {
+        localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
+      } catch {
+        // 忽略持久化失败（如隐私模式）
+      }
+      return { muted }
+    }),
+  adjustSubtitleFontScale: (delta) =>
+    set((s) => {
+      const subtitleFontScale =
+        Math.round(Math.min(1.6, Math.max(0.8, s.subtitleFontScale + delta)) * 10) / 10
+      try {
+        localStorage.setItem(FONT_SCALE_KEY, String(subtitleFontScale))
+      } catch {
+        // 忽略持久化失败（如隐私模式）
+      }
+      return { subtitleFontScale }
+    }),
 }))
