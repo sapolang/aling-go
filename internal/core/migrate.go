@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"database/sql"
@@ -31,10 +31,14 @@ func migrateIfNeeded(dataDir string) {
 	rows, err := oldDB.Query("SELECT * FROM words")
 	if err == nil {
 		for rows.Next() {
-			var w Word
+			var w struct {
+				ID                                               int
+				Word, Definition, Phonetic, Example, Tags, Level string
+				NextReview, CreatedAt, UpdatedAt                 string
+			}
 			_ = rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Phonetic, &w.Example,
 				&w.Tags, &w.Level, &w.NextReview, &w.CreatedAt, &w.UpdatedAt)
-			_, _ = db.Exec(
+			_, _ = DB.Exec(
 				"INSERT OR IGNORE INTO words (word, definition, phonetic, example, tags, level, next_review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 				w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.CreatedAt, w.UpdatedAt,
 			)
@@ -45,9 +49,12 @@ func migrateIfNeeded(dataDir string) {
 	rows, err = oldDB.Query("SELECT * FROM tags")
 	if err == nil {
 		for rows.Next() {
-			var t Tag
+			var t struct {
+				ID          int
+				Name, Color string
+			}
 			_ = rows.Scan(&t.ID, &t.Name, &t.Color)
-			_, _ = db.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
+			_, _ = DB.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
 		}
 		rows.Close()
 	}
@@ -80,7 +87,7 @@ func migrateSRS() {
 		{"interval", "INTEGER DEFAULT 0"},
 	}
 	for _, c := range cols {
-		_, _ = db.Exec("ALTER TABLE words ADD COLUMN " + c.name + " " + c.def)
+		_, _ = DB.Exec("ALTER TABLE words ADD COLUMN " + c.name + " " + c.def)
 	}
 }
 
@@ -92,6 +99,6 @@ func migrateFavoriteClips() {
 		{"next_review", "TEXT DEFAULT ''"},
 	}
 	for _, c := range cols {
-		_, _ = db.Exec("ALTER TABLE favorite_clips ADD COLUMN " + c.name + " " + c.def)
+		_, _ = DB.Exec("ALTER TABLE favorite_clips ADD COLUMN " + c.name + " " + c.def)
 	}
 }

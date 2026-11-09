@@ -1,4 +1,4 @@
-package main
+package system
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 
 // trayTemplateIcon 从彩色应用图标中提取深色笔画，生成 macOS 菜单栏模板图标。
 // 模板图标只使用 alpha 通道，系统会自动适配浅色/深色菜单栏。
-func trayTemplateIcon(src []byte) ([]byte, error) {
+func TrayTemplateIcon(src []byte) ([]byte, error) {
 	img, err := png.Decode(bytes.NewReader(src))
 	if err != nil {
 		return nil, fmt.Errorf("decode icon: %w", err)

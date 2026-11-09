@@ -27,8 +27,8 @@ A cross-platform desktop language learning application built with [Wails v3](htt
 
 ## Prerequisites
 
-- **Go** 1.25+
-- **Node.js** 18+
+- **Go** 1.26.10+
+- **Node.js** 26+
 - **Wails CLI**: `go install github.com/wailsapp/wails/v3/cmd/wails3@latest`
 - **FFmpeg** (optional — a minimal build is created by the sidecar build script if needed)
 
@@ -75,34 +75,36 @@ make clean
 
 ```
 aling-go/
-├── main.go              # Wails application entry point (registers services)
-├── types.go             # Shared data types (Word, Tag, SubtitleItem, etc.)
-├── database.go          # User data DB (words, tags, SRS review data)
-├── articles_db.go       # English reading articles database
-├── word_service.go      # Words/tags/SRS service
-├── article_service.go   # Articles & typing progress service
-├── dict_service.go      # Dictionary service
-├── library_service.go   # Media library, folders, recent files service
-├── media_service.go     # Local HTTP media streaming & waveform service
-├── whisper_service.go   # Whisper.cpp speech-to-text service
-├── platform_service.go  # Dialogs & platform utilities service
-├── ffmpeg.go            # FFmpeg helpers shared by media/whisper services
-├── migrate.go           # Data migration from older app versions
+├── main.go                  # Entry point: embedded assets, appVersion (ldflags), bootstrap.Run
 ├── internal/
-│   └── dict/            # Dictionary package (dict.db queries)
+│   ├── bootstrap/           # Startup orchestration: service registration, window, tray
+│   ├── core/                # DB connections, schema DDL, migrations (Init/Close)
+│   ├── study/               # Learning side: words/tags/SRS, favorite clips, dictionary
+│   │   ├── word_service.go, favorite_service.go, dict_service.go
+│   │   ├── words_store.go   # Word/tag/SRS SQL & stats
+│   │   └── models.go        # DTOs (Word, Tag, FavoriteClip, ...)
+│   ├── content/             # Input side: articles, media library, playback, transcription
+│   │   ├── article_service.go, library_service.go
+│   │   ├── media_service.go, whisper_service.go
+│   │   ├── article_store.go # Article queries & typing progress SQL
+│   │   ├── ffmpeg.go        # FFmpeg helpers shared by media/whisper services
+│   │   └── models.go        # DTOs (ArticleItem, LibraryFile, SubtitleItem, ...)
+│   ├── system/              # Platform dialogs, backups, AI translation, tray icon
+│   └── dict/                # Read-only dictionary package (dict.db / ECDICT)
 ├── cmd/
-│   └── articles-download/  # CLI tool to download article data
-├── frontend/            # React + TypeScript + Vite frontend
+│   ├── articles-download/   # CLI tool to download article data
+│   └── dict-build/          # CLI tool to rebuild dict.db from ECDICT source
+├── frontend/                # React + TypeScript + Vite frontend
 │   └── src/
-│       ├── components/  # Reusable UI components
-│       ├── pages/       # Page-level components
-│       ├── stores/      # Zustand state stores
-│       └── types/       # TypeScript type definitions
-├── build/               # Platform-specific build assets & Taskfiles
-├── sidecar/             # External binary build scripts
-│   └── build.sh         # Builds whisper-sidecar and minimal FFmpeg
-├── Taskfile.yml         # Wails v3 build tasks
-└── Makefile             # Build targets
+│       ├── components/      # Reusable UI components
+│       ├── pages/           # Page-level components
+│       ├── stores/          # Zustand state stores
+│       └── types/           # TypeScript type definitions
+├── build/                   # Platform-specific build assets & Taskfiles
+├── sidecar/                 # External binary build scripts
+│   └── build.sh             # Builds whisper-sidecar and minimal FFmpeg
+├── Taskfile.yml             # Wails v3 build tasks
+└── Makefile                 # Build targets
 ```
 
 ## Testing

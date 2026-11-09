@@ -1,4 +1,4 @@
-package main
+package system
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"aling-go/internal/core"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -90,8 +92,9 @@ func (s *BackupService) runBackup() (string, error) {
 	dbBackup := filepath.Join(dir, "userData-"+stamp+".db")
 	// 同一秒重复备份时 VACUUM INTO 会因目标已存在而失败，先删掉旧文件
 	_ = os.Remove(dbBackup)
+	// VACUUM INTO 不支持参数绑定；路径来自应用备份目录且单引号已转义
 	quoted := "'" + strings.ReplaceAll(dbBackup, "'", "''") + "'"
-	if _, err := db.Exec("VACUUM INTO " + quoted); err != nil {
+	if _, err := core.DB.Exec("VACUUM INTO " + quoted); err != nil { //nolint:gosec // G202: 见上行注释
 		return "", fmt.Errorf("备份数据库失败: %w", err)
 	}
 	libSrc := filepath.Join(s.dataDir, "library.json")

@@ -1,4 +1,4 @@
-package main
+package system
 
 import (
 	"context"
@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"aling-go/internal/core"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -223,7 +225,7 @@ func aiCacheKey(kind, model, text, extra string) string {
 
 func aiCacheGet(key string) (string, bool) {
 	var target string
-	err := db.QueryRow("SELECT target FROM ai_translations WHERE hash = ?", key).Scan(&target)
+	err := core.DB.QueryRow("SELECT target FROM ai_translations WHERE hash = ?", key).Scan(&target)
 	if err != nil || target == "" {
 		return "", false
 	}
@@ -231,7 +233,7 @@ func aiCacheGet(key string) (string, bool) {
 }
 
 func aiCachePut(key, kind, model, source, target string) {
-	_, _ = db.Exec(
+	_, _ = core.DB.Exec(
 		"INSERT OR REPLACE INTO ai_translations (hash, kind, model, source, target) VALUES (?, ?, ?, ?, ?)",
 		key, kind, model, source, target,
 	)

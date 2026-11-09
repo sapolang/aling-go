@@ -1,116 +1,19 @@
-package main
+package study
 
 import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"aling-go/internal/core"
 )
-
-var db *sql.DB
-
-func initDB(dataDir string) error {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return err
-	}
-	dbPath := filepath.Join(dataDir, "userData.db")
-	var err error
-	db, err = sql.Open("sqlite", dbPath)
-	if err != nil {
-		return err
-	}
-	return createTables()
-}
-
-func createTables() error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS words (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			word TEXT NOT NULL,
-			definition TEXT DEFAULT '',
-			phonetic TEXT DEFAULT '',
-			example TEXT DEFAULT '',
-			tags TEXT DEFAULT '',
-			level INTEGER DEFAULT 1,
-			next_review TEXT DEFAULT (date('now')),
-			created_at TEXT DEFAULT (datetime('now','localtime')),
-			updated_at TEXT DEFAULT (datetime('now','localtime')),
-			repetitions INTEGER DEFAULT 0,
-			efactor REAL DEFAULT 2.5,
-			interval INTEGER DEFAULT 0
-		);
-		CREATE TABLE IF NOT EXISTS tags (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE,
-			color TEXT NOT NULL DEFAULT '#3b82f6'
-		);
-		CREATE TABLE IF NOT EXISTS typing_records (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			article_id INTEGER NOT NULL,
-			mode TEXT NOT NULL,
-			accuracy REAL DEFAULT 0,
-			wpm REAL DEFAULT 0,
-			duration INTEGER DEFAULT 0,
-			mistakes TEXT DEFAULT '[]',
-			created_at TEXT DEFAULT (datetime('now','localtime'))
-		);
-		CREATE TABLE IF NOT EXISTS typing_progress (
-			article_id INTEGER NOT NULL,
-			mode TEXT NOT NULL,
-			position INTEGER DEFAULT 0,
-			completed INTEGER DEFAULT 0,
-			best_accuracy REAL DEFAULT 0,
-			best_wpm REAL DEFAULT 0,
-			updated_at TEXT DEFAULT (datetime('now','localtime')),
-			PRIMARY KEY (article_id, mode)
-		);
-		CREATE TABLE IF NOT EXISTS review_logs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			word_id INTEGER NOT NULL,
-			quality INTEGER NOT NULL,
-			reviewed_at TEXT DEFAULT (datetime('now','localtime'))
-		);
-		CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
-		CREATE TABLE IF NOT EXISTS favorite_tags (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE,
-			created_at TEXT DEFAULT (datetime('now','localtime'))
-		);
-		CREATE TABLE IF NOT EXISTS favorite_clips (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			file_path TEXT NOT NULL,
-			start_time REAL NOT NULL,
-			end_time REAL NOT NULL,
-			text TEXT DEFAULT '',
-			tag_id INTEGER DEFAULT 0,
-			word TEXT DEFAULT '',
-			review_count INTEGER DEFAULT 0,
-			last_reviewed_at TEXT DEFAULT '',
-			next_review TEXT DEFAULT '',
-			created_at TEXT DEFAULT (datetime('now','localtime'))
-		);
-		CREATE INDEX IF NOT EXISTS idx_favorite_clips_tag ON favorite_clips(tag_id);
-		CREATE TABLE IF NOT EXISTS ai_translations (
-			hash TEXT PRIMARY KEY,
-			kind TEXT NOT NULL DEFAULT 'translate',
-			model TEXT NOT NULL DEFAULT '',
-			source TEXT NOT NULL,
-			target TEXT NOT NULL,
-			created_at TEXT DEFAULT (datetime('now','localtime'))
-		);
-		CREATE INDEX IF NOT EXISTS idx_ai_translations_created ON ai_translations(created_at);
-	`)
-	return err
-}
 
 // --- Words CRUD ---
 
 func dbWordsList() []Word {
-	rows, err := db.Query("SELECT * FROM words ORDER BY created_at DESC")
+	rows, err := core.DB.Query("SELECT * FROM words ORDER BY created_at DESC")
 	if err != nil {
 		return []Word{}
 	}
@@ -123,7 +26,7 @@ func dbWordsAdd(wordJSON string) int {
 	if err := json.Unmarshal([]byte(wordJSON), &w); err != nil {
 		return 0
 	}
-	res, err := db.Exec(
+	res, err := core.DB.Exec(
 		"INSERT INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
 		w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
 	)
@@ -139,7 +42,7 @@ func dbWordsUpdate(id int, dataJSON string) {
 	if err := json.Unmarshal([]byte(dataJSON), &data); err != nil {
 		return
 	}
-	if _, err := db.Exec(
+	if _, err := core.DB.Exec(
 		"UPDATE words SET word=?, definition=?, phonetic=?, example=?, tags=?, level=?, next_review=?, repetitions=?, efactor=?, interval=?, updated_at=datetime('now','localtime') WHERE id=?",
 		data["word"], data["definition"], data["phonetic"], data["example"],
 		data["tags"], data["level"], data["next_review"],
@@ -150,14 +53,14 @@ func dbWordsUpdate(id int, dataJSON string) {
 }
 
 func dbWordsDelete(id int) {
-	if _, err := db.Exec("DELETE FROM words WHERE id=?", id); err != nil {
+	if _, err := core.DB.Exec("DELETE FROM words WHERE id=?", id); err != nil {
 		fmt.Fprintf(os.Stderr, "dbWordsDelete: %v\n", err)
 	}
 }
 
 func dbWordsDeleteBatch(ids []int) {
 	for _, id := range ids {
-		if _, err := db.Exec("DELETE FROM words WHERE id=?", id); err != nil {
+		if _, err := core.DB.Exec("DELETE FROM words WHERE id=?", id); err != nil {
 			fmt.Fprintf(os.Stderr, "dbWordsDeleteBatch id=%d: %v\n", id, err)
 		}
 	}
@@ -165,7 +68,7 @@ func dbWordsDeleteBatch(ids []int) {
 
 func dbWordsGetReview() []Word {
 	today := time.Now().Format("2006-01-02")
-	rows, err := db.Query("SELECT * FROM words WHERE next_review <= ? ORDER BY next_review ASC", today)
+	rows, err := core.DB.Query("SELECT * FROM words WHERE next_review <= ? ORDER BY next_review ASC", today)
 	if err != nil {
 		return []Word{}
 	}
@@ -176,7 +79,7 @@ func dbWordsGetReview() []Word {
 func dbWordsGetReviewCount() int {
 	today := time.Now().Format("2006-01-02")
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM words WHERE next_review <= ?", today).Scan(&count); err != nil {
+	if err := core.DB.QueryRow("SELECT COUNT(*) FROM words WHERE next_review <= ?", today).Scan(&count); err != nil {
 		return 0
 	}
 	return count
@@ -184,7 +87,7 @@ func dbWordsGetReviewCount() int {
 
 func dbWordsSearch(query string) []Word {
 	like := "%" + query + "%"
-	rows, err := db.Query("SELECT * FROM words WHERE word LIKE ? OR definition LIKE ? ORDER BY word ASC", like, like)
+	rows, err := core.DB.Query("SELECT * FROM words WHERE word LIKE ? OR definition LIKE ? ORDER BY word ASC", like, like)
 	if err != nil {
 		return []Word{}
 	}
@@ -195,7 +98,7 @@ func dbWordsSearch(query string) []Word {
 // --- Tags CRUD ---
 
 func dbTagsList() []Tag {
-	rows, err := db.Query("SELECT * FROM tags ORDER BY name ASC")
+	rows, err := core.DB.Query("SELECT * FROM tags ORDER BY name ASC")
 	if err != nil {
 		return []Tag{}
 	}
@@ -204,7 +107,7 @@ func dbTagsList() []Tag {
 }
 
 func dbTagsAdd(name, color string) int {
-	res, err := db.Exec("INSERT INTO tags (name, color) VALUES (?,?)", name, color)
+	res, err := core.DB.Exec("INSERT INTO tags (name, color) VALUES (?,?)", name, color)
 	if err != nil {
 		return 0
 	}
@@ -213,7 +116,7 @@ func dbTagsAdd(name, color string) int {
 }
 
 func dbTagsDelete(id int) {
-	if _, err := db.Exec("DELETE FROM tags WHERE id=?", id); err != nil {
+	if _, err := core.DB.Exec("DELETE FROM tags WHERE id=?", id); err != nil {
 		fmt.Fprintf(os.Stderr, "dbTagsDelete: %v\n", err)
 	}
 }
@@ -239,7 +142,7 @@ func dbImport(jsonStr string) ImportResult {
 	}
 	result := ImportResult{}
 	for _, t := range data.Tags {
-		_, err := db.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
+		_, err := core.DB.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
 		if err == nil {
 			result.Imported++
 		} else {
@@ -247,7 +150,7 @@ func dbImport(jsonStr string) ImportResult {
 		}
 	}
 	for _, w := range data.Words {
-		_, err := db.Exec(
+		_, err := core.DB.Exec(
 			"INSERT OR IGNORE INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
 			w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
 		)
@@ -261,10 +164,10 @@ func dbImport(jsonStr string) ImportResult {
 }
 
 func dbClear() {
-	if _, err := db.Exec("DELETE FROM words"); err != nil {
+	if _, err := core.DB.Exec("DELETE FROM words"); err != nil {
 		fmt.Fprintf(os.Stderr, "dbClear words: %v\n", err)
 	}
-	if _, err := db.Exec("DELETE FROM tags"); err != nil {
+	if _, err := core.DB.Exec("DELETE FROM tags"); err != nil {
 		fmt.Fprintf(os.Stderr, "dbClear tags: %v\n", err)
 	}
 }
@@ -272,28 +175,28 @@ func dbClear() {
 // --- Review logs ---
 
 func dbReviewLogAdd(wordID, quality int) {
-	if _, err := db.Exec("INSERT INTO review_logs (word_id, quality) VALUES (?, ?)", wordID, quality); err != nil {
+	if _, err := core.DB.Exec("INSERT INTO review_logs (word_id, quality) VALUES (?, ?)", wordID, quality); err != nil {
 		fmt.Fprintf(os.Stderr, "dbReviewLogAdd: %v\n", err)
 	}
 }
 
 func dbLearningStats() string {
 	stats := LearningStats{Daily: make([]DailyReview, 0, 30)}
-	if err := db.QueryRow("SELECT COUNT(*) FROM review_logs").Scan(&stats.TotalReviews); err != nil {
+	if err := core.DB.QueryRow("SELECT COUNT(*) FROM review_logs").Scan(&stats.TotalReviews); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats total: %v\n", err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) = date('now','localtime')").Scan(&stats.TodayReviews); err != nil {
+	if err := core.DB.QueryRow("SELECT COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) = date('now','localtime')").Scan(&stats.TodayReviews); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats today: %v\n", err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM words").Scan(&stats.TotalWords); err != nil {
+	if err := core.DB.QueryRow("SELECT COUNT(*) FROM words").Scan(&stats.TotalWords); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats words: %v\n", err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM words WHERE repetitions >= 3").Scan(&stats.Mastered); err != nil {
+	if err := core.DB.QueryRow("SELECT COUNT(*) FROM words WHERE repetitions >= 3").Scan(&stats.Mastered); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats mastered: %v\n", err)
 	}
 
 	counts := make(map[string]int)
-	rows, err := db.Query("SELECT substr(reviewed_at, 1, 10) AS d, COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) >= date('now','localtime','-29 days') GROUP BY d")
+	rows, err := core.DB.Query("SELECT substr(reviewed_at, 1, 10) AS d, COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) >= date('now','localtime','-29 days') GROUP BY d")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats daily: %v\n", err)
 	} else {
@@ -309,7 +212,7 @@ func dbLearningStats() string {
 
 	// 连续天数不受 30 天图表窗口限制，单独统计全部复习日期
 	streakDays := make(map[string]bool)
-	srows, sErr := db.Query("SELECT DISTINCT substr(reviewed_at, 1, 10) FROM review_logs")
+	srows, sErr := core.DB.Query("SELECT DISTINCT substr(reviewed_at, 1, 10) FROM review_logs")
 	if sErr != nil {
 		fmt.Fprintf(os.Stderr, "learningStats streak: %v\n", sErr)
 	} else {
@@ -346,6 +249,29 @@ func dbLearningStats() string {
 		return "{}"
 	}
 	return string(data)
+}
+
+// dbAddWordsBatch 供文章页等场景批量快速加入生词（只写词/释义/音标）。
+func dbAddWordsBatch(wordsJSON string) int {
+	var words []Word
+	if err := json.Unmarshal([]byte(wordsJSON), &words); err != nil {
+		return 0
+	}
+	count := 0
+	for _, w := range words {
+		res, err := core.DB.Exec(
+			"INSERT OR IGNORE INTO words (word, definition, phonetic) VALUES (?, ?, ?)",
+			w.Word, w.Definition, w.Phonetic,
+		)
+		if err != nil {
+			continue
+		}
+		n, _ := res.RowsAffected()
+		if n > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 // --- Helpers ---
