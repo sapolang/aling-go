@@ -6,6 +6,7 @@ export interface LibraryFile {
   type: 'video' | 'audio' | 'pdf'
   folderId: string
   addedAt: string
+  lastPosition?: number
 }
 
 export interface Folder {
@@ -29,6 +30,7 @@ interface LibraryState {
   editing: boolean
   selectedPaths: Set<string>
   currentFolderId: string | null
+  searchQuery: string
 
   load: () => Promise<void>
   setCategory: (c: Category) => void
@@ -39,6 +41,7 @@ interface LibraryState {
   selectAll: (visibleFolderIds: string[], visibleFilePaths: string[]) => void
   clearSelection: () => void
   setCurrentFolder: (id: string | null) => void
+  setSearchQuery: (q: string) => void
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -51,6 +54,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   editing: false,
   selectedPaths: new Set(),
   currentFolderId: null,
+  searchQuery: '',
 
   load: async () => {
     set({ loading: true })
@@ -86,4 +90,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   clearSelection: () => set({ selectedPaths: new Set() }),
 
   setCurrentFolder: (id) => set({ currentFolderId: id, editing: false, selectedPaths: new Set() }),
+
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
 }))
