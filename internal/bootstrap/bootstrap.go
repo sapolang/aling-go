@@ -83,6 +83,7 @@ func registerServices(app *application.App, dataDir, version string) {
 		application.NewService(content.NewWhisperService(app, dataDir)),
 		application.NewService(system.NewPlatformService(app, version)),
 		application.NewService(system.NewBackupService(app, dataDir)),
+		application.NewService(system.NewUpdateService(app, version)),
 		application.NewService(system.NewAIService(app, dataDir)),
 	}
 	for _, svc := range services {

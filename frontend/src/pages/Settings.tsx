@@ -21,6 +21,7 @@ import {
   useShortcutStore,
 } from '@/stores/shortcutStore'
 import type { ShortcutActionId, ShortcutGroupId } from '@/stores/shortcutStore'
+import { useUpdateStore } from '@/stores/updateStore'
 import {
   Download,
   Upload,
@@ -35,6 +36,7 @@ import {
   ChevronUp,
   Info,
   DatabaseBackup,
+  RefreshCw,
 } from 'lucide-react'
 
 interface ExportedWord {
@@ -92,6 +94,84 @@ export default function SettingsPage() {
     files: { name: string; size: number }[]
   } | null>(null)
   const [backingUp, setBackingUp] = useState(false)
+
+  // --- 版本更新 ---
+  const [updateStep, setUpdateStep] = useState<
+    'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'ready'
+  >('idle')
+  const [updateVersion, setUpdateVersion] = useState('')
+  const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateError, setUpdateError] = useState('')
+  const hasUpdateHint = useUpdateStore((s) => s.hasUpdate)
+  const latestHint = useUpdateStore((s) => s.latestVersion)
+
+  // 侧栏后台检查到新版本后，进入设置页直接展示可更新状态
+  const displayStep = updateStep === 'idle' && hasUpdateHint ? 'available' : updateStep
+  const displayVersion = updateStep === 'idle' && hasUpdateHint ? latestHint : updateVersion
+
+  const handleUpdateAction = async () => {
+    if (displayStep === 'ready') {
+      const r = await window.api.applyUpdate()
+      if (!r?.ok) setUpdateError(r?.error || '安装失败，请稍后重试')
+      return
+    }
+
+    if (displayStep === 'available') {
+      setUpdateError('')
+      setUpdateStep('downloading')
+      setUpdateProgress(0)
+      const off = window.api.updateOnProgress((pct: number) => setUpdateProgress(pct))
+      try {
+        const r = await window.api.downloadUpdate()
+        if (r?.ok) {
+          setUpdateStep('ready')
+        } else {
+          setUpdateError(r?.error || '下载失败')
+          setUpdateStep('available')
+        }
+      } catch (err) {
+        setUpdateError('下载失败: ' + err)
+        setUpdateStep('available')
+      } finally {
+        off()
+      }
+      return
+    }
+
+    setUpdateError('')
+    setUpdateStep('checking')
+    try {
+      const info = await window.api.checkUpdate()
+      if (info?.error) {
+        setUpdateError(info.error)
+        setUpdateStep('idle')
+      } else if (!info?.hasUpdate) {
+        useUpdateStore.getState().clear()
+        setUpdateStep('latest')
+      } else {
+        useUpdateStore.getState().setAvailable(info.latestVersion || '')
+        setUpdateVersion(info.latestVersion || '')
+        setUpdateStep('available')
+      }
+    } catch (err) {
+      setUpdateError('检查更新失败: ' + err)
+      setUpdateStep('idle')
+    }
+  }
+
+  const updateStatus = updateError
+    ? updateError
+    : displayStep === 'checking'
+      ? '正在检查更新…'
+      : displayStep === 'latest'
+        ? '已是最新版本'
+        : displayStep === 'available'
+          ? `发现新版本 v${displayVersion}`
+          : displayStep === 'downloading'
+            ? `正在下载更新 ${updateProgress}%`
+            : displayStep === 'ready'
+              ? '更新已就绪，重启应用后完成安装'
+              : '通过 GitHub Releases 检查新版本'
 
   const handleBackupNow = async () => {
     setBackingUp(true)
@@ -728,13 +808,51 @@ export default function SettingsPage() {
             <Info className="h-5 w-5" /> 关于
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium">语练</p>
               <p className="text-sm text-muted-foreground">英语输入输出训练台</p>
             </div>
             <span className="text-sm font-mono text-muted-foreground">v{appVersion}</span>
+          </div>
+
+          <div className="border-t border-border" />
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-medium">版本更新</p>
+              <p
+                className={`text-sm ${updateError ? 'text-destructive' : 'text-muted-foreground'}`}
+              >
+                {updateStatus}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={displayStep === 'checking' || displayStep === 'downloading'}
+              onClick={handleUpdateAction}
+            >
+              {displayStep === 'checking' || displayStep === 'downloading' ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : displayStep === 'ready' ? (
+                <RotateCcw className="h-3.5 w-3.5 mr-1" />
+              ) : displayStep === 'available' ? (
+                <Download className="h-3.5 w-3.5 mr-1" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              )}
+              {displayStep === 'checking'
+                ? '检查中…'
+                : displayStep === 'downloading'
+                  ? `下载中 ${updateProgress}%`
+                  : displayStep === 'ready'
+                    ? '重启并安装'
+                    : displayStep === 'available'
+                      ? '下载更新'
+                      : '检查更新'}
+            </Button>
           </div>
         </CardContent>
       </Card>

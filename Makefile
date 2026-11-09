@@ -1,4 +1,4 @@
-.PHONY: dev build dmg exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint typecheck test
+.PHONY: dev build dmg zip exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint typecheck test
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -6,6 +6,7 @@ SIDECAR_BIN = sidecar/whisper-sidecar
 VERSION ?= $(shell sed -n 's/^  version: "\(.*\)"$$/\1/p' build/config.yml)
 ARCH ?= $(shell go env GOARCH)
 DMG_FILE = bin/$(APP_NAME)-$(VERSION)-$(ARCH).dmg
+ZIP_FILE = bin/$(APP_NAME)-$(VERSION)-darwin-$(ARCH).zip
 
 # macOS (default): make build         → .app
 # macOS DMG:       make dmg           → .dmg
@@ -44,6 +45,15 @@ dmg: sidecar package
 		"bin/$(APP_NAME).app"
 	@echo "DMG: $(DMG_FILE)"
 	du -sh $(DMG_FILE)
+
+# 应用内自动更新使用 zip（Wails v3 updater 只识别 zip/tar.gz），并生成 SHA256SUMS 供校验
+# 注意：archive 必须只含一个顶层条目（aling-go.app），不能加 --sequesterRsrc
+zip: dmg
+	rm -f $(ZIP_FILE)
+	ditto -c -k --keepParent "bin/$(APP_NAME).app" $(ZIP_FILE)
+	cd bin && shasum -a 256 "$(notdir $(ZIP_FILE))" > SHA256SUMS
+	@echo "ZIP: $(ZIP_FILE)"
+	du -sh $(ZIP_FILE)
 
 exe:
 	wails3 build
