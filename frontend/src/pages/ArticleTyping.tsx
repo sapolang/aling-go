@@ -521,7 +521,9 @@ export default function ArticleTypingPage() {
           (cs.status === 'wrong'
             ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
             : cs.status === 'correct'
-              ? 'text-muted-foreground'
+              ? saved
+                ? 'text-amber-500'
+                : 'text-muted-foreground'
               : cs.status === 'current'
                 ? `border-b-2 border-blue-500 ${saved ? 'text-amber-500' : 'text-foreground'}`
                 : saved

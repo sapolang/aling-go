@@ -12,18 +12,15 @@ export function isSavedWord(part: string, savedWords: ReadonlySet<string>): bool
   return clean.length > 1 && savedWords.has(clean)
 }
 
-// 生词密度：文中已入库生词 token 数 / 总词 token 数（词间按空白切分）
-export function savedWordDensity(text: string, savedWords: ReadonlySet<string>): number {
+// 命中生词数：文中出现过的已入库生词个数（按词去重，重复出现只算一次）
+export function savedWordCount(text: string, savedWords: ReadonlySet<string>): number {
   if (!text || savedWords.size === 0) return 0
-  let total = 0
-  let saved = 0
+  const hits = new Set<string>()
   for (const part of text.split(/\s+/)) {
     const clean = cleanWordToken(part)
-    if (clean.length <= 1) continue
-    total++
-    if (savedWords.has(clean)) saved++
+    if (clean.length > 1 && savedWords.has(clean)) hits.add(clean)
   }
-  return total > 0 ? saved / total : 0
+  return hits.size
 }
 
 export interface SentenceRange {

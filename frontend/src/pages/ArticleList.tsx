@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useArticleStore } from '@/stores/articleStore'
 import { useWordStore } from '@/stores/wordStore'
-import { savedWordDensity } from '@/lib/wordMatch'
+import { savedWordCount } from '@/lib/wordMatch'
 import { Card, CardContent } from '@/components/ui/card'
 import { BookOpen } from 'lucide-react'
 
@@ -31,11 +31,11 @@ export default function ArticleListPage() {
     [savedWordList],
   )
 
-  // 列表接口已返回正文，直接在前端按文章计算生词密度
-  const densities = useMemo(() => {
+  // 列表接口已返回正文，直接在前端按文章统计命中生词数
+  const hitCounts = useMemo(() => {
     const map = new Map<number, number>()
     for (const a of articles) {
-      map.set(a.id, savedWordDensity(a.text || '', savedWords))
+      map.set(a.id, savedWordCount(a.text || '', savedWords))
     }
     return map
   }, [articles, savedWords])
@@ -116,12 +116,12 @@ export default function ArticleListPage() {
                       <p className="text-sm text-muted-foreground truncate">{a.titleTranslate}</p>
                     )}
                   </div>
-                  {savedWords.size > 0 && (
+                  {(hitCounts.get(a.id) || 0) > 0 && (
                     <span
                       className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-500"
-                      title="已入库生词占全文词数比例"
+                      title="文中出现的已入库生词个数（重复出现只算一次）"
                     >
-                      生词 {Math.round((densities.get(a.id) || 0) * 100)}%
+                      生词 {hitCounts.get(a.id)}
                     </span>
                   )}
                   {progress?.completed ? (
