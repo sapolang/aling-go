@@ -140,9 +140,7 @@ export default function ReviewPage() {
       if (e.key === '3' && current) {
         e.preventDefault()
         handleAdd(current)
-        return
       }
-      e.preventDefault()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)

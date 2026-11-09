@@ -143,6 +143,41 @@ func GetTags() ([]DictTag, error) {
 	return result, nil
 }
 
+// SearchEntries 在 entries 表中按小写 word_key 搜索：前缀匹配优先于包含匹配，
+// 同级内短词优先。limit <= 0 时默认 50。query 为空时返回空结果。
+func SearchEntries(query string, limit int) ([]DictWord, error) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" || dictDB == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	like := strings.ReplaceAll(q, "%", "\\%")
+	like = strings.ReplaceAll(like, "_", "\\_")
+	rows, err := dictDB.Query(
+		`SELECT word, phonetic, translation, '' AS definition, '' AS pos, tags AS tag FROM entries
+			WHERE word_key LIKE ? ESCAPE '\' OR word_key LIKE ? ESCAPE '\'
+			ORDER BY CASE WHEN word_key LIKE ? ESCAPE '\' THEN 0 ELSE 1 END, LENGTH(word_key), word_key
+			LIMIT ?`,
+		like+"%", "%"+like+"%", like+"%", limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var words []DictWord
+	for rows.Next() {
+		var w DictWord
+		if err := rows.Scan(&w.Word, &w.Phonetic, &w.Translation, &w.Definition, &w.Pos, &w.Tag); err != nil {
+			continue
+		}
+		words = append(words, w)
+	}
+	return words, nil
+}
+
 func GetWordsByTag(tag string) ([]DictWord, error) {
 	likeTag := strings.ReplaceAll(tag, "%", "\\%")
 	likeTag = strings.ReplaceAll(likeTag, "_", "\\_")

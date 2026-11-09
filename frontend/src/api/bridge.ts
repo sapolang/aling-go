@@ -47,6 +47,7 @@ import {
   DbDictSaveProgress,
   DbDictGetProgress,
   DbDictLookup,
+  DbDictSearch,
 } from '../../bindings/aling-go/dictservice'
 
 import {
@@ -186,6 +187,7 @@ export function initBridge(): void {
         if (!s) return null
         return JSON.parse(s)
       }),
+    dbDictSearch: (query: string, limit?: number) => DbDictSearch(query, limit ?? 50),
 
     libraryList: () => LibraryList().then((s: string) => JSON.parse(s)),
     libraryImport: (category: string, folderId: string) =>
