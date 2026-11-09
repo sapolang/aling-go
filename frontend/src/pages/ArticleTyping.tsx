@@ -1,10 +1,14 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useArticleStore } from '@/stores/articleStore'
+import { useWordStore } from '@/stores/wordStore'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { showToast } from '@/components/feedback'
-import { Speaker, ArrowLeft, Pencil, Eye, Check } from 'lucide-react'
+import { Speaker, ArrowLeft, Pencil, Eye, Check, Volume2 } from 'lucide-react'
+import WordHoverCard from '@/components/WordHoverCard'
+import WordLookupModal from '@/components/WordLookupModal'
+import { speak } from '@/lib/tts'
 
 const CDN_BASE = 'https://files.typewords.cc'
 
@@ -65,6 +69,15 @@ function splitLines(text: string): { start: number; end: number; text: string }[
   return lines
 }
 
+// 取 text 中 index 所在的句子（以换行和句末标点为界），作为查词的上下文例句
+function sentenceAt(text: string, index: number): string {
+  let start = Math.min(index, text.length)
+  while (start > 0 && !/[\n.!?;]/.test(text[start - 1])) start--
+  let end = start
+  while (end < text.length && !/[\n.!?;]/.test(text[end])) end++
+  return text.slice(start, end).trim()
+}
+
 export default function ArticleTypingPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -89,6 +102,15 @@ export default function ArticleTypingPage() {
   const [dictationResults, setDictationResults] = useState<
     { word: string; typed: string; correct: boolean }[]
   >([])
+  // 悬停查词 / 完整查词弹窗状态（模式照抄 Player 页）
+  const [hover, setHover] = useState<{ word: string; sentence: string; anchor: DOMRect } | null>(
+    null,
+  )
+  const [showLookup, setShowLookup] = useState(false)
+  const [selectedWord, setSelectedWord] = useState('')
+  const [selectedSentence, setSelectedSentence] = useState('')
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const cursorRef = useRef<HTMLSpanElement>(null)
   const abortedRef = useRef(false)
@@ -148,6 +170,87 @@ export default function ArticleTypingPage() {
     [currentArticle?.textTranslate],
   )
 
+  // 生词库词表：已收藏的词在正文中高亮显示（与 Player 页一致）
+  const savedWordList = useWordStore((s) => s.words)
+  const loadWords = useWordStore((s) => s.loadWords)
+  const savedWords = useMemo(
+    () => new Set(savedWordList.map((w) => w.word.toLowerCase())),
+    [savedWordList],
+  )
+  useEffect(() => {
+    void loadWords()
+  }, [])
+
+  const isSavedWord = (part: string) => {
+    let clean = part.toLowerCase().replace(/[^a-z0-9\-']/g, '')
+    if (clean.endsWith("'s")) clean = clean.slice(0, -2)
+    return clean.length > 1 && savedWords.has(clean)
+  }
+  const savedWordMark = 'text-amber-500 underline decoration-dotted underline-offset-2'
+
+  // 悬停 300ms 后弹出释义卡片，避免扫过正文时闪烁
+  const scheduleHover = (word: string, sentence: string, el: HTMLElement) => {
+    const clean = word.replace(/[^a-zA-Z0-9\-']/g, '')
+    if (clean.length < 2) return
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    const anchor = el.getBoundingClientRect()
+    hoverTimer.current = setTimeout(() => {
+      setHover({ word: clean, sentence, anchor })
+    }, 300)
+  }
+
+  // 移出单词后延迟收起，留出时间把鼠标移进浮层
+  const scheduleHideHover = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    hoverHideTimer.current = setTimeout(() => {
+      setHover(null)
+    }, 250)
+  }
+
+  const keepHover = () => {
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+  }
+
+  const cancelHover = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    hoverTimer.current = null
+    hoverHideTimer.current = null
+    setHover(null)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current)
+      if (hoverHideTimer.current) clearTimeout(hoverHideTimer.current)
+    }
+  }, [])
+
+  const handleWordClick = (word: string, sentence: string) => {
+    const clean = word.replace(/[^a-zA-Z0-9\-']/g, '')
+    if (!clean) return
+    cancelHover()
+    speak(clean)
+    setSelectedWord(clean)
+    setSelectedSentence(sentence)
+    setShowLookup(true)
+  }
+
+  const handleWordAdded = () => {
+    showToast('已加入生词库')
+    void loadWords()
+  }
+
+  // 当前打字位置所在的行，用于「朗读当前句」
+  const currentLineText = useMemo(() => {
+    if (!lines.length) return ''
+    const pos = Math.min(typed.length, Math.max(text.length - 1, 0))
+    const line = lines.find((l) => pos < l.end) || lines[lines.length - 1]
+    return line.text.trim()
+  }, [lines, typed.length, text.length])
+
   const charStates: CharState[] = useMemo(() => {
     return text.split('').map((char, i) => {
       if (i < typed.length) {
@@ -172,7 +275,8 @@ export default function ArticleTypingPage() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (finished || showResult) return
+      // 查词弹窗打开时不响应打字，避免误输入
+      if (finished || showResult || showLookup) return
       if (e.isComposing) return
 
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -247,7 +351,7 @@ export default function ArticleTypingPage() {
         return
       }
     },
-    [finished, showResult, started, text, typed, mode],
+    [finished, showResult, showLookup, started, text, typed, mode],
   )
 
   useEffect(() => {
@@ -341,35 +445,80 @@ export default function ArticleTypingPage() {
     return () => saveOnUnmountRef.current()
   }, [])
 
+  // 渲染单个字符，保留原有的逐字对错着色；saved 时未输入字符用琥珀色标示
+  const renderChar = (cs: CharState, key: number, saved = false) => (
+    <span
+      key={key}
+      ref={cs.status === 'current' ? cursorRef : undefined}
+      className={
+        cs.status === 'wrong'
+          ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+          : cs.status === 'correct'
+            ? 'text-muted-foreground'
+            : cs.status === 'current'
+              ? `border-b-2 border-blue-500 ${saved ? 'text-amber-500' : 'text-foreground'}`
+              : saved
+                ? 'text-amber-500'
+                : 'text-foreground'
+      }
+    >
+      {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
+    </span>
+  )
+
   // Render character display for follow mode
   const renderFollowText = () => (
     <div className="font-mono text-2xl select-none">
       {lines.map((line, li) => {
         const translation = translations[li]?.trim()
         if (!line.text.trim()) return <div key={li} className="h-3" />
+        // 把行内字符按空格聚成单词 token，单词整体可悬停查词，字符仍独立着色
+        const slice = charStates.slice(line.start, line.end)
+        const tokens: { word: boolean; start: number; chars: CharState[] }[] = []
+        slice.forEach((cs, i) => {
+          const isWordChar = !/\s/.test(cs.char)
+          const last = tokens[tokens.length - 1]
+          if (isWordChar && last && last.word) {
+            last.chars.push(cs)
+          } else {
+            tokens.push({ word: isWordChar, start: line.start + i, chars: [cs] })
+          }
+        })
         return (
           <div key={li} className="mb-1">
             <div
               className="whitespace-pre-wrap break-words leading-normal"
               style={{ letterSpacing: '0.05em' }}
             >
-              {charStates.slice(line.start, line.end).map((cs, i) => (
-                <span
-                  key={line.start + i}
-                  ref={cs.status === 'current' ? cursorRef : undefined}
-                  className={
-                    cs.status === 'wrong'
-                      ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
-                      : cs.status === 'correct'
-                        ? 'text-muted-foreground'
-                        : cs.status === 'current'
-                          ? 'border-b-2 border-blue-500 text-foreground'
-                          : 'text-foreground'
-                  }
-                >
-                  {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
-                </span>
-              ))}
+              {tokens.map((tok, ti) => {
+                if (!tok.word) {
+                  return tok.chars.map((cs, i) => renderChar(cs, tok.start + i))
+                }
+                const raw = tok.chars.map((c) => c.char).join('')
+                const clean = raw.replace(/[^a-zA-Z0-9\-']/g, '')
+                const saved = clean.length > 1 && isSavedWord(raw)
+                if (clean.length < 2) {
+                  return (
+                    <span key={ti}>
+                      {tok.chars.map((cs, i) => renderChar(cs, tok.start + i, saved))}
+                    </span>
+                  )
+                }
+                return (
+                  <span
+                    key={ti}
+                    className={`${saved ? savedWordMark + ' ' : ''}cursor-pointer rounded hover:bg-muted`}
+                    onMouseEnter={(e) => scheduleHover(raw, line.text, e.currentTarget)}
+                    onMouseLeave={scheduleHideHover}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleWordClick(raw, line.text)
+                    }}
+                  >
+                    {tok.chars.map((cs, i) => renderChar(cs, tok.start + i, saved))}
+                  </span>
+                )
+              })}
             </div>
             {translation && (
               <div className="font-sans text-[17px] leading-snug text-muted-foreground whitespace-pre-wrap">
@@ -392,10 +541,15 @@ export default function ArticleTypingPage() {
       <div className="font-mono text-xl leading-relaxed whitespace-pre-wrap break-words select-none">
         {/* Show already typed words */}
         {typedWords.map((tw, i) => {
+          const startPos = typedPos
           typedPos += tw.length
           const ow = originalWords[i]
           const isSpace = /^\s+$/.test(tw)
           if (isSpace) return <span key={i}>{tw}</span>
+          const lookupSource = ow || tw
+          const clean = lookupSource.replace(/[^a-zA-Z0-9\-']/g, '')
+          const saved = clean.length > 1 && isSavedWord(lookupSource)
+          const sentence = sentenceAt(sourceText, startPos)
           if (!ow)
             return (
               <span key={i} className="text-muted-foreground">
@@ -403,12 +557,28 @@ export default function ArticleTypingPage() {
               </span>
             )
           const matched = ow.toLowerCase() === tw.toLowerCase()
+          // 默写模式保留对错配色，收藏词用点状下划线标示
+          const interactive =
+            clean.length > 1
+              ? {
+                  onMouseEnter: (e: React.MouseEvent<HTMLElement>) =>
+                    scheduleHover(lookupSource, sentence, e.currentTarget),
+                  onMouseLeave: scheduleHideHover,
+                  onClick: (e: React.MouseEvent<HTMLElement>) => {
+                    e.stopPropagation()
+                    handleWordClick(lookupSource, sentence)
+                  },
+                }
+              : {}
           return (
             <span
               key={i}
-              className={
+              className={`${
                 matched ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
-              }
+              } ${saved ? 'underline decoration-dotted underline-offset-2 ' : ''}${
+                clean.length > 1 ? 'cursor-pointer hover:underline' : ''
+              }`}
+              {...interactive}
             >
               {matched ? tw : <span className="line-through mr-1">{tw}</span>}
               {!matched && <span className="text-green-600 text-xs align-super">{ow}</span>}
@@ -504,6 +674,15 @@ export default function ArticleTypingPage() {
             <Speaker className="h-4 w-4" />
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          title="朗读当前句"
+          disabled={!currentLineText}
+          onClick={() => currentLineText && speak(currentLineText)}
+        >
+          <Volume2 className="h-4 w-4" />
+        </Button>
       </div>
 
       {currentArticle.audioSrc && (
@@ -620,6 +799,29 @@ export default function ArticleTypingPage() {
             </Button>
           </div>
         </Card>
+      )}
+
+      {hover && (
+        <WordHoverCard
+          word={hover.word}
+          sentence={hover.sentence}
+          anchor={hover.anchor}
+          onMouseEnter={keepHover}
+          onMouseLeave={scheduleHideHover}
+          onAdded={handleWordAdded}
+        />
+      )}
+
+      {showLookup && selectedWord && (
+        <WordLookupModal
+          word={selectedWord}
+          sentence={selectedSentence}
+          onClose={() => {
+            setShowLookup(false)
+            void loadWords()
+          }}
+          onAdded={handleWordAdded}
+        />
       )}
     </div>
   )
