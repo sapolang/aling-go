@@ -35,11 +35,25 @@ type AIConfig struct {
 	Model   string `json:"model"`
 }
 
-// AIConfigView 回传前端的配置视图，不暴露明文 Key
+// AIConfigView 回传前端的配置视图
 type AIConfigView struct {
 	BaseURL string `json:"baseUrl"`
 	Model   string `json:"model"`
 	HasKey  bool   `json:"hasKey"`
+	// APIKeyMask 已保存 Key 的掩码，与原文等长，直接展示在输入框
+	APIKeyMask string `json:"apiKeyMask"`
+}
+
+// maskAPIKey 保留首尾，中间用 * 填充，掩码长度与原文一致
+func maskAPIKey(key string) string {
+	n := len(key)
+	if n == 0 {
+		return ""
+	}
+	if n <= 13 {
+		return strings.Repeat("*", n)
+	}
+	return key[:9] + strings.Repeat("*", n-13) + key[n-4:]
 }
 
 type AITestResult struct {
@@ -117,7 +131,7 @@ func loadAIConfig(dataDir string) AIConfig {
 func (s *AIService) GetAIConfig() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	view := AIConfigView{BaseURL: s.cfg.BaseURL, Model: s.cfg.Model, HasKey: s.cfg.APIKey != ""}
+	view := AIConfigView{BaseURL: s.cfg.BaseURL, Model: s.cfg.Model, HasKey: s.cfg.APIKey != "", APIKeyMask: maskAPIKey(s.cfg.APIKey)}
 	b, _ := json.Marshal(view)
 	return string(b)
 }
