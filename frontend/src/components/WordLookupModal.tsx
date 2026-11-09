@@ -19,9 +19,10 @@ interface Props {
   word: string
   sentence: string
   onClose: () => void
+  onAdded?: () => void
 }
 
-export default function WordLookupModal({ word, sentence, onClose }: Props) {
+export default function WordLookupModal({ word, sentence, onClose, onAdded }: Props) {
   const [loading, setLoading] = useState(true)
   const [entry, setEntry] = useState<DictEntry | null>(null)
   const [exists, setExists] = useState(false)
@@ -76,7 +77,10 @@ export default function WordLookupModal({ word, sentence, onClose }: Props) {
       efactor: 2.5,
       interval: 0,
     })
-    if (id) setAdded(true)
+    if (id) {
+      setAdded(true)
+      onAdded?.()
+    }
   }
 
   const tags = entry?.tag?.split(/\s+/).filter(Boolean) || []
