@@ -34,6 +34,7 @@ import {
   ChevronRight,
   ChevronUp,
   Info,
+  DatabaseBackup,
 } from 'lucide-react'
 
 interface ExportedWord {
@@ -86,6 +87,31 @@ export default function SettingsPage() {
   const [aiKey, setAiKey] = useState('')
   const [aiTesting, setAiTesting] = useState(false)
   const [aiTestMsg, setAiTestMsg] = useState<{ ok: boolean; message: string } | null>(null)
+
+  // --- 数据备份 ---
+  const [backupStatus, setBackupStatus] = useState<{
+    lastBackup: string
+    dir: string
+    files: { name: string; size: number }[]
+  } | null>(null)
+  const [backingUp, setBackingUp] = useState(false)
+
+  const handleBackupNow = async () => {
+    setBackingUp(true)
+    try {
+      const r = await window.api.backupNow()
+      if (r?.ok) {
+        if (r.status) setBackupStatus(r.status)
+        showToast('备份完成')
+      } else {
+        showToast('备份失败: ' + (r?.error || '未知错误'), 'error')
+      }
+    } catch (err) {
+      showToast('备份失败: ' + err, 'error')
+    } finally {
+      setBackingUp(false)
+    }
+  }
 
   const handleExport = async () => {
     try {
@@ -157,6 +183,8 @@ export default function SettingsPage() {
     })
 
     window.api.getVersion().then(setAppVersion)
+
+    window.api.getBackupStatus().then(setBackupStatus)
 
     let resumeCleanup: (() => void) | null = null
     window.api.getDownloadProgress().then((d: string) => {
@@ -610,6 +638,31 @@ export default function SettingsPage() {
           <CardTitle className="text-lg">数据备份</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="font-medium">自动备份</p>
+              <p className="text-sm text-muted-foreground">
+                启动时若距上次备份超过 24 小时会自动备份，保留最近 7 份
+                {backupStatus?.lastBackup
+                  ? ` · 最近备份：${new Date(backupStatus.lastBackup).toLocaleString()}`
+                  : ' · 尚未备份'}
+              </p>
+              {backupStatus?.dir && (
+                <p className="text-xs text-muted-foreground font-mono break-all mt-1">
+                  {backupStatus.dir}
+                </p>
+              )}
+            </div>
+            <Button variant="outline" disabled={backingUp} onClick={handleBackupNow}>
+              {backingUp ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <DatabaseBackup className="h-4 w-4 mr-1" />
+              )}
+              立即备份
+            </Button>
+          </div>
+          <div className="border-t border-border" />
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium">导出生词库</p>
