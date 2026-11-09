@@ -50,6 +50,19 @@ func (s *DictService) DbDictWords(tag string) []dict.DictWord {
 	return words
 }
 
+// DbDictSearch 全局搜索词条，limit <= 0 时默认 50
+func (s *DictService) DbDictSearch(query string, limit int) []dict.DictWord {
+	words, err := dict.SearchEntries(query, limit)
+	if err != nil {
+		s.app.Logger.Error("DbDictSearch failed", "error", err)
+		return []dict.DictWord{}
+	}
+	if words == nil {
+		return []dict.DictWord{}
+	}
+	return words
+}
+
 func (s *DictService) DbDictSaveProgress(tag string, index int) {
 	if err := dict.SaveProgress(tag, index); err != nil {
 		s.app.Logger.Error("DbDictSaveProgress failed", "error", err)
