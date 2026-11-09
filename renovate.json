@@ -1,53 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+  "extends": ["config:recommended", ":dependencyDashboard", "helpers:pinGitHubActionDigests"],
   "timezone": "Asia/Shanghai",
   "schedule": ["before 9am on monday"],
-  "rebaseWhen": "conflicted",
-  "prConcurrentLimit": 5,
-  "prHourlyLimit": 5,
   "minimumReleaseAge": "3 days",
   "osvVulnerabilityAlerts": true,
-  "dependencyDashboardTitle": "Renovate 依赖更新",
-  "postUpdateOptions": ["gomodTidy"],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["before 9am on monday"]
-  },
   "packageRules": [
-    {
-      "description": "前端依赖（npm）统一归组：日常只产出一个 PR",
-      "matchManagers": ["npm"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "frontend"
-    },
-    {
-      "description": "GitHub Actions 并入前端组，并固定 SHA，避免浮动 tag 被篡改",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "frontend",
-      "pinDigests": true
-    },
-    {
-      "description": "Go 依赖统一归组",
-      "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "go"
-    },
-    {
-      "description": "大版本不参与周期更新，需在 Dependency Dashboard 勾选确认后才生成 PR",
-      "matchUpdateTypes": ["major"],
-      "dependencyDashboardApproval": true
-    },
-    {
-      "description": "Wails 三件套整体升级；保持独立 PR 以便本地同步 CLI、build assets 与 bindings",
-      "matchPackageNames": ["github.com/wailsapp/wails/v3", "@wailsio/runtime"],
-      "rangeStrategy": "bump",
-      "groupName": "wails",
-      "addLabels": ["wails"],
-      "prBodyNotes": [
-        "合并后请在本地执行 `make upgrade-wails VERSION=<新版本>`：Renovate 只改依赖清单，无法更新 wails3 CLI、build assets 和已生成但被 gitignore 的 bindings。"
-      ]
-    }
+    { "matchManagers": ["npm", "github-actions"], "matchUpdateTypes": ["minor", "patch", "pinDigest"], "groupName": "frontend" },
+    { "matchManagers": ["gomod"], "matchUpdateTypes": ["minor", "patch"], "groupName": "go" },
+    { "matchUpdateTypes": ["major"], "dependencyDashboardApproval": true },
+    { "matchPackageNames": ["github.com/wailsapp/wails/v3", "@wailsio/runtime"], "groupName": "wails", "rangeStrategy": "bump" }
   ]
 }
