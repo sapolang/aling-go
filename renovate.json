@@ -6,6 +6,8 @@
   "rebaseWhen": "conflicted",
   "prConcurrentLimit": 5,
   "prHourlyLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "osvVulnerabilityAlerts": true,
   "dependencyDashboardTitle": "Renovate 依赖更新",
   "postUpdateOptions": ["gomodTidy"],
   "lockFileMaintenance": {
@@ -14,27 +16,31 @@
   },
   "packageRules": [
     {
-      "description": "Go 次要版本与补丁更新归组",
+      "description": "前端依赖（npm）统一归组：日常只产出一个 PR",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend"
+    },
+    {
+      "description": "GitHub Actions 并入前端组，并固定 SHA，避免浮动 tag 被篡改",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend",
+      "pinDigests": true
+    },
+    {
+      "description": "Go 依赖统一归组",
       "matchManagers": ["gomod"],
       "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "go minor/patch"
+      "groupName": "go"
     },
     {
-      "description": "前端 devDependencies 归组",
-      "matchManagers": ["npm"],
-      "matchDepTypes": ["devDependencies"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "frontend devDeps"
+      "description": "大版本不参与周期更新，需在 Dependency Dashboard 勾选确认后才生成 PR",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
     },
     {
-      "description": "前端运行时依赖补丁归组",
-      "matchManagers": ["npm"],
-      "matchDepTypes": ["dependencies"],
-      "matchUpdateTypes": ["patch"],
-      "groupName": "frontend patch"
-    },
-    {
-      "description": "Wails 三件套整体升级；放最后以覆盖上面的通用分组，合并后需本地同步 CLI 与 bindings",
+      "description": "Wails 三件套整体升级；保持独立 PR 以便本地同步 CLI、build assets 与 bindings",
       "matchPackageNames": ["github.com/wailsapp/wails/v3", "@wailsio/runtime"],
       "rangeStrategy": "bump",
       "groupName": "wails",
