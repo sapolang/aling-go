@@ -106,6 +106,11 @@ import {
 } from '../../bindings/aling-go/internal/study/favoriteservice'
 
 import { BackupNow, GetBackupStatus } from '../../bindings/aling-go/internal/system/backupservice'
+import {
+  ApplyUpdate,
+  CheckForUpdate,
+  DownloadLatest,
+} from '../../bindings/aling-go/internal/system/updateservice'
 import { Events } from '@wailsio/runtime'
 
 export function initBridge(): void {
@@ -274,5 +279,17 @@ export function initBridge(): void {
 
     backupNow: () => BackupNow().then((s: string) => JSON.parse(s)),
     getBackupStatus: () => GetBackupStatus().then((s: string) => JSON.parse(s)),
+
+    checkUpdate: () => CheckForUpdate().then((s: string) => JSON.parse(s)),
+    downloadUpdate: () => DownloadLatest().then((s: string) => JSON.parse(s)),
+    applyUpdate: () => ApplyUpdate().then((s: string) => JSON.parse(s)),
+    updateOnProgress: (cb: (pct: number) => void) => {
+      Events.On('wails:updater:download-progress', (e: any) => {
+        const p = e?.data
+        const pct = p && p.total > 0 ? Math.min(100, Math.round((p.written / p.total) * 100)) : 0
+        cb(pct)
+      })
+      return () => Events.Off('wails:updater:download-progress')
+    },
   } as any
 }

@@ -6,6 +6,7 @@ import { confirmDialog } from '@/components/feedback'
 import { basename } from '@/utils/path'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
+import { useUpdateStore } from '@/stores/updateStore'
 import {
   Home,
   Play,
@@ -54,6 +55,8 @@ export function Layout({
   const loadReviewCount = useWordStore((s) => s.loadReviewCount)
   const [collapsed, setCollapsed] = useState(false)
   const [appVersion, setAppVersion] = useState('dev')
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate)
+  const latestVersion = useUpdateStore((s) => s.latestVersion)
 
   // 窄窗口下自动收起侧栏，给内容留出空间
   useEffect(() => {
@@ -71,7 +74,25 @@ export function Layout({
   }, [location.pathname, loadReviewCount])
 
   useEffect(() => {
-    window.api.getVersion().then(setAppVersion)
+    let timer: number | undefined
+    window.api.getVersion().then((v: string) => {
+      setAppVersion(v)
+      // 开发构建不做后台检查，避免把正式版本误标为新版本
+      if (!v || !/^\d+\.\d+\.\d+/.test(v)) return
+      timer = window.setTimeout(async () => {
+        try {
+          const info = await window.api.checkUpdate()
+          if (info?.hasUpdate && info.latestVersion) {
+            useUpdateStore.getState().setAvailable(info.latestVersion)
+          }
+        } catch {
+          // 后台检查失败保持静默
+        }
+      }, 8000)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
   }, [])
 
   const handleCloseFile = async () => {
@@ -149,7 +170,15 @@ export function Layout({
           })}
         </nav>
         <div className="p-3 border-t flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{collapsed ? '' : `v${appVersion}`}</span>
+          <button
+            type="button"
+            className={`flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors ${collapsed ? 'justify-center w-4' : ''}`}
+            title={hasUpdate ? `发现新版本 v${latestVersion}，点击查看` : '检查更新'}
+            onClick={() => navigate('/settings')}
+          >
+            {!collapsed && <span>{`v${appVersion}`}</span>}
+            {hasUpdate && <span className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+          </button>
           <ThemeToggle />
         </div>
       </aside>
