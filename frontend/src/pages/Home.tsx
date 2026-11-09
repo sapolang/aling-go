@@ -6,6 +6,13 @@ import { useWordStore } from '@/stores/wordStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { showToast, confirmDialog } from '@/components/feedback'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
@@ -26,7 +33,6 @@ import {
   ArrowLeft,
   ChevronRight,
   Home,
-  X,
   FolderOutput,
   MoreHorizontal,
   PlayCircle,
@@ -144,7 +150,9 @@ export default function HomePage() {
     const ok = await confirmDialog({
       title: `删除 ${itemsToDelete.length} 项？`,
       description:
-        folderIds.length > 0 ? '文件夹内的文件将移到未归类。此操作不可撤销。' : '此操作不可撤销。',
+        folderIds.length > 0
+          ? '仅从媒体库移除，不会删除磁盘上的原文件。文件夹内的文件将移到未归类。'
+          : '仅从媒体库移除，不会删除磁盘上的原文件。',
       confirmText: '删除',
       destructive: true,
     })
@@ -158,7 +166,7 @@ export default function HomePage() {
       await store.load()
       store.clearSelection()
       closeContextMenu()
-      showToast(`已删除 ${itemsToDelete.length} 项`, 'success')
+      showToast(`已从媒体库移除 ${itemsToDelete.length} 项`, 'success')
     } catch (err) {
       console.error('[Delete] ERROR:', err)
       showToast('删除失败', 'error')
@@ -554,61 +562,59 @@ export default function HomePage() {
       )}
 
       {/* New folder dialog */}
-      {showNewFolder && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowNewFolder(false)}
-        >
-          <Card className="w-80 p-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold mb-3">新建文件夹</h3>
-            <Input
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              placeholder="输入文件夹名称"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-            />
-            <div className="flex gap-2 justify-end mt-3">
-              <Button variant="outline" size="sm" onClick={() => setShowNewFolder(false)}>
-                取消
-              </Button>
-              <Button size="sm" onClick={handleCreateFolder}>
-                创建
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+      <Dialog open={showNewFolder} onOpenChange={setShowNewFolder}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-sm">新建文件夹</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder="输入文件夹名称"
+            autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setShowNewFolder(false)}>
+              取消
+            </Button>
+            <Button size="sm" onClick={handleCreateFolder}>
+              创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Rename dialog */}
-      {renameDialog.visible && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setRenameDialog((p) => ({ ...p, visible: false }))}
-        >
-          <Card className="w-80 p-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold mb-3">重命名</h3>
-            <Input
-              value={renameDialog.name}
-              onChange={(e) => setRenameDialog((p) => ({ ...p, name: e.target.value }))}
-              placeholder="输入新名称"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
-            />
-            <div className="flex gap-2 justify-end mt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRenameDialog((p) => ({ ...p, visible: false }))}
-              >
-                取消
-              </Button>
-              <Button size="sm" onClick={handleRenameSubmit}>
-                确定
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+      <Dialog
+        open={renameDialog.visible}
+        onOpenChange={(open) => setRenameDialog((p) => ({ ...p, visible: open }))}
+      >
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-sm">重命名</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameDialog.name}
+            onChange={(e) => setRenameDialog((p) => ({ ...p, name: e.target.value }))}
+            placeholder="输入新名称"
+            autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRenameDialog((p) => ({ ...p, visible: false }))}
+            >
+              取消
+            </Button>
+            <Button size="sm" onClick={handleRenameSubmit}>
+              确定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Grid View */}
       {store.viewMode === 'grid' && (
