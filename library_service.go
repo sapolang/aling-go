@@ -116,6 +116,25 @@ func (s *LibraryService) LibraryImport(category, folderID string) string {
 		b, _ := json.Marshal(LibraryImportResult{Files: []LibraryFile{}})
 		return string(b)
 	}
+	result := s.importFiles(files, folderID)
+	b, _ := json.Marshal(result)
+	return string(b)
+}
+
+// LibraryImportPaths 直接按绝对路径导入文件（拖拽导入等场景），不走文件选择弹窗。
+func (s *LibraryService) LibraryImportPaths(pathsJSON, folderID string) string {
+	var files []string
+	if err := json.Unmarshal([]byte(pathsJSON), &files); err != nil {
+		fmt.Fprintf(os.Stderr, "LibraryImportPaths: unmarshal error: %v\n", err)
+		b, _ := json.Marshal(LibraryImportResult{Files: []LibraryFile{}})
+		return string(b)
+	}
+	result := s.importFiles(files, folderID)
+	b, _ := json.Marshal(result)
+	return string(b)
+}
+
+func (s *LibraryService) importFiles(files []string, folderID string) LibraryImportResult {
 	lib := s.readLibrary()
 	var imported, skipped, dropped int
 	for _, file := range files {
@@ -132,6 +151,10 @@ func (s *LibraryService) LibraryImport(category, folderID string) string {
 			skipped++
 			continue
 		}
+		if _, err := os.Stat(file); err != nil {
+			skipped++
+			continue
+		}
 		lib.Files = append(lib.Files, LibraryFile{
 			Path:     file,
 			Name:     filepath.Base(file),
@@ -142,8 +165,7 @@ func (s *LibraryService) LibraryImport(category, folderID string) string {
 		imported++
 	}
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped, Dropped: dropped})
-	return string(b)
+	return LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped, Dropped: dropped}
 }
 
 func (s *LibraryService) LibraryRemove(pathsJSON string) string {

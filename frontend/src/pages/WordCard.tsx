@@ -1,18 +1,38 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useWordStore } from '@/stores/wordStore'
+import { useWordStore, Word } from '@/stores/wordStore'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { showToast } from '@/components/feedback'
 import { speak } from '@/lib/tts'
 import { gradeOptions, sm2, srsIntervalLabel } from '@/lib/srs'
-import { Speaker, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { Speaker, ChevronLeft, ChevronRight, Pencil, Undo2, Settings2 } from 'lucide-react'
+
+interface UndoEntry {
+  word: Word
+  index: number
+}
 
 export default function WordCardPage() {
   const navigate = useNavigate()
-  const { reviewWords, reviewTotal, reviewCompleted, loadReview, updateWord, incrementCompleted } =
-    useWordStore()
+  const {
+    reviewWords,
+    reviewTotal,
+    reviewCompleted,
+    newLimit,
+    reviewLimit,
+    truncatedNew,
+    truncatedReview,
+    loadReview,
+    updateWord,
+    incrementCompleted,
+    decrementCompleted,
+    restoreReviewWord,
+    setNewLimit,
+    setReviewLimit,
+  } = useWordStore()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [showButtons, setShowButtons] = useState(false)
@@ -20,12 +40,26 @@ export default function WordCardPage() {
   const [writeInput, setWriteInput] = useState('')
   const [writeCount, setWriteCount] = useState(0)
   const [writeError, setWriteError] = useState(false)
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [showLimits, setShowLimits] = useState(false)
   const writeRef = useRef<HTMLInputElement>(null)
   const flipTimer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
     loadReview()
   }, [])
+
+  useEffect(() => {
+    if (truncatedNew > 0) {
+      showToast(`今日新词已达上限（${newLimit} 个），${truncatedNew} 个新词顺延到明天`, 'warning')
+    }
+    if (truncatedReview > 0) {
+      showToast(
+        `今日复习已达上限（${reviewLimit} 个），${truncatedReview} 个复习词顺延到明天`,
+        'warning',
+      )
+    }
+  }, [truncatedNew, truncatedReview])
 
   useEffect(() => {
     setWriteInput('')
@@ -61,6 +95,8 @@ export default function WordCardPage() {
     async (quality: number) => {
       if (!current || rating) return
       setRating(true)
+      // 评分前保存完整快照，供撤销恢复 SRS 字段与队列位置
+      setUndoStack((s) => [...s.slice(-9), { word: { ...current }, index: currentIndex }])
       const { nextReview, newEfactor, newInterval, newRepetitions } = sm2(
         current.efactor || 2.5,
         current.interval || 0,
@@ -93,9 +129,41 @@ export default function WordCardPage() {
     [current, currentIndex, rating, reviewWords.length, updateWord, incrementCompleted, loadReview],
   )
 
+  const handleUndo = useCallback(async () => {
+    const snap = undoStack[undoStack.length - 1]
+    if (!snap || rating) return
+    setUndoStack((s) => s.slice(0, -1))
+    const w = snap.word
+    // 恢复评分前的 SRS 字段
+    await updateWord(w.id, {
+      word: w.word,
+      definition: w.definition,
+      phonetic: w.phonetic,
+      example: w.example,
+      tags: w.tags,
+      level: w.level,
+      next_review: w.next_review,
+      repetitions: w.repetitions,
+      efactor: w.efactor,
+      interval: w.interval,
+    } as any)
+    restoreReviewWord(w, snap.index)
+    decrementCompleted()
+    setFlipped(false)
+    setCurrentIndex(Math.min(snap.index, reviewWords.length))
+    showToast(`已撤销 ${w.word}`)
+  }, [undoStack, rating, reviewWords.length, updateWord, restoreReviewWord, decrementCompleted])
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (undoStack.length > 0) {
+          e.preventDefault()
+          handleUndo()
+        }
+        return
+      }
       if (e.key === ' ') {
         e.preventDefault()
         setFlipped((f) => !f)
@@ -138,7 +206,7 @@ export default function WordCardPage() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [flipped, handleGrade, reviewWords.length])
+  }, [flipped, handleGrade, handleUndo, undoStack.length, reviewWords.length])
 
   if (reviewWords.length === 0 && reviewCompleted === 0) {
     return (
@@ -185,10 +253,54 @@ export default function WordCardPage() {
             style={{ width: `${progressPct}%` }}
           />
         </div>
-        <p className="text-xs text-muted-foreground text-center">
-          今日待复习 {reviewTotal} | 已完成 {reviewCompleted} | 剩余 {reviewTotal - reviewCompleted}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground flex-1 text-center">
+            今日待复习 {reviewTotal} | 已完成 {reviewCompleted} | 剩余{' '}
+            {reviewTotal - reviewCompleted}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={() => setShowLimits((v) => !v)}
+            title="每日上限设置"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
+
+      {showLimits && (
+        <Card className="p-4 flex flex-wrap items-end gap-4">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">每日新词上限</label>
+            <Input
+              type="number"
+              min={1}
+              className="w-24 h-8 text-sm"
+              value={newLimit}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10)
+                if (Number.isFinite(v) && v > 0) setNewLimit(v)
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">每日复习上限</label>
+            <Input
+              type="number"
+              min={1}
+              className="w-24 h-8 text-sm"
+              value={reviewLimit}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10)
+                if (Number.isFinite(v) && v > 0) setReviewLimit(v)
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground pb-2">修改后下一轮复习生效</p>
+        </Card>
+      )}
 
       <div className="cursor-pointer" onClick={() => setFlipped(!flipped)}>
         <Card
@@ -319,6 +431,15 @@ export default function WordCardPage() {
         <Button
           variant="outline"
           size="sm"
+          onClick={handleUndo}
+          disabled={undoStack.length === 0 || rating}
+          title="撤销上一次评分 (Ctrl/⌘+Z)"
+        >
+          <Undo2 className="h-4 w-4 mr-1" /> 撤销
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => {
             setFlipped(false)
             setCurrentIndex(Math.min(reviewWords.length - 1, currentIndex + 1))
@@ -327,7 +448,9 @@ export default function WordCardPage() {
           下一个 <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
       </div>
-      <p className="text-[10px] text-muted-foreground text-center -mt-2">← → 或 Enter 切换单词</p>
+      <p className="text-[10px] text-muted-foreground text-center -mt-2">
+        ← → 或 Enter 切换单词 · Ctrl/⌘+Z 撤销
+      </p>
     </div>
   )
 }

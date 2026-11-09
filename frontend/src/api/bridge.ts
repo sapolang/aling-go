@@ -53,6 +53,7 @@ import {
 import {
   LibraryList,
   LibraryImport,
+  LibraryImportPaths,
   LibraryRemove,
   LibraryRename,
   LibraryMove,
@@ -192,6 +193,8 @@ export function initBridge(): void {
     libraryList: () => LibraryList().then((s: string) => JSON.parse(s)),
     libraryImport: (category: string, folderId: string) =>
       LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
+    libraryImportPaths: (paths: string[], folderId: string) =>
+      LibraryImportPaths(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
     libraryRemove: (paths: string[]) =>
       LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
     libraryRename: (path: string, newName: string) =>
