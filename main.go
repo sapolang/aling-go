@@ -67,6 +67,7 @@ func main() {
 		Height:           720,
 		MinWidth:         800,
 		MinHeight:        500,
+		EnableFileDrop:   true,
 		BackgroundColour: application.RGBA{Red: 27, Green: 38, Blue: 54, Alpha: 255},
 		Mac: application.MacWindow{
 			WebviewPreferences: application.MacWebviewPreferences{

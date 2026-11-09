@@ -5,10 +5,21 @@ import { useWordStore } from '@/stores/wordStore'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { showToast } from '@/components/feedback'
-import { Speaker, ArrowLeft, Pencil, Eye, Check, Volume2 } from 'lucide-react'
+import { Speaker, ArrowLeft, Pencil, Eye, Check, Volume2, Highlighter } from 'lucide-react'
 import WordHoverCard from '@/components/WordHoverCard'
 import WordLookupModal from '@/components/WordLookupModal'
 import { speak } from '@/lib/tts'
+import {
+  isSavedWord as isSavedWordShared,
+  splitSentences,
+  wordSentenceIndexes,
+} from '@/lib/wordMatch'
+import {
+  eventToBinding,
+  formatBinding,
+  sameBinding,
+  useShortcutStore,
+} from '@/stores/shortcutStore'
 
 const CDN_BASE = 'https://files.typewords.cc'
 
@@ -181,12 +192,53 @@ export default function ArticleTypingPage() {
     void loadWords()
   }, [])
 
-  const isSavedWord = (part: string) => {
-    let clean = part.toLowerCase().replace(/[^a-z0-9\-']/g, '')
-    if (clean.endsWith("'s")) clean = clean.slice(0, -2)
-    return clean.length > 1 && savedWords.has(clean)
-  }
+  const isSavedWord = (part: string) => isSavedWordShared(part, savedWords)
   const savedWordMark = 'text-amber-500 underline decoration-dotted underline-offset-2'
+
+  // 生词句导航：句子切分边界与 sentenceAt 一致，含已入库生词的句子的下标列表
+  const sentences = useMemo(() => splitSentences(text), [text])
+  const wordSentenceIdxs = useMemo(
+    () => wordSentenceIndexes(sentences, savedWords),
+    [sentences, savedWords],
+  )
+  const [wordSentenceCursor, setWordSentenceCursor] = useState(-1)
+  const [sentenceHighlight, setSentenceHighlight] = useState<{ start: number; end: number } | null>(
+    null,
+  )
+  const sentenceHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const textContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setWordSentenceCursor(-1)
+    setSentenceHighlight(null)
+  }, [articleId, mode, text])
+
+  useEffect(() => {
+    return () => {
+      if (sentenceHighlightTimer.current) clearTimeout(sentenceHighlightTimer.current)
+    }
+  }, [])
+
+  // 跳到下一个含生词的句子（循环），并短暂高亮定位到的句子
+  const gotoNextWordSentence = useCallback(() => {
+    if (!wordSentenceIdxs.length) return
+    const next = (wordSentenceCursor + 1) % wordSentenceIdxs.length
+    setWordSentenceCursor(next)
+    const s = sentences[wordSentenceIdxs[next]]
+    setSentenceHighlight({ start: s.start, end: s.end })
+    const li = lines.findIndex((l) => s.start >= l.start && s.start < l.end)
+    if (li >= 0) {
+      requestAnimationFrame(() => {
+        textContainerRef.current
+          ?.querySelector(`[data-line="${li}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      })
+    }
+    if (sentenceHighlightTimer.current) clearTimeout(sentenceHighlightTimer.current)
+    sentenceHighlightTimer.current = setTimeout(() => setSentenceHighlight(null), 1600)
+  }, [wordSentenceCursor, wordSentenceIdxs, sentences, lines])
+
+  const nextWordSentenceBinding = useShortcutStore((s) => s.bindings.navigateNextWordSentence)
 
   // 悬停 300ms 后弹出释义卡片，避免扫过正文时闪烁
   const scheduleHover = (word: string, sentence: string, el: HTMLElement) => {
@@ -275,6 +327,15 @@ export default function ArticleTypingPage() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // 生词句导航快捷键（默认 Alt+N），完成后也可用；查词弹窗打开时不响应
+      if (!showLookup && !e.metaKey && !e.ctrlKey) {
+        const b = useShortcutStore.getState().bindings.navigateNextWordSentence
+        if (b && sameBinding(eventToBinding(e), b)) {
+          e.preventDefault()
+          gotoNextWordSentence()
+          return
+        }
+      }
       // 查词弹窗打开时不响应打字，避免误输入
       if (finished || showResult || showLookup) return
       if (e.isComposing) return
@@ -351,7 +412,7 @@ export default function ArticleTypingPage() {
         return
       }
     },
-    [finished, showResult, showLookup, started, text, typed, mode],
+    [finished, showResult, showLookup, started, text, typed, mode, gotoNextWordSentence],
   )
 
   useEffect(() => {
@@ -446,32 +507,39 @@ export default function ArticleTypingPage() {
   }, [])
 
   // 渲染单个字符，保留原有的逐字对错着色；saved 时未输入字符用琥珀色标示
-  const renderChar = (cs: CharState, key: number, saved = false) => (
-    <span
-      key={key}
-      ref={cs.status === 'current' ? cursorRef : undefined}
-      className={
-        cs.status === 'wrong'
-          ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
-          : cs.status === 'correct'
-            ? 'text-muted-foreground'
-            : cs.status === 'current'
-              ? `border-b-2 border-blue-500 ${saved ? 'text-amber-500' : 'text-foreground'}`
-              : saved
-                ? 'text-amber-500'
-                : 'text-foreground'
-      }
-    >
-      {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
-    </span>
-  )
+  const renderChar = (cs: CharState, key: number, saved = false) => {
+    // 生词句导航定位到的句子范围给短暂底色（错字保持红色背景）
+    const hl =
+      sentenceHighlight !== null && key >= sentenceHighlight.start && key < sentenceHighlight.end
+    const hlClass =
+      hl && cs.status !== 'wrong' ? ' bg-amber-200/70 dark:bg-amber-500/25 rounded' : ''
+    return (
+      <span
+        key={key}
+        ref={cs.status === 'current' ? cursorRef : undefined}
+        className={
+          (cs.status === 'wrong'
+            ? 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded'
+            : cs.status === 'correct'
+              ? 'text-muted-foreground'
+              : cs.status === 'current'
+                ? `border-b-2 border-blue-500 ${saved ? 'text-amber-500' : 'text-foreground'}`
+                : saved
+                  ? 'text-amber-500'
+                  : 'text-foreground') + hlClass
+        }
+      >
+        {cs.char === ' ' && cs.status === 'current' ? '␣' : cs.char}
+      </span>
+    )
+  }
 
   // Render character display for follow mode
   const renderFollowText = () => (
     <div className="font-mono text-2xl select-none">
       {lines.map((line, li) => {
         const translation = translations[li]?.trim()
-        if (!line.text.trim()) return <div key={li} className="h-3" />
+        if (!line.text.trim()) return <div key={li} className="h-3" data-line={li} />
         // 把行内字符按空格聚成单词 token，单词整体可悬停查词，字符仍独立着色
         const slice = charStates.slice(line.start, line.end)
         const tokens: { word: boolean; start: number; chars: CharState[] }[] = []
@@ -485,7 +553,7 @@ export default function ArticleTypingPage() {
           }
         })
         return (
-          <div key={li} className="mb-1">
+          <div key={li} className="mb-1" data-line={li}>
             <div
               className="whitespace-pre-wrap break-words leading-normal"
               style={{ letterSpacing: '0.05em' }}
@@ -557,6 +625,11 @@ export default function ArticleTypingPage() {
               </span>
             )
           const matched = ow.toLowerCase() === tw.toLowerCase()
+          // 生词句导航定位到的句子范围给短暂底色
+          const hl =
+            sentenceHighlight !== null &&
+            startPos >= sentenceHighlight.start &&
+            startPos < sentenceHighlight.end
           // 默写模式保留对错配色，收藏词用点状下划线标示
           const interactive =
             clean.length > 1
@@ -577,7 +650,7 @@ export default function ArticleTypingPage() {
                 matched ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
               } ${saved ? 'underline decoration-dotted underline-offset-2 ' : ''}${
                 clean.length > 1 ? 'cursor-pointer hover:underline' : ''
-              }`}
+              }${hl ? ' bg-amber-200/70 dark:bg-amber-500/25 rounded' : ''}`}
               {...interactive}
             >
               {matched ? tw : <span className="line-through mr-1">{tw}</span>}
@@ -683,6 +756,20 @@ export default function ArticleTypingPage() {
         >
           <Volume2 className="h-4 w-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1 px-2"
+          title={`下一个生词句${nextWordSentenceBinding ? `（${formatBinding(nextWordSentenceBinding)}）` : ''}`}
+          disabled={wordSentenceIdxs.length === 0}
+          onClick={gotoNextWordSentence}
+        >
+          <Highlighter className="h-4 w-4" />
+          <span className="text-xs whitespace-nowrap">
+            含生词句 {wordSentenceIdxs.length > 0 ? wordSentenceCursor + 1 : 0}/
+            {wordSentenceIdxs.length}
+          </span>
+        </Button>
       </div>
 
       {currentArticle.audioSrc && (
@@ -714,7 +801,10 @@ export default function ArticleTypingPage() {
 
       {/* Text display */}
       <Card className="p-6">
-        <div className="max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          ref={textContainerRef}
+          className="max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {mode === 'follow' ? renderFollowText() : renderDictationText()}
         </div>
       </Card>
