@@ -79,9 +79,6 @@ export default function SettingsPage() {
   const [downloadProgress, setDownloadProgress] = useState(0)
 
   // --- AI 翻译配置 ---
-  const [aiCfg, setAiCfg] = useState<{ baseUrl: string; model: string; hasKey: boolean } | null>(
-    null,
-  )
   const [aiBaseURL, setAiBaseURL] = useState('')
   const [aiModel, setAiModel] = useState('')
   const [aiKey, setAiKey] = useState('')
@@ -177,9 +174,9 @@ export default function SettingsPage() {
     window.api.listWhisperModels().then(setWhisperModels)
 
     window.api.aiGetConfig().then((cfg: any) => {
-      setAiCfg(cfg)
       setAiBaseURL(cfg.baseUrl)
       setAiModel(cfg.model)
+      setAiKey(cfg.apiKeyMask || '')
     })
 
     window.api.getVersion().then(setAppVersion)
@@ -314,28 +311,39 @@ export default function SettingsPage() {
     }
   }
 
+  // 输入框里的掩码原样提交时视为不修改，由后端保留原 Key
+  const aiKeyInput = () => (aiKey.includes('***') ? '' : aiKey.trim())
+
   const handleAISave = async () => {
-    const err = await window.api.aiSetConfig({ baseUrl: aiBaseURL, model: aiModel, apiKey: aiKey })
+    const err = await window.api.aiSetConfig({
+      baseUrl: aiBaseURL,
+      model: aiModel,
+      apiKey: aiKeyInput(),
+    })
     if (err) {
       showToast(err, 'error')
       return
     }
-    setAiKey('')
-    setAiCfg(await window.api.aiGetConfig())
+    const cfg: any = await window.api.aiGetConfig()
+    setAiKey(cfg.apiKeyMask || '')
     showToast('已保存')
   }
 
   const handleAITest = async () => {
     setAiTesting(true)
     setAiTestMsg(null)
-    const err = await window.api.aiSetConfig({ baseUrl: aiBaseURL, model: aiModel, apiKey: aiKey })
+    const err = await window.api.aiSetConfig({
+      baseUrl: aiBaseURL,
+      model: aiModel,
+      apiKey: aiKeyInput(),
+    })
     if (err) {
       setAiTesting(false)
       setAiTestMsg({ ok: false, message: err })
       return
     }
-    setAiKey('')
-    setAiCfg(await window.api.aiGetConfig())
+    const cfg: any = await window.api.aiGetConfig()
+    setAiKey(cfg.apiKeyMask || '')
     const r = await window.api.aiTest()
     setAiTestMsg(r)
     setAiTesting(false)
@@ -612,10 +620,9 @@ export default function SettingsPage() {
           <div>
             <label className="text-sm font-medium">API Key</label>
             <Input
-              type="password"
               value={aiKey}
               onChange={(e) => setAiKey(e.target.value)}
-              placeholder={aiCfg?.hasKey ? '已配置，留空则不修改' : 'sk-...'}
+              placeholder="sk-..."
               className="mt-1"
             />
           </div>
