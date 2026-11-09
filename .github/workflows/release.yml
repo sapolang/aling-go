@@ -39,7 +39,7 @@ jobs:
       # 缓存 wails3 二进制，避免每次从源码重编
       - name: Cache Wails CLI
         id: cache-wails
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/go/bin/wails3
           key: ${{ runner.os }}-wails3-${{ hashFiles('go.sum') }}
@@ -48,7 +48,7 @@ jobs:
         run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
       - run: brew install create-dmg
       - name: Cache whisper sidecar
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             sidecar/.whisper-cpp
@@ -57,7 +57,7 @@ jobs:
           restore-keys: |
             whisper-${{ runner.os }}-
       - name: Cache ffmpeg
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: sidecar/ffmpeg
           key: ffmpeg-${{ runner.os }}-8.1.2

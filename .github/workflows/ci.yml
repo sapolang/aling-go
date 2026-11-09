@@ -26,7 +26,7 @@ jobs:
       # 缓存 wails3 二进制，避免每次从源码重编（关键路径上最慢的一段）
       - name: Cache Wails CLI
         id: cache-wails
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/go/bin/wails3
           key: ${{ runner.os }}-wails3-${{ hashFiles('go.sum') }}
@@ -73,7 +73,7 @@ jobs:
 
       - name: Cache govulncheck
         id: cache-govulncheck
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/go/bin/govulncheck
           key: ${{ runner.os }}-govulncheck-latest
