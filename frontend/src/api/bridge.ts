@@ -104,6 +104,8 @@ import {
   FavoriteTagAdd,
   FavoriteTagDelete,
 } from '../../bindings/aling-go/favoriteservice'
+
+import { BackupNow, GetBackupStatus } from '../../bindings/aling-go/backupservice'
 import { Events } from '@wailsio/runtime'
 
 export function initBridge(): void {
@@ -269,5 +271,8 @@ export function initBridge(): void {
       Events.On('ai:translate:done', (e: any) => cb(e.data))
       return () => Events.Off('ai:translate:done')
     },
+
+    backupNow: () => BackupNow().then((s: string) => JSON.parse(s)),
+    getBackupStatus: () => GetBackupStatus().then((s: string) => JSON.parse(s)),
   } as any
 }
