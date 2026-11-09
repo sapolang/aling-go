@@ -31,6 +31,7 @@ export type ShortcutActionId =
   | 'podcastMode'
   | 'autoNextEpisode'
   | 'hoverPause'
+  | 'navigateNextWordSentence'
   | 'toggleFullscreen'
   | 'help'
   | 'exit'
@@ -197,6 +198,13 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultBinding: binding('KeyN'),
   },
   { id: 'hoverPause', label: '悬停查词暂停', group: 'learning', defaultBinding: binding('KeyH') },
+  {
+    id: 'navigateNextWordSentence',
+    label: '下一个生词句',
+    group: 'learning',
+    // 打字页逐字捕获按键，默认用 Alt+N 避免与普通输入冲突
+    defaultBinding: binding('KeyN', false, true),
+  },
 
   {
     id: 'toggleFullscreen',

@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useArticleStore } from '@/stores/articleStore'
+import { useWordStore } from '@/stores/wordStore'
+import { savedWordDensity } from '@/lib/wordMatch'
 import { Card, CardContent } from '@/components/ui/card'
 import { BookOpen } from 'lucide-react'
 
@@ -16,10 +18,27 @@ export default function ArticleListPage() {
     loadArticles,
     loadAllProgress,
   } = useArticleStore()
+  const savedWordList = useWordStore((s) => s.words)
+  const loadWords = useWordStore((s) => s.loadWords)
 
   useEffect(() => {
     loadCategories()
+    void loadWords()
   }, [])
+
+  const savedWords = useMemo(
+    () => new Set(savedWordList.map((w) => w.word.toLowerCase())),
+    [savedWordList],
+  )
+
+  // 列表接口已返回正文，直接在前端按文章计算生词密度
+  const densities = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const a of articles) {
+      map.set(a.id, savedWordDensity(a.text || '', savedWords))
+    }
+    return map
+  }, [articles, savedWords])
 
   useEffect(() => {
     if (categories.length > 0 && !currentCategory) {
@@ -97,6 +116,14 @@ export default function ArticleListPage() {
                       <p className="text-sm text-muted-foreground truncate">{a.titleTranslate}</p>
                     )}
                   </div>
+                  {savedWords.size > 0 && (
+                    <span
+                      className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-500"
+                      title="已入库生词占全文词数比例"
+                    >
+                      生词 {Math.round((densities.get(a.id) || 0) * 100)}%
+                    </span>
+                  )}
                   {progress?.completed ? (
                     <div className="text-xs text-muted-foreground shrink-0 text-right">
                       <span className="text-green-600 dark:text-green-400">
