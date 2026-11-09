@@ -24,6 +24,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { showToast } from '@/components/feedback'
+import { PlayerHud, showPlayerHud } from '@/components/PlayerHud'
+import { basename } from '@/utils/path'
 import { speak } from '@/lib/tts'
 import { Window } from '@wailsio/runtime'
 import Waveform from '@/components/Waveform'
@@ -323,7 +325,7 @@ export default function PlayerPage() {
       st.setLoop(a.startTime + off, b.endTime + off)
       st.requestSeek(a.startTime + off)
       st.setPlaying(true)
-      showToast(`已循环第 ${start + 1}–${end + 1} 句`, 'info')
+      showPlayerHud(`已循环第 ${start + 1}–${end + 1} 句`)
     } else {
       st.requestSeek(a.startTime + off)
     }
@@ -703,19 +705,19 @@ export default function PlayerPage() {
           const next =
             PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(st.playbackRate) + 1) % PLAYBACK_RATES.length]
           st.setPlaybackRate(next)
-          showToast(`播放速度 ${next}x`, 'info')
+          showPlayerHud(`播放速度 ${next}x`)
           break
         }
         case 'volumeUp':
         case 'volumeDown': {
           st.adjustVolume(action === 'volumeUp' ? 0.1 : -0.1)
           const next = usePlayerStore.getState()
-          showToast(next.muted ? '已静音' : `音量 ${Math.round(next.volume * 100)}%`, 'info')
+          showPlayerHud(next.muted ? '已静音' : `音量 ${Math.round(next.volume * 100)}%`)
           break
         }
         case 'mute':
           st.toggleMuted()
-          showToast(st.muted ? '已取消静音' : '已静音', 'info')
+          showPlayerHud(st.muted ? '已取消静音' : '已静音')
           break
         case 'prevSentence': {
           const idx = currentSubIndex()
@@ -745,32 +747,32 @@ export default function PlayerPage() {
           const end = sub.endTime + off
           if (st.loopStart === start && st.loopEnd === end) {
             st.setLoop(null, null)
-            showToast('已关闭单句循环', 'info')
+            showPlayerHud('已关闭单句循环')
           } else {
             st.setLoop(start, end)
-            showToast('单句循环：开', 'info')
+            showPlayerHud('单句循环：开')
           }
           break
         }
         case 'clearLoop':
           st.setLoop(null, null)
-          showToast('已清除循环区间', 'info')
+          showPlayerHud('已清除循环区间')
           break
         case 'autoPause':
           st.setAutoPause(!st.autoPause)
-          showToast(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停', 'info')
+          showPlayerHud(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停')
           break
         case 'subtitleMode': {
           const modes: SubtitleDisplayMode[] = ['all', 'en', 'zh', 'off']
           const next = modes[(modes.indexOf(st.subtitleDisplayMode) + 1) % modes.length]
           st.setSubtitleDisplayMode(next)
-          showToast(`字幕显示：${SUBTITLE_MODE_LABELS[next]}`, 'info')
+          showPlayerHud(`字幕显示：${SUBTITLE_MODE_LABELS[next]}`)
           break
         }
         case 'translationToggle': {
           const next = st.subtitleDisplayMode === 'all' ? 'en' : 'all'
           st.setSubtitleDisplayMode(next)
-          showToast(next === 'en' ? '已隐藏翻译' : '已显示翻译', 'info')
+          showPlayerHud(next === 'en' ? '已隐藏翻译' : '已显示翻译')
           break
         }
         case 'offsetMinus':
@@ -786,20 +788,20 @@ export default function PlayerPage() {
                   ? -1
                   : 1
           st.adjustSubtitleOffset(delta)
-          showToast(`字幕偏移 ${usePlayerStore.getState().subtitleOffset.toFixed(1)}s`, 'info')
+          showPlayerHud(`字幕偏移 ${usePlayerStore.getState().subtitleOffset.toFixed(1)}s`)
           break
         }
         case 'fontSizeUp':
         case 'fontSizeDown': {
           st.adjustSubtitleFontScale(action === 'fontSizeUp' ? 0.1 : -0.1)
           const scale = usePlayerStore.getState().subtitleFontScale
-          showToast(`字幕字号 ${Math.round(scale * 100)}%`, 'info')
+          showPlayerHud(`字幕字号 ${Math.round(scale * 100)}%`)
           break
         }
         case 'favoriteSentence': {
           const idx = currentSubIndex()
           if (idx < 0) {
-            showToast('当前没有可收藏的字幕句', 'warning')
+            showPlayerHud('当前没有可收藏的字幕句')
             break
           }
           const sub = subs[idx]
@@ -819,7 +821,7 @@ export default function PlayerPage() {
           }
           const idx = currentSubIndex()
           if (idx < 0) {
-            showToast('当前没有可操作的字幕句', 'warning')
+            showPlayerHud('当前没有可操作的字幕句')
             break
           }
           const sub = subs[idx]
@@ -832,33 +834,33 @@ export default function PlayerPage() {
         case 'speakSentence': {
           const idx = currentSubIndex()
           if (idx < 0) {
-            showToast('当前没有可朗读的字幕句', 'warning')
+            showPlayerHud('当前没有可朗读的字幕句')
             break
           }
           const sub = subs[idx]
           speak(filterSubtitleText(sub.text, 'en') || sub.text)
-          showToast('正在朗读当前句', 'info')
+          showPlayerHud('正在朗读当前句')
           break
         }
         case 'toggleFullscreen':
           void Window.IsFullscreen()
             .then(async (is) => {
               await Window.ToggleFullscreen()
-              showToast(is ? '已退出全屏' : '已进入全屏', 'info')
+              showPlayerHud(is ? '已退出全屏' : '已进入全屏')
             })
             .catch(() => showToast('全屏切换失败', 'warning'))
           break
         case 'podcastMode':
           st.setPodcastMode(!st.podcastMode)
-          showToast(st.podcastMode ? '已退出播客模式' : '已进入播客模式', 'info')
+          showPlayerHud(st.podcastMode ? '已退出播客模式' : '已进入播客模式')
           break
         case 'autoNextEpisode':
           st.setAutoNextEpisode(!st.autoNextEpisode)
-          showToast(st.autoNextEpisode ? '已关闭自动下一集' : '已开启自动下一集', 'info')
+          showPlayerHud(st.autoNextEpisode ? '已关闭自动下一集' : '已开启自动下一集')
           break
         case 'hoverPause':
           st.setHoverPause(!st.hoverPause)
-          showToast(st.hoverPause ? '已关闭悬停暂停' : '已开启悬停暂停', 'info')
+          showPlayerHud(st.hoverPause ? '已关闭悬停暂停' : '已开启悬停暂停')
           break
         default:
           break
@@ -1339,6 +1341,8 @@ export default function PlayerPage() {
               })()}
           </div>
 
+          <PlayerHud />
+
           {!isAudio && store.filePath && !store.podcastMode && (
             <div
               className={`absolute inset-x-0 bottom-0 px-2 pb-2 pt-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-200 ${videoControlsShown ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -1365,7 +1369,7 @@ export default function PlayerPage() {
           <div className="rounded-lg border bg-gradient-to-br from-primary/15 via-muted/60 to-background flex flex-col items-center justify-center gap-3 py-10 px-4">
             <Headphones className="h-16 w-16 text-primary" />
             <div className="text-sm text-muted-foreground max-w-[80%] truncate">
-              {store.filePath.split('/').pop()}
+              {basename(store.filePath)}
             </div>
             {(() => {
               const pa = store.played - store.subtitleOffset
@@ -1704,7 +1708,7 @@ export default function PlayerPage() {
           </Button>
           {store.filePath && (
             <span className="text-sm text-muted-foreground truncate max-w-[200px]">
-              {store.filePath.split('/').pop()}
+              {basename(store.filePath)}
             </span>
           )}
         </div>

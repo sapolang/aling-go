@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { confirmDialog } from '@/components/feedback'
+import { basename } from '@/utils/path'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import {
@@ -164,7 +165,7 @@ export function Layout({
             <Button variant="ghost" size="sm" onClick={() => setPlaying(!playing)}>
               {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
-            <span className="text-sm truncate flex-1">{filePath.split('/').pop()}</span>
+            <span className="text-sm truncate flex-1">{basename(filePath)}</span>
             {transcribing && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" /> 转录中 {progress}%
