@@ -16,6 +16,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { showToast } from '@/components/feedback'
 import { PlayerHud, showPlayerHud } from '@/components/PlayerHud'
 import { basename } from '@/utils/path'
@@ -1737,52 +1744,52 @@ export default function PlayerPage() {
           />
         )}
 
-        {showTranscribeLangModal && store.filePath && (
-          <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-            onClick={() => setShowTranscribeLangModal(false)}
-          >
-            <Card className="w-80 p-6" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Dialog
+          open={showTranscribeLangModal && !!store.filePath}
+          onOpenChange={(open) => !open && setShowTranscribeLangModal(false)}
+        >
+          <DialogContent className="max-w-xs">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
                 <Globe className="h-5 w-5" /> 选择识别语言
-              </h3>
-              <div className="mb-1">
-                <label className="text-sm font-medium">音频语言</label>
-                <p className="text-xs text-muted-foreground mb-3">
-                  指定音频语言可提高识别准确率，auto 为自动检测
-                </p>
-              </div>
-              <select
-                className="w-full bg-background border rounded px-3 py-2 text-sm mb-4"
-                value={transcribeLang}
-                onChange={(e) => setTranscribeLang(e.target.value)}
+              </DialogTitle>
+            </DialogHeader>
+            <div>
+              <label className="text-sm font-medium">音频语言</label>
+              <p className="text-xs text-muted-foreground mt-1 mb-3">
+                指定音频语言可提高识别准确率，auto 为自动检测
+              </p>
+            </div>
+            <select
+              className="w-full bg-background border rounded px-3 py-2 text-sm"
+              value={transcribeLang}
+              onChange={(e) => setTranscribeLang(e.target.value)}
+            >
+              <option value="auto">自动检测</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="es">Español</option>
+              <option value="ru">Русский</option>
+            </select>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowTranscribeLangModal(false)}>
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowTranscribeLangModal(false)
+                  startTranscription(store.filePath!, transcribeLang)
+                }}
               >
-                <option value="auto">自动检测</option>
-                <option value="en">English</option>
-                <option value="zh">中文</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-                <option value="es">Español</option>
-                <option value="ru">Русский</option>
-              </select>
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowTranscribeLangModal(false)}>
-                  取消
-                </Button>
-                <Button
-                  onClick={() => {
-                    setShowTranscribeLangModal(false)
-                    startTranscription(store.filePath!, transcribeLang)
-                  }}
-                >
-                  开始转录
-                </Button>
-              </div>
-            </Card>
-          </div>
-        )}
+                开始转录
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* AI 当前句翻译/详解面板（由控制栏 Sparkles 按钮触发） */}
         {aiTarget && (

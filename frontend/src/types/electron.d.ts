@@ -197,6 +197,7 @@ export interface ElectronAPI {
   dbDictAddToWordList: (words: DictWord[]) => Promise<DictAddResult>
   dbDictSaveProgress: (tag: string, index: number) => Promise<void>
   dbDictGetProgress: (tag: string) => Promise<number>
+  dbDictSearch: (query: string, limit?: number) => Promise<DictWord[]>
 
   libraryList: () => Promise<LibraryData>
   libraryImport: (category: string, folderId: string) => Promise<LibraryImportResult>

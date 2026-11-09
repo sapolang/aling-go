@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useWordStore } from '@/stores/wordStore'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { X } from 'lucide-react'
 
 interface Props {
@@ -79,15 +85,11 @@ export default function AddWordModal({ word, onClose }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <Card
-        className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold mb-4">{word ? '编辑生词' : '新增生词'}</h2>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{word ? '编辑生词' : '新增生词'}</DialogTitle>
+        </DialogHeader>
         <div className="space-y-4">
           <div>
             <Label>原文 *</Label>
@@ -186,14 +188,14 @@ export default function AddWordModal({ word, onClose }: Props) {
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+          <DialogFooter className="pt-2">
             <Button variant="outline" onClick={onClose}>
               取消
             </Button>
             <Button onClick={handleSubmit}>{word ? '保存' : '添加'}</Button>
-          </div>
+          </DialogFooter>
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

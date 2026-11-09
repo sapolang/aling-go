@@ -2,8 +2,16 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { confirmDialog, showToast } from '@/components/feedback'
 import { useThemeStore } from '@/stores/themeStore'
+import type { ThemeMode } from '@/stores/themeStore'
 import {
   SHORTCUT_ACTIONS,
   SHORTCUT_GROUP_LABELS,
@@ -14,12 +22,9 @@ import {
 } from '@/stores/shortcutStore'
 import type { ShortcutActionId, ShortcutGroupId } from '@/stores/shortcutStore'
 import {
-  Sun,
-  Moon,
   Download,
   Upload,
   Trash2,
-  AlertTriangle,
   Mic,
   Loader2,
   Sparkles,
@@ -45,7 +50,7 @@ function escapeCSV(value: unknown): string {
 }
 
 export default function SettingsPage() {
-  const { dark, toggle } = useThemeStore()
+  const { mode: themeMode, setMode: setThemeMode } = useThemeStore()
   const shortcutBindings = useShortcutStore((s) => s.bindings)
   const setBinding = useShortcutStore((s) => s.setBinding)
   const resetBinding = useShortcutStore((s) => s.resetBinding)
@@ -60,7 +65,6 @@ export default function SettingsPage() {
     () => new Set<ShortcutGroupId>(),
   )
   const [importResult, setImportResult] = useState<string | null>(null)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [whisperStatus, setWhisperStatus] = useState<{
     loaded: boolean
     loading: boolean
@@ -310,8 +314,14 @@ export default function SettingsPage() {
   }
 
   const handleClear = async () => {
+    const ok = await confirmDialog({
+      title: '清空全部数据？',
+      description: '将删除所有生词和标签，此操作不可恢复。',
+      confirmText: '确认清空',
+      destructive: true,
+    })
+    if (!ok) return
     await window.api.dbClear()
-    setShowConfirm(false)
     showToast('已清空全部数据')
   }
 
@@ -326,12 +336,19 @@ export default function SettingsPage() {
         <CardContent>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <p className="font-medium">{dark ? '暗色模式' : '亮色模式'}</p>
-              <p className="text-sm text-muted-foreground">切换应用亮暗主题</p>
+              <p className="font-medium">主题</p>
+              <p className="text-sm text-muted-foreground">选择亮色、暗色，或跟随系统外观</p>
             </div>
-            <Button variant="outline" size="icon" onClick={toggle}>
-              {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </Button>
+            <Select value={themeMode} onValueChange={(v) => setThemeMode(v as ThemeMode)}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">跟随系统</SelectItem>
+                <SelectItem value="light">亮色</SelectItem>
+                <SelectItem value="dark">暗色</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -633,32 +650,15 @@ export default function SettingsPage() {
           <CardTitle className="text-lg text-destructive">危险操作</CardTitle>
         </CardHeader>
         <CardContent>
-          {!showConfirm ? (
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <p className="font-medium">清空全部数据</p>
-                <p className="text-sm text-muted-foreground">删除所有生词和标签，此操作不可恢复</p>
-              </div>
-              <Button variant="destructive" onClick={() => setShowConfirm(true)}>
-                <Trash2 className="h-4 w-4 mr-1" /> 清空
-              </Button>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-medium">清空全部数据</p>
+              <p className="text-sm text-muted-foreground">删除所有生词和标签，此操作不可恢复</p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-destructive flex-wrap">
-                <AlertTriangle className="h-5 w-5" />
-                <p className="font-medium">确定要清空全部数据吗？此操作不可恢复！</p>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowConfirm(false)}>
-                  取消
-                </Button>
-                <Button variant="destructive" onClick={handleClear}>
-                  确认清空
-                </Button>
-              </div>
-            </div>
-          )}
+            <Button variant="destructive" onClick={handleClear}>
+              <Trash2 className="h-4 w-4 mr-1" /> 清空
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
