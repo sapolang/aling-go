@@ -758,6 +758,9 @@ export default function PlayerPage() {
           st.setLoop(null, null)
           showPlayerHud('已清除循环区间')
           break
+        case 'toggleLoopAB':
+          toggleLoopAB(el.currentTime)
+          break
         case 'autoPause':
           st.setAutoPause(!st.autoPause)
           showPlayerHud(st.autoPause ? '已关闭自动暂停' : '已开启自动暂停')
@@ -1131,6 +1134,25 @@ export default function PlayerPage() {
       .padStart(2, '0')}`
   }
 
+  // A/B 循环设点三态切换：未设点 → 设 A 点 → 设 B 点开始循环 → 清除
+  const toggleLoopAB = (now: number) => {
+    const st = usePlayerStore.getState()
+    if (st.loopStart === null) {
+      st.setLoop(now, null)
+      showPlayerHud(`已设 A 点 ${formatTime(now)}`)
+    } else if (st.loopEnd === null) {
+      if (now <= st.loopStart + 0.05) {
+        showPlayerHud('B 点需在 A 点之后')
+        return
+      }
+      st.setLoop(st.loopStart, now)
+      showPlayerHud(`A-B 循环 ${formatTime(st.loopStart)} - ${formatTime(now)}`)
+    } else {
+      st.setLoop(null, null)
+      showPlayerHud('已清除循环')
+    }
+  }
+
   useEffect(() => {
     window.api.getMediaPort().then(setMediaPort)
   }, [])
@@ -1169,13 +1191,21 @@ export default function PlayerPage() {
       <Button
         variant="ghost"
         size="sm"
-        className={store.loopStart !== null ? 'text-primary' : ''}
-        title="循环区间（R 切换单句循环）"
-        onClick={() =>
-          store.loopStart !== null ? store.setLoop(null, null) : store.setLoop(store.played, null)
+        className={
+          store.loopStart === null ? '' : store.loopEnd === null ? 'text-amber-500' : 'text-primary'
         }
+        title="A/B 循环设点（L）：设 A 点 → 设 B 点循环 → 清除"
+        onClick={() => {
+          toggleLoopAB(store.played)
+          showPlayerControls()
+        }}
       >
         <Repeat className="h-4 w-4" />
+        {store.loopStart !== null && (
+          <span className="ml-0.5 text-[10px] font-semibold leading-none">
+            {store.loopEnd === null ? 'A-' : 'A-B'}
+          </span>
+        )}
       </Button>
       {store.loopStart !== null && (
         <div className="flex items-center gap-1 text-xs">
@@ -1403,6 +1433,8 @@ export default function PlayerPage() {
               subtitles={store.subtitles}
               loading={store.waveformLoading}
               dark={dark}
+              loopStart={store.loopStart !== null ? store.loopStart - store.subtitleOffset : null}
+              loopEnd={store.loopEnd !== null ? store.loopEnd - store.subtitleOffset : null}
               onSeek={(t) => store.requestSeek(t)}
             />
           </div>

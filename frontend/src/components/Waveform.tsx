@@ -12,6 +12,9 @@ interface WaveformProps {
   subtitles?: SubtitleSegment[]
   loading?: boolean
   dark?: boolean
+  /** A/B 循环区间（秒），仅 A 点时 loopEnd 为 null */
+  loopStart?: number | null
+  loopEnd?: number | null
   onSeek: (time: number) => void
 }
 
@@ -22,6 +25,8 @@ export default function Waveform({
   subtitles,
   loading,
   dark,
+  loopStart,
+  loopEnd,
   onSeek,
 }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -100,6 +105,18 @@ export default function Waveform({
       }
     }
 
+    // A/B 循环区间：半透明主题色高亮，画在波形条下方
+    const timeToX = (t: number) =>
+      centerX + ((t / duration) * data.length - centerSample) * pxPerSample
+    if (duration > 0 && loopStart != null && loopEnd != null && loopEnd > loopStart) {
+      const x1 = Math.max(0, timeToX(loopStart))
+      const x2 = Math.min(logicalW, timeToX(loopEnd))
+      if (x2 > x1) {
+        ctx.fillStyle = primaryColor(dark ? 0.22 : 0.14)
+        ctx.fillRect(x1, 0, x2 - x1, logicalH)
+      }
+    }
+
     ctx.fillStyle = '#22c55e'
 
     for (let i = 0; i < data.length; i++) {
@@ -114,7 +131,35 @@ export default function Waveform({
       roundRect(ctx, x, midY, barW2, barH, radius)
       ctx.fill()
     }
-  }, [data, clampedOffset, centerSample, duration, subtitles, zoom, pxPerSample, gapPx])
+
+    // A/B 点细竖线标记，画在波形条上方保证可见
+    if (duration > 0) {
+      const marks = [loopStart, loopEnd].filter((t): t is number => t != null)
+      if (marks.length > 0) {
+        ctx.strokeStyle = primaryColor(0.9)
+        ctx.lineWidth = 1.5
+        for (const t of marks) {
+          const x = timeToX(t)
+          if (x < 0 || x > logicalW) continue
+          ctx.beginPath()
+          ctx.moveTo(x, 0)
+          ctx.lineTo(x, logicalH)
+          ctx.stroke()
+        }
+      }
+    }
+  }, [
+    data,
+    clampedOffset,
+    centerSample,
+    duration,
+    subtitles,
+    loopStart,
+    loopEnd,
+    zoom,
+    pxPerSample,
+    gapPx,
+  ])
 
   useEffect(() => {
     drawBars()
@@ -195,6 +240,14 @@ export default function Waveform({
       </div>
     </div>
   )
+}
+
+// 读取主题色 --primary（HSL 三元组），转换为带透明度的颜色；失败时回退默认蓝
+function primaryColor(alpha: number): string {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()
+  const m = raw.match(/([\d.]+)\s+([\d.]+)%\s+([\d.]+)%/)
+  if (!m) return `rgba(59, 130, 246, ${alpha})`
+  return `hsla(${m[1]}, ${m[2]}%, ${m[3]}%, ${alpha})`
 }
 
 function roundRect(

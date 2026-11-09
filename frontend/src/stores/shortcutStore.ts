@@ -15,6 +15,7 @@ export type ShortcutActionId =
   | 'nextSentence'
   | 'toggleSentenceLoop'
   | 'clearLoop'
+  | 'toggleLoopAB'
   | 'autoPause'
   | 'subtitleMode'
   | 'translationToggle'
@@ -118,6 +119,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultBinding: binding('KeyR'),
   },
   { id: 'clearLoop', label: '清除循环', group: 'sentence', defaultBinding: binding('KeyR', true) },
+  {
+    id: 'toggleLoopAB',
+    label: 'A/B 循环设点',
+    group: 'sentence',
+    defaultBinding: binding('KeyL'),
+  },
   { id: 'autoPause', label: '播完本句暂停', group: 'sentence', defaultBinding: binding('KeyQ') },
 
   {
