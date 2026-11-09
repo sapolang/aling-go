@@ -141,6 +141,30 @@ export interface LearningStats {
   daily: DailyReview[]
 }
 
+export interface GradeCount {
+  grade: number
+  count: number
+}
+
+export interface LevelCount {
+  level: number
+  count: number
+}
+
+export interface TypingDayStat {
+  date: string
+  count: number
+  avgAccuracy: number
+  avgWpm: number
+  totalDuration: number
+}
+
+export interface ExtendedStats {
+  gradeDistribution: GradeCount[]
+  levelDistribution: LevelCount[]
+  typingDaily: TypingDayStat[]
+}
+
 export interface ElectronAPI {
   openFile: (filters?: string | { name: string; extensions: string[] }[]) => Promise<string | null>
   saveFile: (defaultName: string) => Promise<string | null>
@@ -167,6 +191,7 @@ export interface ElectronAPI {
 
   logReview: (wordID: number, quality: number) => Promise<void>
   learningStats: () => Promise<LearningStats>
+  extendedStats: () => Promise<ExtendedStats>
 
   whisperTranscribe: (filePath: string) => Promise<SubtitleItem[]>
   whisperStatus: () => Promise<WhisperStatus>

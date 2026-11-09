@@ -804,7 +804,7 @@ export default function PlayerPage() {
         case 'favoriteSentence': {
           const idx = currentSubIndex()
           if (idx < 0) {
-            showPlayerHud('当前没有可收藏的字幕句')
+            showPlayerHud('当前没有可收藏的字幕句', 'warning')
             break
           }
           const sub = subs[idx]
@@ -824,7 +824,7 @@ export default function PlayerPage() {
           }
           const idx = currentSubIndex()
           if (idx < 0) {
-            showPlayerHud('当前没有可操作的字幕句')
+            showPlayerHud('当前没有可操作的字幕句', 'warning')
             break
           }
           const sub = subs[idx]
@@ -1142,7 +1142,7 @@ export default function PlayerPage() {
       showPlayerHud(`已设 A 点 ${formatTime(now)}`)
     } else if (st.loopEnd === null) {
       if (now <= st.loopStart + 0.05) {
-        showPlayerHud('B 点需在 A 点之后')
+        showPlayerHud('B 点需在 A 点之后', 'warning')
         return
       }
       st.setLoop(st.loopStart, now)
@@ -1876,19 +1876,13 @@ export default function PlayerPage() {
 
         {/* AI 详解抽屉 */}
         {aiExplain?.data && (
-          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setAiExplain(null)}>
-            <div
-              className="absolute right-0 top-0 h-full w-[420px] max-w-[92vw] bg-background border-l shadow-xl overflow-y-auto p-5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Dialog open onOpenChange={(open) => !open && setAiExplain(null)}>
+            <DialogContent className="left-auto right-0 top-0 block h-full w-[420px] max-w-[92vw] translate-x-0 translate-y-0 gap-0 overflow-y-auto rounded-none border-0 border-l p-5 shadow-xl sm:rounded-none data-[state=open]:animate-none data-[state=closed]:animate-none">
+              <DialogHeader className="mb-3">
+                <DialogTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5" /> AI 详解
-                </h3>
-                <Button variant="ghost" size="sm" onClick={() => setAiExplain(null)}>
-                  <XIcon className="h-4 w-4" />
-                </Button>
-              </div>
+                </DialogTitle>
+              </DialogHeader>
               {aiExplain.text && (
                 <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                   {aiExplain.text}
@@ -1941,28 +1935,19 @@ export default function PlayerPage() {
                   </section>
                 )}
               </div>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* 快捷键帮助面板 */}
         {showShortcutHelp && (
-          <div
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-            onClick={() => setShowShortcutHelp(false)}
-          >
-            <Card
-              className="w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Dialog open onOpenChange={(open) => !open && setShowShortcutHelp(false)}>
+            <DialogContent className="max-w-2xl max-h-[80vh] gap-0 overflow-y-auto">
+              <DialogHeader className="mb-4">
+                <DialogTitle className="flex items-center gap-2">
                   <Keyboard className="h-5 w-5" /> 播放器快捷键
-                </h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowShortcutHelp(false)}>
-                  <XIcon className="h-4 w-4" />
-                </Button>
-              </div>
+                </DialogTitle>
+              </DialogHeader>
               <div className="grid gap-5 sm:grid-cols-2">
                 {SHORTCUT_GROUP_ORDER.map((group) => {
                   const actions = SHORTCUT_ACTIONS.filter((action) => action.group === group)
@@ -1995,20 +1980,19 @@ export default function PlayerPage() {
               <p className="mt-5 text-xs text-muted-foreground">
                 快捷键仅在播放页生效；输入框聚焦时自动停用，Esc 按层级关闭浮层。
               </p>
-            </Card>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* 收藏整句弹窗 */}
         {favTarget && (
-          <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-            onClick={() => setFavTarget(null)}
-          >
-            <Card className="w-96 p-6" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Star className="h-5 w-5" /> 收藏整句
-              </h3>
+          <Dialog open onOpenChange={(open) => !open && setFavTarget(null)}>
+            <DialogContent className="max-w-sm gap-0">
+              <DialogHeader className="mb-4">
+                <DialogTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5" /> 收藏整句
+                </DialogTitle>
+              </DialogHeader>
               <p className="text-sm mb-1 line-clamp-3">{favTarget.text}</p>
               <p className="text-xs text-muted-foreground mb-4">
                 {formatTime(favTarget.startTime)} - {formatTime(favTarget.endTime)}
@@ -2045,8 +2029,8 @@ export default function PlayerPage() {
                 </Button>
                 <Button onClick={saveFavorite}>收藏</Button>
               </div>
-            </Card>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </div>
