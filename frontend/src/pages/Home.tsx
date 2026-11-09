@@ -36,7 +36,44 @@ import {
   FolderOutput,
   MoreHorizontal,
   PlayCircle,
+  Search,
+  X,
+  UploadCloud,
+  History,
 } from 'lucide-react'
+
+function formatTime(s: number): string {
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = Math.floor(s % 60)
+  return h > 0
+    ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+    : `${m}:${sec.toString().padStart(2, '0')}`
+}
+
+interface ImportResultLike {
+  imported?: number
+  skipped?: number
+  dropped?: number
+}
+
+function notifyImportResult(result: ImportResultLike) {
+  const imported = result.imported || 0
+  const skipped = result.skipped || 0
+  const dropped = result.dropped || 0
+  const parts: string[] = []
+  if (imported > 0) parts.push(`导入成功 ${imported} 个`)
+  if (skipped > 0) parts.push(`跳过 ${skipped} 个（已存在或不支持）`)
+  if (dropped > 0) parts.push(`已达上限，丢弃 ${dropped} 个`)
+  const msg = parts.join('，')
+  if (imported > 0) {
+    showToast(msg, 'success')
+  } else if (dropped > 0) {
+    showToast(msg, 'warning')
+  } else {
+    showToast('所选文件均已导入过或不支持', 'warning')
+  }
+}
 
 const CATEGORIES = [
   { key: 'all' as const, label: '全部' },
@@ -117,23 +154,78 @@ export default function HomePage() {
     [],
   )
 
-  const handleImport = async () => {
-    const result = await window.api.libraryImport(store.category, store.currentFolderId || '')
+  const handleImport = useCallback(async () => {
+    const { category, currentFolderId, load } = useLibraryStore.getState()
+    const result = await window.api.libraryImport(category, currentFolderId || '')
     if (result.imported === 0 && result.skipped === 0 && (result.dropped || 0) === 0) return
-    await store.load()
-    const parts: string[] = []
-    if (result.imported > 0) parts.push(`导入成功 ${result.imported} 个`)
-    if (result.skipped > 0) parts.push(`跳过 ${result.skipped} 个（已存在）`)
-    if (result.dropped > 0) parts.push(`已达上限，丢弃 ${result.dropped} 个`)
-    const msg = parts.join('，')
-    if (result.imported > 0) {
-      showToast(msg, 'success')
-    } else if (result.dropped > 0) {
-      showToast(msg, 'warning')
-    } else {
-      showToast('所选文件均已导入过', 'warning')
+    await load()
+    notifyImportResult(result)
+  }, [])
+
+  const handleDropImport = useCallback(async (paths: string[]) => {
+    try {
+      const { currentFolderId, load } = useLibraryStore.getState()
+      const result = await window.api.libraryImportPaths(paths, currentFolderId || '')
+      await load()
+      notifyImportResult(result)
+    } catch (err) {
+      console.error('[DropImport] ERROR:', err)
+      showToast('导入失败', 'error')
     }
-  }
+  }, [])
+
+  const [dragActive, setDragActive] = useState(false)
+
+  useEffect(() => {
+    let counter = 0
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      counter++
+      setDragActive(true)
+    }
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      counter--
+      if (counter <= 0) {
+        counter = 0
+        setDragActive(false)
+      }
+    }
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      counter = 0
+      setDragActive(false)
+      const files = Array.from(e.dataTransfer?.files ?? [])
+      const paths = files
+        .map((f) => (f as unknown as { path?: string }).path || '')
+        .filter((p) => p.length > 0)
+      if (paths.length > 0) {
+        handleDropImport(paths)
+      } else {
+        showToast('当前环境无法读取拖入文件的路径，请在弹出的窗口中选择文件导入', 'info')
+        handleImport()
+      }
+    }
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [handleDropImport, handleImport])
 
   const handleDelete = async (paths?: string[]) => {
     const itemsToDelete = paths || Array.from(store.selectedPaths)
@@ -260,15 +352,6 @@ export default function HomePage() {
     store.setCurrentFolder(folder.id)
   }
 
-  const formatResumeTime = (s: number) => {
-    const h = Math.floor(s / 3600)
-    const m = Math.floor((s % 3600) / 60)
-    const sec = Math.floor(s % 60)
-    return h > 0
-      ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
-      : `${m}:${sec.toString().padStart(2, '0')}`
-  }
-
   const handleResume = () => {
     if (!resumeEntry) return
     const file =
@@ -303,7 +386,12 @@ export default function HomePage() {
     ? store.folders.find((f) => f.id === store.currentFolderId)
     : null
 
+  const searchQuery = store.searchQuery.trim().toLowerCase()
+  const matchQuery = (name: string) =>
+    searchQuery === '' || name.toLowerCase().includes(searchQuery)
+
   const visibleFolders = store.folders.filter((f) => {
+    if (!matchQuery(f.name)) return false
     if (currentFolder) {
       return f.parentId === currentFolder.id
     }
@@ -314,6 +402,7 @@ export default function HomePage() {
 
   const visibleFiles = store.files
     .filter((f) => {
+      if (!matchQuery(f.name)) return false
       if (currentFolder && f.folderId !== currentFolder.id) return false
       if (!currentFolder && f.folderId) return false
       if (store.category === 'folder') return false
@@ -376,7 +465,7 @@ export default function HomePage() {
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">继续学习：{resumeEntry.name}</p>
             <p className="text-xs text-muted-foreground">
-              上次看到 {formatResumeTime(resumeEntry.lastPosition)}
+              上次看到 {formatTime(resumeEntry.lastPosition)}
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={handleResume}>
@@ -402,6 +491,25 @@ export default function HomePage() {
             <FolderPlus className="h-4 w-4 mr-1" /> 新建文件夹
           </Button>
         )}
+
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={store.searchQuery}
+            onChange={(e) => store.setSearchQuery(e.target.value)}
+            placeholder="搜索文件名"
+            className="h-8 w-36 sm:w-48 pl-7 pr-6 text-xs"
+          />
+          {store.searchQuery && (
+            <button
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => store.setSearchQuery('')}
+              aria-label="清除搜索"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
         <div className="flex-1" />
 
@@ -687,15 +795,37 @@ export default function HomePage() {
       )}
 
       {/* Empty state */}
-      {visibleFolders.length === 0 && visibleFiles.length === 0 && (
+      {visibleFolders.length === 0 && visibleFiles.length === 0 && searchQuery !== '' && (
+        <div className="text-center py-20 text-muted-foreground">
+          <p className="text-lg mb-2">未找到匹配「{store.searchQuery.trim()}」的文件</p>
+          <p className="text-sm">试试其他关键词，或清除搜索</p>
+        </div>
+      )}
+      {visibleFolders.length === 0 && visibleFiles.length === 0 && searchQuery === '' && (
         <div className="text-center py-20 text-muted-foreground">
           <p className="text-lg mb-2">{currentFolder ? '此文件夹为空' : '暂无文件'}</p>
           <p className="text-sm mb-4">
-            {currentFolder ? '点击导入添加文件到此文件夹' : '点击「导入」添加音视频或 PDF 文件'}
+            {currentFolder
+              ? '点击导入添加文件到此文件夹，或直接拖拽文件到窗口'
+              : '点击「导入」添加音视频或 PDF 文件，或直接拖拽文件到窗口'}
           </p>
           <Button size="sm" onClick={handleImport}>
             <FileUp className="h-4 w-4 mr-1" /> 导入文件
           </Button>
+        </div>
+      )}
+
+      {/* Drag & drop overlay */}
+      {dragActive && (
+        <div className="fixed inset-0 z-[70] pointer-events-none flex items-center justify-center bg-primary/10">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-background/90 px-10 py-8 shadow-xl">
+            <UploadCloud className="h-12 w-12 text-primary" />
+            <p className="text-base font-medium">松开鼠标导入文件</p>
+            <p className="text-xs text-muted-foreground">
+              支持视频 / 音频 / PDF
+              {currentFolder ? `，导入到「${currentFolder.name}」` : '，导入到当前位置'}
+            </p>
+          </div>
         </div>
       )}
 
@@ -956,6 +1086,12 @@ function GridFileCard({
       </div>
       <div className="p-2 border-t">
         <p className="text-xs truncate">{file.name}</p>
+        {(file.lastPosition ?? 0) > 0 && (
+          <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+            <History className="h-2.5 w-2.5 shrink-0" />
+            上次播放到 {formatTime(file.lastPosition!)}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -1064,6 +1200,9 @@ function ListFileRow({
       </div>
       <div className="hidden sm:block sm:col-span-3 text-muted-foreground text-xs">
         {file.type === 'video' ? '视频' : file.type === 'audio' ? '音频' : 'PDF'}
+        {(file.lastPosition ?? 0) > 0 && (
+          <span className="ml-1">· 播至 {formatTime(file.lastPosition!)}</span>
+        )}
       </div>
       <div className="col-span-6 sm:col-span-4 text-muted-foreground text-xs text-right sm:text-left">
         {new Date(file.addedAt).toLocaleDateString('zh-CN')}
