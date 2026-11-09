@@ -106,21 +106,17 @@ export default function SettingsPage() {
   const latestHint = useUpdateStore((s) => s.latestVersion)
 
   // 侧栏后台检查到新版本后，进入设置页直接展示可更新状态
-  useEffect(() => {
-    if (hasUpdateHint && updateStep === 'idle') {
-      setUpdateVersion(latestHint)
-      setUpdateStep('available')
-    }
-  }, [hasUpdateHint, latestHint, updateStep])
+  const displayStep = updateStep === 'idle' && hasUpdateHint ? 'available' : updateStep
+  const displayVersion = updateStep === 'idle' && hasUpdateHint ? latestHint : updateVersion
 
   const handleUpdateAction = async () => {
-    if (updateStep === 'ready') {
+    if (displayStep === 'ready') {
       const r = await window.api.applyUpdate()
       if (!r?.ok) setUpdateError(r?.error || '安装失败，请稍后重试')
       return
     }
 
-    if (updateStep === 'available') {
+    if (displayStep === 'available') {
       setUpdateError('')
       setUpdateStep('downloading')
       setUpdateProgress(0)
@@ -165,15 +161,15 @@ export default function SettingsPage() {
 
   const updateStatus = updateError
     ? updateError
-    : updateStep === 'checking'
+    : displayStep === 'checking'
       ? '正在检查更新…'
-      : updateStep === 'latest'
+      : displayStep === 'latest'
         ? '已是最新版本'
-        : updateStep === 'available'
-          ? `发现新版本 v${updateVersion}`
-          : updateStep === 'downloading'
+        : displayStep === 'available'
+          ? `发现新版本 v${displayVersion}`
+          : displayStep === 'downloading'
             ? `正在下载更新 ${updateProgress}%`
-            : updateStep === 'ready'
+            : displayStep === 'ready'
               ? '更新已就绪，重启应用后完成安装'
               : '通过 GitHub Releases 检查新版本'
 
@@ -835,25 +831,25 @@ export default function SettingsPage() {
             <Button
               variant="outline"
               size="sm"
-              disabled={updateStep === 'checking' || updateStep === 'downloading'}
+              disabled={displayStep === 'checking' || displayStep === 'downloading'}
               onClick={handleUpdateAction}
             >
-              {updateStep === 'checking' || updateStep === 'downloading' ? (
+              {displayStep === 'checking' || displayStep === 'downloading' ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              ) : updateStep === 'ready' ? (
+              ) : displayStep === 'ready' ? (
                 <RotateCcw className="h-3.5 w-3.5 mr-1" />
-              ) : updateStep === 'available' ? (
+              ) : displayStep === 'available' ? (
                 <Download className="h-3.5 w-3.5 mr-1" />
               ) : (
                 <RefreshCw className="h-3.5 w-3.5 mr-1" />
               )}
-              {updateStep === 'checking'
+              {displayStep === 'checking'
                 ? '检查中…'
-                : updateStep === 'downloading'
+                : displayStep === 'downloading'
                   ? `下载中 ${updateProgress}%`
-                  : updateStep === 'ready'
+                  : displayStep === 'ready'
                     ? '重启并安装'
-                    : updateStep === 'available'
+                    : displayStep === 'available'
                       ? '下载更新'
                       : '检查更新'}
             </Button>
