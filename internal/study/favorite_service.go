@@ -1,4 +1,4 @@
-package main
+package study
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"aling-go/internal/core"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -37,9 +39,9 @@ func (s *FavoriteService) FavoriteList(tagID int) string {
 	var rows *sql.Rows
 	var err error
 	if tagID > 0 {
-		rows, err = db.Query(query+" WHERE c.tag_id = ? ORDER BY c.created_at DESC", tagID)
+		rows, err = core.DB.Query(query+" WHERE c.tag_id = ? ORDER BY c.created_at DESC", tagID)
 	} else {
-		rows, err = db.Query(query + " ORDER BY c.created_at DESC")
+		rows, err = core.DB.Query(query + " ORDER BY c.created_at DESC")
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteList: %v\n", err)
@@ -71,7 +73,7 @@ func (s *FavoriteService) FavoriteAdd(clipJSON string) int {
 		fmt.Fprintf(os.Stderr, "FavoriteAdd: unmarshal: %v\n", err)
 		return 0
 	}
-	res, err := db.Exec(
+	res, err := core.DB.Exec(
 		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id, word) VALUES (?,?,?,?,?,?)",
 		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID, c.Word,
 	)
@@ -84,14 +86,14 @@ func (s *FavoriteService) FavoriteAdd(clipJSON string) int {
 }
 
 func (s *FavoriteService) FavoriteDelete(id int) {
-	if _, err := db.Exec("DELETE FROM favorite_clips WHERE id=?", id); err != nil {
+	if _, err := core.DB.Exec("DELETE FROM favorite_clips WHERE id=?", id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteDelete: %v\n", err)
 	}
 }
 
 // FavoriteUpdateTag 修改片段所属标签（tagID=0 表示移除标签）
 func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
-	if _, err := db.Exec("UPDATE favorite_clips SET tag_id=? WHERE id=?", tagID, id); err != nil {
+	if _, err := core.DB.Exec("UPDATE favorite_clips SET tag_id=? WHERE id=?", tagID, id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteUpdateTag: %v\n", err)
 	}
 }
@@ -100,7 +102,7 @@ func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
 // rating: 1=不认识（当天再复习）, 2=模糊（1 天后）, 3=认识（按复习次数递增）
 func (s *FavoriteService) FavoriteReview(id int, rating int) {
 	var reviewCount int
-	if err := db.QueryRow("SELECT COALESCE(review_count, 0) FROM favorite_clips WHERE id=?", id).Scan(&reviewCount); err != nil {
+	if err := core.DB.QueryRow("SELECT COALESCE(review_count, 0) FROM favorite_clips WHERE id=?", id).Scan(&reviewCount); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteReview: %v\n", err)
 		return
 	}
@@ -116,7 +118,7 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 			days = 60
 		}
 	}
-	if _, err := db.Exec(
+	if _, err := core.DB.Exec(
 		"UPDATE favorite_clips SET review_count = COALESCE(review_count, 0) + 1, last_reviewed_at = datetime('now','localtime'), next_review = date('now','localtime', ?) WHERE id=?",
 		fmt.Sprintf("+%d days", days), id,
 	); err != nil {
@@ -127,7 +129,7 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 // --- Tags ---
 
 func (s *FavoriteService) FavoriteTagsList() string {
-	rows, err := db.Query("SELECT id, name FROM favorite_tags ORDER BY name ASC")
+	rows, err := core.DB.Query("SELECT id, name FROM favorite_tags ORDER BY name ASC")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagsList: %v\n", err)
 		return "[]"
@@ -150,7 +152,7 @@ func (s *FavoriteService) FavoriteTagsList() string {
 }
 
 func (s *FavoriteService) FavoriteTagAdd(name string) int {
-	res, err := db.Exec("INSERT INTO favorite_tags (name) VALUES (?)", name)
+	res, err := core.DB.Exec("INSERT INTO favorite_tags (name) VALUES (?)", name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagAdd: %v\n", err)
 		return 0
@@ -161,10 +163,10 @@ func (s *FavoriteService) FavoriteTagAdd(name string) int {
 
 // FavoriteTagDelete 删除标签，并将该标签下片段的 tag_id 置 0
 func (s *FavoriteService) FavoriteTagDelete(id int) {
-	if _, err := db.Exec("UPDATE favorite_clips SET tag_id=0 WHERE tag_id=?", id); err != nil {
+	if _, err := core.DB.Exec("UPDATE favorite_clips SET tag_id=0 WHERE tag_id=?", id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagDelete clips: %v\n", err)
 	}
-	if _, err := db.Exec("DELETE FROM favorite_tags WHERE id=?", id); err != nil {
+	if _, err := core.DB.Exec("DELETE FROM favorite_tags WHERE id=?", id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagDelete: %v\n", err)
 	}
 }

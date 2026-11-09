@@ -1,4 +1,4 @@
-package main
+package system
 
 import (
 	"context"
@@ -10,11 +10,12 @@ import (
 )
 
 type PlatformService struct {
-	app *application.App
+	app     *application.App
+	version string
 }
 
-func NewPlatformService(app *application.App) *PlatformService {
-	return &PlatformService{app: app}
+func NewPlatformService(app *application.App, version string) *PlatformService {
+	return &PlatformService{app: app, version: version}
 }
 
 func (s *PlatformService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -78,7 +79,7 @@ func (s *PlatformService) GetPlatform() string {
 
 // GetVersion 返回应用版本号（构建时注入，本地未注入时为 dev）
 func (s *PlatformService) GetVersion() string {
-	return appVersion
+	return s.version
 }
 
 // --- File Ops ---

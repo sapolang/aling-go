@@ -1,57 +1,13 @@
-package main
+package content
 
 import (
-	"database/sql"
 	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
+
+	"aling-go/internal/core"
 )
 
-var articleDB *sql.DB
-
-func openArticleDB(dataDir string) error {
-	paths := []string{
-		filepath.Join(dataDir, "articles.db"),
-		"articles.db",
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		paths = append(paths, filepath.Join(cwd, "articles.db"))
-	}
-	exe, _ := os.Executable()
-	if exe != "" {
-		exeDir := filepath.Dir(exe)
-		paths = append(paths, filepath.Join(exeDir, "articles.db"))
-		paths = append(paths, filepath.Join(exeDir, "..", "Resources", "articles.db"))
-	}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err != nil {
-			continue
-		}
-		conn, err := sql.Open("sqlite", p)
-		if err != nil {
-			continue
-		}
-		if err := conn.Ping(); err != nil {
-			_ = conn.Close()
-			continue
-		}
-		// 空文件（如误创建的 0 字节 db）会遮蔽真实数据库，校验必需的表后才采用
-		var tables int
-		if err := conn.QueryRow(
-			"SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('articles','categories')",
-		).Scan(&tables); err != nil || tables != 2 {
-			_ = conn.Close()
-			continue
-		}
-		articleDB = conn
-		return nil
-	}
-	return fmt.Errorf("articles.db not found in any search path")
-}
-
 func dbGetCategories() []ArticleCategory {
-	rows, err := articleDB.Query("SELECT id, en_name, name, description, cover, length FROM categories ORDER BY id")
+	rows, err := core.ArticleDB.Query("SELECT id, en_name, name, description, cover, length FROM categories ORDER BY id")
 	if err != nil {
 		return []ArticleCategory{}
 	}
@@ -68,7 +24,7 @@ func dbGetCategories() []ArticleCategory {
 }
 
 func dbGetArticles(categoryEnName string) []ArticleItem {
-	rows, err := articleDB.Query(
+	rows, err := core.ArticleDB.Query(
 		`SELECT id, category_en_name, title, title_translate, text, text_translate,
 		        audio_src, lrc_position, question_json, index_order
 		 FROM articles WHERE category_en_name=? ORDER BY index_order`,
@@ -92,7 +48,7 @@ func dbGetArticles(categoryEnName string) []ArticleItem {
 
 func dbGetArticle(id int) *ArticleItem {
 	var a ArticleItem
-	err := articleDB.QueryRow(
+	err := core.ArticleDB.QueryRow(
 		`SELECT id, category_en_name, title, title_translate, text, text_translate,
 		        audio_src, lrc_position, question_json, index_order
 		 FROM articles WHERE id=?`, id,
@@ -106,7 +62,7 @@ func dbGetArticle(id int) *ArticleItem {
 
 func dbGetTypingProgress(articleID int, mode string) string {
 	var p TypingProgress
-	err := db.QueryRow(
+	err := core.DB.QueryRow(
 		`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at
 		 FROM typing_progress WHERE article_id=? AND mode=?`,
 		articleID, mode,
@@ -123,7 +79,7 @@ func dbSaveTypingProgress(progressJSON string) {
 	if err := json.Unmarshal([]byte(progressJSON), &p); err != nil {
 		return
 	}
-	_, _ = db.Exec(
+	_, _ = core.DB.Exec(
 		`INSERT OR REPLACE INTO typing_progress (article_id, mode, position, completed, best_accuracy, best_wpm, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
 		p.ArticleID, p.Mode, p.Position, boolToInt(p.Completed), p.BestAccuracy, p.BestWPM,
@@ -138,7 +94,7 @@ func boolToInt(b bool) int {
 }
 
 func dbGetTypingRecords(articleID int) string {
-	rows, err := db.Query(
+	rows, err := core.DB.Query(
 		`SELECT id, article_id, mode, accuracy, wpm, duration, mistakes, created_at
 		 FROM typing_records WHERE article_id=? ORDER BY created_at DESC`,
 		articleID,
@@ -164,14 +120,14 @@ func dbSaveTypingRecord(recordJSON string) {
 	if err := json.Unmarshal([]byte(recordJSON), &r); err != nil {
 		return
 	}
-	_, _ = db.Exec(
+	_, _ = core.DB.Exec(
 		`INSERT INTO typing_records (article_id, mode, accuracy, wpm, duration, mistakes) VALUES (?, ?, ?, ?, ?, ?)`,
 		r.ArticleID, r.Mode, r.Accuracy, r.WPM, r.Duration, r.Mistakes,
 	)
 }
 
 func dbGetAllTypingProgress() string {
-	rows, err := db.Query(`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at FROM typing_progress`)
+	rows, err := core.DB.Query(`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at FROM typing_progress`)
 	if err != nil {
 		return "[]"
 	}
@@ -186,26 +142,4 @@ func dbGetAllTypingProgress() string {
 	}
 	b, _ := json.Marshal(results)
 	return string(b)
-}
-
-func dbAddWordsBatch(wordsJSON string) int {
-	var words []Word
-	if err := json.Unmarshal([]byte(wordsJSON), &words); err != nil {
-		return 0
-	}
-	count := 0
-	for _, w := range words {
-		res, err := db.Exec(
-			"INSERT OR IGNORE INTO words (word, definition, phonetic) VALUES (?, ?, ?)",
-			w.Word, w.Definition, w.Phonetic,
-		)
-		if err != nil {
-			continue
-		}
-		n, _ := res.RowsAffected()
-		if n > 0 {
-			count++
-		}
-	}
-	return count
 }

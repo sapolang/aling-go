@@ -7,7 +7,7 @@ import {
   GetPlatform,
   GetVersion,
   OpenExternal,
-} from '../../bindings/aling-go/platformservice'
+} from '../../bindings/aling-go/internal/system/platformservice'
 
 import {
   DbWordsList,
@@ -28,7 +28,7 @@ import {
   LogReview,
   GetLearningStats,
   GetExtendedStats,
-} from '../../bindings/aling-go/wordservice'
+} from '../../bindings/aling-go/internal/study/wordservice'
 
 import {
   GetCategories,
@@ -39,7 +39,7 @@ import {
   GetTypingRecords,
   SaveTypingRecord,
   GetAllTypingProgress,
-} from '../../bindings/aling-go/articleservice'
+} from '../../bindings/aling-go/internal/content/articleservice'
 
 import {
   DbDictTags,
@@ -49,7 +49,7 @@ import {
   DbDictGetProgress,
   DbDictLookup,
   DbDictSearch,
-} from '../../bindings/aling-go/dictservice'
+} from '../../bindings/aling-go/internal/study/dictservice'
 
 import {
   LibraryList,
@@ -67,13 +67,13 @@ import {
   RecentUpdatePosition,
   CacheSubtitles,
   GetCachedSubtitles,
-} from '../../bindings/aling-go/libraryservice'
+} from '../../bindings/aling-go/internal/content/libraryservice'
 
 import {
   GetVideoThumbnail,
   GetWaveformData,
   GetMediaPort,
-} from '../../bindings/aling-go/mediaservice'
+} from '../../bindings/aling-go/internal/content/mediaservice'
 
 import {
   Transcribe,
@@ -84,7 +84,7 @@ import {
   GetWhisperLang,
   SetWhisperLang,
   GetDownloadProgress,
-} from '../../bindings/aling-go/whisperservice'
+} from '../../bindings/aling-go/internal/content/whisperservice'
 
 import {
   GetAIConfig,
@@ -92,7 +92,7 @@ import {
   TestAIConnection,
   TranslateStream,
   Explain,
-} from '../../bindings/aling-go/aiservice'
+} from '../../bindings/aling-go/internal/system/aiservice'
 
 import {
   FavoriteList,
@@ -103,9 +103,9 @@ import {
   FavoriteTagsList,
   FavoriteTagAdd,
   FavoriteTagDelete,
-} from '../../bindings/aling-go/favoriteservice'
+} from '../../bindings/aling-go/internal/study/favoriteservice'
 
-import { BackupNow, GetBackupStatus } from '../../bindings/aling-go/backupservice'
+import { BackupNow, GetBackupStatus } from '../../bindings/aling-go/internal/system/backupservice'
 import { Events } from '@wailsio/runtime'
 
 export function initBridge(): void {
