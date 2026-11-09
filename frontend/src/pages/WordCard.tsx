@@ -134,9 +134,7 @@ export default function WordCardPage() {
       if (flipped && e.key === '4') {
         e.preventDefault()
         handleGrade(5)
-        return
       }
-      e.preventDefault()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
