@@ -40,6 +40,7 @@ type FeedEpisode struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	AudioURL    string `json:"audioUrl"`
+	Link        string `json:"link"`
 	Duration    int    `json:"duration"`
 	PublishedAt string `json:"publishedAt"`
 	LocalPath   string `json:"localPath"`
@@ -105,6 +106,7 @@ func (s *FeedService) ensureTables() error {
 			title TEXT DEFAULT '',
 			description TEXT DEFAULT '',
 			audio_url TEXT DEFAULT '',
+			link TEXT DEFAULT '',
 			duration INTEGER DEFAULT 0,
 			published_at TEXT DEFAULT '',
 			local_path TEXT DEFAULT '',
@@ -113,7 +115,12 @@ func (s *FeedService) ensureTables() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_feed_episodes_feed ON feed_episodes(feed_id, published_at);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// 增量迁移：老版本没有 link 列
+	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN link TEXT DEFAULT ''`)
+	return nil
 }
 
 // --- 网络配置 ---
@@ -197,6 +204,7 @@ type rssDocument struct {
 type rssItem struct {
 	Title          string     `xml:"title"`
 	Description    string     `xml:"description"`
+	Link           string     `xml:"link"`
 	GUID           string     `xml:"guid"`
 	PubDate        string     `xml:"pubDate"`
 	Enclosure      rssEnclose `xml:"enclosure"`
@@ -228,17 +236,25 @@ func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedE
 
 	for _, it := range ch.Items {
 		audioURL := strings.TrimSpace(it.Enclosure.URL)
-		if audioURL == "" {
+		link := strings.TrimSpace(it.Link)
+		// 播客源有 enclosure（音频直链），YouTube/B站 没有但有 link（视频页面），
+		// 两种都要保留，后续根据 audioURL 是否为空决定走"下载"还是"在线精听"
+		if audioURL == "" && link == "" {
 			continue
 		}
 		guid := strings.TrimSpace(it.GUID)
 		if guid == "" {
-			guid = audioURL
+			if audioURL != "" {
+				guid = audioURL
+			} else {
+				guid = link
+			}
 		}
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(it.Title),
 			Description: stripHTML(it.Description),
 			AudioURL:    audioURL,
+			Link:        link,
 			Duration:    parseDuration(it.ItunesDuration),
 			PublishedAt: normalizePubDate(it.PubDate),
 			GUID:        guid,
@@ -457,7 +473,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 		limit = 100
 	}
 	rows, err := core.DB.Query(`
-		SELECT id, feed_id, title, description, audio_url, duration, published_at, local_path
+		SELECT id, feed_id, title, description, audio_url, link, duration, published_at, local_path
 		FROM feed_episodes WHERE feed_id = ?
 		ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
 		LIMIT ?`, feedID, limit)
@@ -470,7 +486,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 	episodes := []FeedEpisode{}
 	for rows.Next() {
 		var e FeedEpisode
-		if err := rows.Scan(&e.ID, &e.FeedID, &e.Title, &e.Description, &e.AudioURL, &e.Duration, &e.PublishedAt, &e.LocalPath); err != nil {
+		if err := rows.Scan(&e.ID, &e.FeedID, &e.Title, &e.Description, &e.AudioURL, &e.Link, &e.Duration, &e.PublishedAt, &e.LocalPath); err != nil {
 			continue
 		}
 		episodes = append(episodes, e)
@@ -519,12 +535,13 @@ func (s *FeedService) fetchFeed(feedURL string) (*feedMeta, error) {
 // saveEpisodes 幂等写入节目列表：已存在则更新元信息，保留本地下载路径
 func (s *FeedService) saveEpisodes(feedID int64, episodes []FeedEpisode) {
 	stmt, err := core.DB.Prepare(`
-		INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, duration, published_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, link, duration, published_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(feed_id, guid) DO UPDATE SET
 			title = excluded.title,
 			description = excluded.description,
 			audio_url = excluded.audio_url,
+			link = excluded.link,
 			duration = excluded.duration,
 			published_at = excluded.published_at`)
 	if err != nil {
@@ -533,7 +550,7 @@ func (s *FeedService) saveEpisodes(feedID int64, episodes []FeedEpisode) {
 	defer stmt.Close()
 
 	for _, e := range episodes {
-		_, _ = stmt.Exec(feedID, e.GUID, e.Title, e.Description, e.AudioURL, e.Duration, e.PublishedAt)
+		_, _ = stmt.Exec(feedID, e.GUID, e.Title, e.Description, e.AudioURL, e.Link, e.Duration, e.PublishedAt)
 	}
 }
 

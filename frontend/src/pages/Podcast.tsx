@@ -25,6 +25,8 @@ import {
   Settings2,
   Check,
   ExternalLink,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 // 推荐订阅源，都是公开发布的 RSS，不依赖任何私有接口
@@ -79,6 +81,11 @@ export default function PodcastPage() {
   const [adding, setAdding] = useState(false)
   const [proxy, setProxy] = useState('')
   const [savingProxy, setSavingProxy] = useState(false)
+
+  // YouTube/B站 链接转换
+  const [showPlatformConvert, setShowPlatformConvert] = useState(false)
+  const [platformURL, setPlatformURL] = useState('')
+  const [converting, setConverting] = useState(false)
 
   const selectedFeed = useMemo(
     () => feeds.find((f) => f.id === selectedFeedId) || null,
@@ -178,6 +185,34 @@ export default function PodcastPage() {
       loadFeeds()
     } else {
       showToast(res.message, 'error')
+    }
+  }
+
+  const handleOnlineListen = (ep: FeedEpisode) => {
+    // 把节目信息通过 location state 传给在线播放器
+    navigate('/player-online', {
+      state: { episodeId: ep.id, link: ep.link, title: ep.title },
+    })
+  }
+
+  const handleConvertPlatform = async () => {
+    const url = platformURL.trim()
+    if (!url) return
+    setConverting(true)
+    try {
+      const res = await window.api.platformConvertToRSS(url)
+      if (res.ok && res.rssUrl) {
+        setFeedURL(res.rssUrl)
+        setShowPlatformConvert(false)
+        setPlatformURL('')
+        showToast(`已转换为 ${res.platform} 订阅源 RSS，点击下方「订阅」即可`, 'success')
+      } else {
+        showToast(res.error || '转换失败', 'error')
+      }
+    } catch {
+      showToast('转换请求失败，请检查网络或代理设置', 'error')
+    } finally {
+      setConverting(false)
     }
   }
 
@@ -373,6 +408,7 @@ export default function PodcastPage() {
                   {episodes.map((ep) => {
                     const pct = downloadProgress[ep.id]
                     const downloading = pct !== undefined
+                    const isOnlineOnly = !ep.audioUrl && !!ep.link
                     return (
                       <div key={ep.id} className="p-3 flex items-start gap-3 hover:bg-muted/40">
                         <div className="flex-1 min-w-0 space-y-1">
@@ -391,7 +427,16 @@ export default function PodcastPage() {
                           )}
                         </div>
                         <div className="shrink-0 flex items-center gap-1">
-                          {ep.localPath ? (
+                          {isOnlineOnly ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOnlineListen(ep)}
+                            >
+                              <Play className="h-4 w-4" />
+                              在线精听
+                            </Button>
+                          ) : ep.localPath ? (
                             <>
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Check className="h-3 w-3" /> 已下载
@@ -460,6 +505,47 @@ export default function PodcastPage() {
                   </Button>
                 ))}
               </div>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowPlatformConvert(!showPlatformConvert)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showPlatformConvert ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+                从 YouTube / B站 频道链接生成 RSS
+              </button>
+              {showPlatformConvert && (
+                <div className="mt-2 space-y-1.5 rounded-md border border-border p-3">
+                  <Label htmlFor="platform-url" className="text-xs">
+                    YouTube 频道主页或 B站 UP主 空间链接
+                  </Label>
+                  <Input
+                    id="platform-url"
+                    placeholder="https://www.youtube.com/@MKBHD 或 https://space.bilibili.com/123456"
+                    value={platformURL}
+                    onChange={(e) => setPlatformURL(e.target.value)}
+                    disabled={converting}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    YouTube 自动识别频道 ID；B站 通过 RSSHub
+                    桥接，若转换失败请在播客页代理设置旁配置 RSSHub 实例
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!platformURL.trim() || converting}
+                    onClick={handleConvertPlatform}
+                  >
+                    {converting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    转换为 RSS
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

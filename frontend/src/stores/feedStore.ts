@@ -18,6 +18,7 @@ export interface FeedEpisode {
   title: string
   description: string
   audioUrl: string
+  link: string
   duration: number
   publishedAt: string
   localPath: string

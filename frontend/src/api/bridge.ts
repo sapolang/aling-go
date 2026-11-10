@@ -87,6 +87,13 @@ import {
 } from '../../bindings/aling-go/internal/content/feedservice'
 
 import {
+  ConvertToRSS as PlatformConvertToRSS,
+  GetRSSHubURL,
+  SetRSSHubURL,
+  GetSubtitles,
+} from '../../bindings/aling-go/internal/content/platformservice'
+
+import {
   Transcribe,
   WhisperStatus,
   DownloadWhisperModel,
@@ -211,6 +218,12 @@ export function initBridge(): void {
       Events.On('feed:download-progress', (e: any) => cb(e.data))
       return () => Events.Off('feed:download-progress')
     },
+    platformConvertToRSS: (url: string) =>
+      PlatformConvertToRSS(url).then((s: string) => JSON.parse(s)),
+    platformGetRSSHubURL: () => GetRSSHubURL(),
+    platformSetRSSHubURL: (u: string) => SetRSSHubURL(u).then((s: string) => JSON.parse(s)),
+    platformGetSubtitles: (episodeId: number) =>
+      GetSubtitles(episodeId).then((s: string) => JSON.parse(s)),
 
     dbDictTags: () => DbDictTags(),
     dbDictWords: (tag: string) => DbDictWords(tag),

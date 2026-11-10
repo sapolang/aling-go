@@ -7,6 +7,7 @@ import { useThemeStore } from '@/stores/themeStore'
 
 const Home = lazy(() => import('@/pages/Home'))
 const Player = lazy(() => import('@/pages/Player'))
+const PlayerOnline = lazy(() => import('@/pages/PlayerOnline'))
 const WordList = lazy(() => import('@/pages/WordList'))
 const WordCard = lazy(() => import('@/pages/WordCard'))
 const Settings = lazy(() => import('@/pages/Settings'))
@@ -107,6 +108,7 @@ function AppContent() {
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/podcast" element={<Podcast />} />
+          <Route path="/player-online" element={<PlayerOnline />} />
           <Route path="/words" element={<WordList />} />
           <Route path="/dict" element={<Dict />} />
           <Route path="/dict/:tag" element={<Review />} />

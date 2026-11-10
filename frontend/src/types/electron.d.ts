@@ -256,6 +256,14 @@ export interface ElectronAPI {
   feedGetProxy: () => Promise<string>
   feedSetProxy: (proxy: string) => Promise<FeedActionResult>
   feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => () => void
+
+  // Platform helpers (YouTube / Bilibili)
+  platformConvertToRSS: (
+    url: string,
+  ) => Promise<{ ok: boolean; rssUrl?: string; platform?: string; error?: string }>
+  platformGetRSSHubURL: () => Promise<string>
+  platformSetRSSHubURL: (u: string) => Promise<FeedActionResult>
+  platformGetSubtitles: (episodeId: number) => Promise<PlatformSubtitleResult>
 }
 
 export interface Feed {
@@ -276,6 +284,7 @@ export interface FeedEpisode {
   title: string
   description: string
   audioUrl: string
+  link: string
   duration: number
   publishedAt: string
   localPath: string
@@ -285,6 +294,21 @@ export interface FeedActionResult {
   ok: boolean
   error: string
   message: string
+}
+
+export interface PlatformSubtitleCue {
+  start: number
+  end: number
+  text: string
+}
+
+export interface PlatformSubtitleResult {
+  ok: boolean
+  platform?: string
+  videoId?: string
+  title?: string
+  cues?: PlatformSubtitleCue[]
+  error?: string
 }
 
 declare global {
