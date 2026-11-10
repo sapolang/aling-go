@@ -236,6 +236,7 @@ type rssAttrURL struct {
 type atomFeed struct {
 	Title    string      `xml:"title"`
 	Subtitle string      `xml:"subtitle"`
+	Logo     string      `xml:"logo"`
 	Links    []atomLink  `xml:"link"`
 	Entries  []atomEntry `xml:"entry"`
 }
@@ -323,6 +324,10 @@ func parseRSS2(data []byte) (title, desc, image, siteURL string, episodes []Feed
 		if img == "" {
 			img = strings.TrimSpace(it.ItunesImage.Href)
 		}
+		// item 没有独立封面时，用频道封面兜底
+		if img == "" {
+			img = image
+		}
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(it.Title),
 			Description: stripHTML(it.Description),
@@ -349,6 +354,7 @@ func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []Feed
 
 	title = strings.TrimSpace(feed.Title)
 	desc = stripHTML(feed.Subtitle)
+	image = strings.TrimSpace(feed.Logo)
 	for _, l := range feed.Links {
 		if l.Rel == "alternate" || l.Rel == "" {
 			siteURL = strings.TrimSpace(l.Href)
@@ -385,6 +391,9 @@ func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []Feed
 			description = e.Content
 		}
 		img := strings.TrimSpace(e.Group.Thumbnail.URL)
+		if img == "" {
+			img = image
+		}
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(e.Title),
 			Description: stripHTML(description),

@@ -19,7 +19,6 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  Download,
   Play,
   Loader2,
   Settings2,
@@ -164,39 +163,48 @@ export default function PodcastPage() {
     }
   }
 
-  const handlePlay = async (ep: FeedEpisode) => {
-    if (!ep.localPath) return
-    player.setFilePath(ep.localPath)
-    await window.api.recentAdd(ep.localPath)
+  const playLocalFile = async (path: string) => {
+    player.setFilePath(path)
+    await window.api.recentAdd(path)
     navigate('/player')
     player.setWaveformLoading(true)
     window.api
-      .getWaveformData(ep.localPath)
+      .getWaveformData(path)
       .then((data: number[]) => {
         if (data && data.length > 0) player.setWaveformData(data)
         else player.setWaveformLoading(false)
       })
       .catch(() => player.setWaveformLoading(false))
-    const cached = await window.api.getCachedSubtitles(ep.localPath)
+    const cached = await window.api.getCachedSubtitles(path)
     if (cached && cached.length > 0) player.setSubtitles(cached)
   }
 
-  const handleDownload = async (ep: FeedEpisode) => {
+  const handleEpisodeClick = async (ep: FeedEpisode) => {
+    const isOnlineOnly = !ep.audioUrl && !!ep.link
+    // 在线视频：直接跳转到在线精听页
+    if (isOnlineOnly) {
+      navigate('/player-online', {
+        state: { episodeId: ep.id, link: ep.link, title: ep.title },
+      })
+      return
+    }
+    // 已下载的音频：直接播放
+    if (ep.localPath) {
+      await playLocalFile(ep.localPath)
+      return
+    }
+    // 未下载的音频：先下载，完成后自动播放
     const res = await downloadEpisode(ep.id)
     if (res.ok) {
-      showToast('已下载并加入媒体库', 'success')
-      // 媒体库数据变了，刷新订阅列表里的节目数量展示
-      loadFeeds()
+      const updated = useFeedStore.getState().episodes.find((e) => e.id === ep.id)
+      if (updated?.localPath) {
+        showToast('下载完成，开始播放', 'success')
+        loadFeeds()
+        await playLocalFile(updated.localPath)
+      }
     } else {
       showToast(res.message, 'error')
     }
-  }
-
-  const handleOnlineListen = (ep: FeedEpisode) => {
-    // 把节目信息通过 location state 传给在线播放器
-    navigate('/player-online', {
-      state: { episodeId: ep.id, link: ep.link, title: ep.title },
-    })
   }
 
   const handleConvertPlatform = async () => {
@@ -419,7 +427,10 @@ export default function PodcastPage() {
                   return (
                     <div
                       key={ep.id}
-                      className="group rounded-lg border bg-card overflow-hidden hover:border-primary/50 transition-colors"
+                      onClick={() => !downloading && handleEpisodeClick(ep)}
+                      className={`group rounded-lg border bg-card overflow-hidden transition-colors ${
+                        downloading ? 'opacity-80' : 'cursor-pointer hover:border-primary/50'
+                      }`}
                     >
                       {/* 缩略图 */}
                       <div className="relative aspect-video bg-muted overflow-hidden">
@@ -436,6 +447,16 @@ export default function PodcastPage() {
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
                             <PlayCircle className="h-10 w-10" />
+                          </div>
+                        )}
+                        {/* 悬浮播放图标 */}
+                        {!downloading && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                                <Play className="h-6 w-6 text-black ml-0.5" />
+                              </div>
+                            </div>
                           </div>
                         )}
                         {isOnlineOnly && (
@@ -460,7 +481,7 @@ export default function PodcastPage() {
                         )}
                       </div>
                       {/* 内容 */}
-                      <div className="p-3 space-y-2">
+                      <div className="p-3 space-y-1.5">
                         <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">
                           {ep.title || '未命名节目'}
                         </p>
@@ -470,44 +491,6 @@ export default function PodcastPage() {
                             {ep.description}
                           </p>
                         )}
-                        <div className="pt-1">
-                          {isOnlineOnly ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => handleOnlineListen(ep)}
-                            >
-                              <Play className="h-4 w-4" />
-                              在线精听
-                            </Button>
-                          ) : ep.localPath ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => handlePlay(ep)}
-                            >
-                              <Play className="h-4 w-4" />
-                              播放
-                            </Button>
-                          ) : downloading ? (
-                            <Button size="sm" variant="outline" className="w-full" disabled>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              下载中 {pct}%
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => handleDownload(ep)}
-                            >
-                              <Download className="h-4 w-4" />
-                              下载
-                            </Button>
-                          )}
-                        </div>
                       </div>
                     </div>
                   )
