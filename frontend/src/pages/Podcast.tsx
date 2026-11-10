@@ -28,11 +28,12 @@ import {
 } from 'lucide-react'
 
 // 推荐订阅源，都是公开发布的 RSS，不依赖任何私有接口
+// BBC 与 TED 的源在国内网络直连经常超时，需要在播客页配置代理后使用
 const recommendedFeeds = [
   { name: 'BBC 6 Minute English', url: 'https://podcasts.files.bbci.co.uk/p02pc9tn.rss' },
   { name: 'TED Talks Daily', url: 'https://feeds.acast.com/public/shows/ted-talks-daily' },
   { name: 'NPR News Now', url: 'https://feeds.npr.org/500005/podcast.xml' },
-  { name: 'The Daily (NYT)', url: 'https://feeds.simplecast.com/54nAGcIl' },
+  { name: 'ESL Pod', url: 'https://www.eslpod.com/website/show_podcast.php?feedid=112908' },
   { name: "Luke's English Podcast", url: 'https://teacherluke.co.uk/feed/podcast/' },
 ]
 

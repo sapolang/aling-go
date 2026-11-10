@@ -504,7 +504,8 @@ func (s *FeedService) fetchFeed(feedURL string) (*feedMeta, error) {
 		return nil, fmt.Errorf("拉取订阅源失败: HTTP %s", resp.Status)
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	// 部分播客（如 The Daily）单份 RSS 超过 10MB，历史上限过小会导致解析被截断
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return nil, fmt.Errorf("读取订阅源失败: %w", err)
 	}
