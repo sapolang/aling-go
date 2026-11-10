@@ -245,6 +245,46 @@ export interface ElectronAPI {
   saveTypingRecord: (recordJson: string) => Promise<void>
   getAllTypingProgress: () => Promise<TypingProgress[]>
   addWordsBatch: (wordsJson: string) => Promise<number>
+
+  // Podcast feeds
+  feedList: () => Promise<{ feeds: Feed[] }>
+  feedAdd: (url: string) => Promise<FeedActionResult>
+  feedRemove: (id: number) => Promise<FeedActionResult>
+  feedRefresh: (id: number) => Promise<FeedActionResult>
+  feedEpisodes: (id: number, limit: number) => Promise<{ episodes: FeedEpisode[] }>
+  episodeDownload: (id: number) => Promise<{ ok: boolean; error: string; path: string }>
+  feedGetProxy: () => Promise<string>
+  feedSetProxy: (proxy: string) => Promise<FeedActionResult>
+  feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => () => void
+}
+
+export interface Feed {
+  id: number
+  url: string
+  title: string
+  description: string
+  image: string
+  siteUrl: string
+  lastFetchedAt: string
+  lastError: string
+  episodeCount: number
+}
+
+export interface FeedEpisode {
+  id: number
+  feedId: number
+  title: string
+  description: string
+  audioUrl: string
+  duration: number
+  publishedAt: string
+  localPath: string
+}
+
+export interface FeedActionResult {
+  ok: boolean
+  error: string
+  message: string
 }
 
 declare global {

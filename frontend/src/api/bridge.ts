@@ -76,6 +76,17 @@ import {
 } from '../../bindings/aling-go/internal/content/mediaservice'
 
 import {
+  FeedList,
+  FeedAdd,
+  FeedRemove,
+  FeedRefresh,
+  FeedEpisodes,
+  EpisodeDownload,
+  GetProxy as FeedGetProxy,
+  SetProxy as FeedSetProxy,
+} from '../../bindings/aling-go/internal/content/feedservice'
+
+import {
   Transcribe,
   WhisperStatus,
   DownloadWhisperModel,
@@ -186,6 +197,20 @@ export function initBridge(): void {
     getPlatform: () => GetPlatform(),
     getVersion: () => GetVersion(),
     getMediaPort: () => GetMediaPort(),
+
+    feedList: () => FeedList().then((s: string) => JSON.parse(s)),
+    feedAdd: (url: string) => FeedAdd(url).then((s: string) => JSON.parse(s)),
+    feedRemove: (id: number) => FeedRemove(id).then((s: string) => JSON.parse(s)),
+    feedRefresh: (id: number) => FeedRefresh(id).then((s: string) => JSON.parse(s)),
+    feedEpisodes: (id: number, limit: number) =>
+      FeedEpisodes(id, limit).then((s: string) => JSON.parse(s)),
+    episodeDownload: (id: number) => EpisodeDownload(id).then((s: string) => JSON.parse(s)),
+    feedGetProxy: () => FeedGetProxy(),
+    feedSetProxy: (proxy: string) => FeedSetProxy(proxy).then((s: string) => JSON.parse(s)),
+    feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => {
+      Events.On('feed:download-progress', (e: any) => cb(e.data))
+      return () => Events.Off('feed:download-progress')
+    },
 
     dbDictTags: () => DbDictTags(),
     dbDictWords: (tag: string) => DbDictWords(tag),

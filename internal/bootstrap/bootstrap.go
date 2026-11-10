@@ -73,12 +73,14 @@ func newAppOptions(assets embed.FS) application.Options {
 }
 
 func registerServices(app *application.App, dataDir, version string) {
+	librarySvc := content.NewLibraryService(app, dataDir)
 	services := []application.Service{
 		application.NewService(study.NewWordService(app)),
 		application.NewService(study.NewDictService(app)),
 		application.NewService(study.NewFavoriteService(app)),
 		application.NewService(content.NewArticleService(app)),
-		application.NewService(content.NewLibraryService(app, dataDir)),
+		application.NewService(librarySvc),
+		application.NewService(content.NewFeedService(app, dataDir, librarySvc)),
 		application.NewService(content.NewMediaService(app, dataDir)),
 		application.NewService(content.NewWhisperService(app, dataDir)),
 		application.NewService(system.NewPlatformService(app, version)),
