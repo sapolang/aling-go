@@ -245,7 +245,7 @@ export default function WordCardPage() {
   const progressPct = reviewTotal > 0 ? (reviewCompleted / reviewTotal) * 100 : 0
 
   return (
-    <div className="max-w-lg lg:max-w-3xl xl:max-w-5xl 2xl:max-w-6xl mx-auto space-y-4 pt-6 px-1">
+    <div className="space-y-4">
       <div className="space-y-1">
         <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
           <div

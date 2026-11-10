@@ -85,7 +85,7 @@ export default function DictPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">词库浏览</h1>
 
-      <div className="relative max-w-sm">
+      <div className="relative max-w-md">
         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
           className="pl-8 pr-8"

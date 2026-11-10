@@ -498,7 +498,7 @@ export default function HomePage() {
             value={store.searchQuery}
             onChange={(e) => store.setSearchQuery(e.target.value)}
             placeholder="搜索文件名"
-            className="h-8 w-36 sm:w-48 pl-7 pr-6 text-xs"
+            className="h-8 w-32 sm:w-48 md:w-56 pl-7 pr-6 text-xs"
           />
           {store.searchQuery && (
             <button
