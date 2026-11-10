@@ -35,8 +35,11 @@ const recommendedFeeds = [
   { name: 'BBC 6 Minute English', url: 'https://podcasts.files.bbci.co.uk/p02pc9tn.rss' },
   { name: 'TED Talks Daily', url: 'https://feeds.acast.com/public/shows/ted-talks-daily' },
   { name: 'NPR News Now', url: 'https://feeds.npr.org/500005/podcast.xml' },
-  { name: 'ESL Pod', url: 'https://www.eslpod.com/website/show_podcast.php?feedid=112908' },
-  { name: "Luke's English Podcast", url: 'https://teacherluke.co.uk/feed/podcast/' },
+  { name: 'ESL Pod', url: 'https://www.eslpod.com/feed.xml' },
+  {
+    name: "Luke's English Podcast",
+    url: 'https://feeds.acast.com/public/shows/62b0ada25c7ea10012f541cb',
+  },
 ]
 
 function formatDate(value: string): string {

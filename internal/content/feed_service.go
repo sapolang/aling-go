@@ -1,7 +1,10 @@
 package content
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -10,6 +13,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -215,8 +220,56 @@ type rssEnclose struct {
 	URL string `xml:"url,attr"`
 }
 
-// parseRSS 解析 RSS 2.0 文档，返回订阅元信息与节目列表
+// atomFeed 对应 Atom 1.0 格式（YouTube 等使用）
+type atomFeed struct {
+	Title    string      `xml:"title"`
+	Subtitle string      `xml:"subtitle"`
+	Links    []atomLink  `xml:"link"`
+	Entries  []atomEntry `xml:"entry"`
+}
+
+type atomLink struct {
+	Rel  string `xml:"rel,attr"`
+	Href string `xml:"href,attr"`
+}
+
+type atomEntry struct {
+	Title     string         `xml:"title"`
+	ID        string         `xml:"id"`
+	Links     []atomLink     `xml:"link"`
+	Published string         `xml:"published"`
+	Updated   string         `xml:"updated"`
+	Content   string         `xml:"content"`
+	Group     atomMediaGroup `xml:"http://search.yahoo.com/mrss/ group"`
+}
+
+type atomMediaGroup struct {
+	Description string           `xml:"description"`
+	Thumbnail   atomThumbnail    `xml:"thumbnail"`
+	Content     atomMediaContent `xml:"content"`
+}
+
+type atomThumbnail struct {
+	URL string `xml:"url,attr"`
+}
+
+type atomMediaContent struct {
+	URL string `xml:"url,attr"`
+}
+
+// parseRSS 解析 RSS 2.0 或 Atom 1.0 文档，返回订阅元信息与节目列表
 func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedEpisode, err error) {
+	dataTrimmed := bytes.TrimSpace(data)
+	// 根据根元素区分 RSS 2.0 和 Atom
+	if bytes.HasPrefix(dataTrimmed, []byte("<feed")) ||
+		bytes.Contains(dataTrimmed[:min(len(dataTrimmed), 200)], []byte("xmlns=\"http://www.w3.org/2005/Atom\"")) {
+		return parseAtom(data)
+	}
+	return parseRSS2(data)
+}
+
+// parseRSS2 解析 RSS 2.0 文档
+func parseRSS2(data []byte) (title, desc, image, siteURL string, episodes []FeedEpisode, err error) {
 	var doc rssDocument
 	if uerr := xml.Unmarshal(data, &doc); uerr != nil {
 		return "", "", "", "", nil, fmt.Errorf("解析订阅源失败: %w", uerr)
@@ -232,6 +285,10 @@ func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedE
 	image = strings.TrimSpace(ch.Image.URL)
 	if image == "" {
 		image = strings.TrimSpace(ch.ItunesImage.Href)
+	}
+	// 统一升级为 https，避免 WKWebView 混合内容策略阻止 http 图片加载
+	if strings.HasPrefix(image, "http://") {
+		image = "https://" + strings.TrimPrefix(image, "http://")
 	}
 
 	for _, it := range ch.Items {
@@ -257,6 +314,65 @@ func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedE
 			Link:        link,
 			Duration:    parseDuration(it.ItunesDuration),
 			PublishedAt: normalizePubDate(it.PubDate),
+			GUID:        guid,
+		})
+	}
+	return title, desc, image, siteURL, episodes, nil
+}
+
+// parseAtom 解析 Atom 1.0 文档（YouTube feeds 等）
+func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []FeedEpisode, err error) {
+	var feed atomFeed
+	if uerr := xml.Unmarshal(data, &feed); uerr != nil {
+		return "", "", "", "", nil, fmt.Errorf("解析订阅源失败: %w", uerr)
+	}
+	if feed.Title == "" && len(feed.Entries) == 0 {
+		return "", "", "", "", nil, fmt.Errorf("不是有效的 Atom 订阅源")
+	}
+
+	title = strings.TrimSpace(feed.Title)
+	desc = stripHTML(feed.Subtitle)
+	for _, l := range feed.Links {
+		if l.Rel == "alternate" || l.Rel == "" {
+			siteURL = strings.TrimSpace(l.Href)
+			break
+		}
+	}
+
+	for _, e := range feed.Entries {
+		link := ""
+		for _, l := range e.Links {
+			if l.Rel == "alternate" || l.Rel == "" {
+				link = strings.TrimSpace(l.Href)
+				break
+			}
+		}
+		audioURL := strings.TrimSpace(e.Group.Content.URL)
+		if audioURL == "" && link == "" {
+			continue
+		}
+		guid := strings.TrimSpace(e.ID)
+		if guid == "" {
+			if audioURL != "" {
+				guid = audioURL
+			} else {
+				guid = link
+			}
+		}
+		pubDate := e.Published
+		if pubDate == "" {
+			pubDate = e.Updated
+		}
+		description := e.Group.Description
+		if description == "" {
+			description = e.Content
+		}
+		episodes = append(episodes, FeedEpisode{
+			Title:       strings.TrimSpace(e.Title),
+			Description: stripHTML(description),
+			AudioURL:    audioURL,
+			Link:        link,
+			PublishedAt: normalizePubDate(pubDate),
 			GUID:        guid,
 		})
 	}
@@ -504,6 +620,11 @@ type feedMeta struct {
 }
 
 func (s *FeedService) fetchFeed(feedURL string) (*feedMeta, error) {
+	// B站：不依赖 RSSHub（公共实例普遍 403），直接调官方 wbi 签名 API
+	if mid := bilibiliMidFromURL(feedURL); mid != "" {
+		return s.fetchBilibiliFeed(mid)
+	}
+
 	req, err := http.NewRequest(http.MethodGet, feedURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("订阅地址无效")
@@ -517,7 +638,7 @@ func (s *FeedService) fetchFeed(feedURL string) (*feedMeta, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("拉取订阅源失败: HTTP %s", resp.Status)
+		return nil, fmt.Errorf("拉取订阅源失败: %s", downloadStatusError(resp.StatusCode, resp.Status))
 	}
 
 	// 部分播客（如 The Daily）单份 RSS 超过 10MB，历史上限过小会导致解析被截断
@@ -592,11 +713,25 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 
 	resp, err := s.httpClient().Do(req)
 	if err != nil {
-		return episodeResultJSON(episodeDownloadResult{Error: "下载失败，请检查网络或代理设置: " + err.Error()})
+		// 网络层错误（超时、连接拒绝等），尝试将 http 升级为 https 重试一次
+		if strings.HasPrefix(audioURL, "http://") {
+			httpsURL := "https://" + strings.TrimPrefix(audioURL, "http://")
+			if req2, e2 := http.NewRequest(http.MethodGet, httpsURL, nil); e2 == nil {
+				req2.Header.Set("User-Agent", "Aling/1.0 (Podcast Subscriber)")
+				if resp2, e3 := s.httpClient().Do(req2); e3 == nil {
+					resp = resp2
+					err = nil
+					audioURL = httpsURL
+				}
+			}
+		}
+	}
+	if err != nil {
+		return episodeResultJSON(episodeDownloadResult{Error: "下载失败，请检查网络或配置代理: " + err.Error()})
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return episodeResultJSON(episodeDownloadResult{Error: "下载失败: HTTP " + resp.Status})
+		return episodeResultJSON(episodeDownloadResult{Error: downloadStatusError(resp.StatusCode, resp.Status)})
 	}
 
 	ext := audioExtFromURL(audioURL, resp.Header.Get("Content-Type"))
@@ -656,7 +791,7 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 
 	_, _ = core.DB.Exec(`UPDATE feed_episodes SET local_path = ? WHERE id = ?`, dest, episodeID)
 	if s.library != nil {
-		s.library.importFiles([]string{dest}, "")
+		s.library.ImportFiles([]string{dest}, "")
 	}
 	s.app.Event.Emit("feed:download-progress", map[string]any{"episodeId": episodeID, "pct": 100})
 
@@ -713,4 +848,231 @@ func feedResultJSON(r feedActionResult) string {
 func episodeResultJSON(r episodeDownloadResult) string {
 	b, _ := json.Marshal(r)
 	return string(b)
+}
+
+// downloadStatusError 根据 HTTP 状态码生成更友好的错误提示，
+// 帮助用户区分是源站问题、代理问题还是权限问题。
+func downloadStatusError(code int, status string) string {
+	switch {
+	case code == http.StatusBadGateway || code == http.StatusServiceUnavailable || code == http.StatusGatewayTimeout:
+		return "下载失败: HTTP " + status + "（无法连接到音频服务器，若使用了代理请尝试切换节点或调整代理规则）"
+	case code == http.StatusForbidden:
+		return "下载失败: HTTP " + status + "（服务器拒绝访问，该音频可能已下架或仅限特定地区）"
+	case code == http.StatusNotFound:
+		return "下载失败: HTTP " + status + "（音频文件不存在，节目可能已更新地址，请刷新订阅源后重试）"
+	case code >= 500:
+		return "下载失败: HTTP " + status + "（服务器内部错误，请稍后重试）"
+	default:
+		return "下载失败: HTTP " + status
+	}
+}
+
+// --- B站：直接调官方 wbi 签名 API，不依赖 RSSHub ---
+
+// bilibiliMidFromURL 从 RSSHub 风格的 B 站 URL 中提取 UP 主 mid
+// 支持 https://rsshub.app/bilibili/user/video/12345 以及直接 https://space.bilibili.com/12345
+var bilibiliUserVideoRe = regexp.MustCompile(`bilibili\.com?/user/video/(\d+)`)
+
+func bilibiliMidFromURL(rawURL string) string {
+	if m := bilibiliUserVideoRe.FindStringSubmatch(rawURL); len(m) == 2 {
+		return m[1]
+	}
+	if m := bilibiliSpaceRe.FindStringSubmatch(rawURL); len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
+// bilibiliMixinKeyEncTab 是 B 站 wbi 签名的固定映射表
+var bilibiliMixinKeyEncTab = []int{
+	46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+	27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+}
+
+// bilibiliMixinKey 根据 img_key + sub_key 计算 mixin_key
+func bilibiliMixinKey(imgKey, subKey string) string {
+	orig := []byte(imgKey + subKey)
+	out := make([]byte, 0, 32)
+	for _, idx := range bilibiliMixinKeyEncTab {
+		if idx < len(orig) {
+			out = append(out, orig[idx])
+		}
+	}
+	if len(out) > 32 {
+		out = out[:32]
+	}
+	return string(out)
+}
+
+// bilibiliWbiKeys 从 nav 接口获取 wbi 签名所需的 img_key 和 sub_key
+func (s *FeedService) bilibiliWbiKeys() (string, string, error) {
+	req, _ := http.NewRequest(http.MethodGet, "https://api.bilibili.com/x/web-interface/nav", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120")
+	req.Header.Set("Referer", "https://www.bilibili.com")
+	resp, err := s.httpClient().Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	var navResp struct {
+		Data struct {
+			WbiImg struct {
+				ImgURL string `json:"img_url"`
+				SubURL string `json:"sub_url"`
+			} `json:"wbi_img"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&navResp); err != nil {
+		return "", "", err
+	}
+	imgKey := navResp.Data.WbiImg.ImgURL
+	if i := strings.LastIndex(imgKey, "/"); i >= 0 {
+		imgKey = imgKey[i+1:]
+	}
+	if i := strings.Index(imgKey, "."); i >= 0 {
+		imgKey = imgKey[:i]
+	}
+	subKey := navResp.Data.WbiImg.SubURL
+	if i := strings.LastIndex(subKey, "/"); i >= 0 {
+		subKey = subKey[i+1:]
+	}
+	if i := strings.Index(subKey, "."); i >= 0 {
+		subKey = subKey[:i]
+	}
+	return imgKey, subKey, nil
+}
+
+// bilibiliQueryEscape 是 B站 wbi 签名专用的 URL 编码
+// 与 url.QueryEscape 的区别：保留 ~()*!.' 不编码（B 站签名要求）
+func bilibiliQueryEscape(s string) string {
+	var sb strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			sb.WriteRune(r)
+		case r == '-' || r == '_' || r == '.' || r == '~' ||
+			r == '(' || r == ')' || r == '*' || r == '!' || r == '\'':
+			sb.WriteRune(r)
+		default:
+			// 其他字符按 UTF-8 字节做 %XX 编码
+			buf := []byte(string(r))
+			for _, b := range buf {
+				fmt.Fprintf(&sb, "%%%02X", b)
+			}
+		}
+	}
+	return sb.String()
+}
+
+// bilibiliWbiSign 对请求参数做 wbi 签名，返回带 w_rid 和 wts 的参数
+func bilibiliWbiSign(params map[string]string, mixinKey string) map[string]string {
+	params["wts"] = strconv.FormatInt(time.Now().Unix(), 10)
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var sb strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			sb.WriteByte('&')
+		}
+		sb.WriteString(k)
+		sb.WriteByte('=')
+		sb.WriteString(bilibiliQueryEscape(params[k]))
+	}
+	h := md5.Sum([]byte(sb.String() + mixinKey))
+	params["w_rid"] = hex.EncodeToString(h[:])
+	return params
+}
+
+// fetchBilibiliFeed 直接调用 B站官方 wbi 签名 API 获取 UP 主视频列表
+func (s *FeedService) fetchBilibiliFeed(mid string) (*feedMeta, error) {
+	imgKey, subKey, err := s.bilibiliWbiKeys()
+	if err != nil {
+		return nil, fmt.Errorf("获取B站签名密钥失败: %w", err)
+	}
+	mixinKey := bilibiliMixinKey(imgKey, subKey)
+
+	params := bilibiliWbiSign(map[string]string{
+		"mid":   mid,
+		"ps":    "30",
+		"pn":    "1",
+		"order": "pubdate",
+	}, mixinKey)
+
+	q := url.Values{}
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	apiURL := "https://api.bilibili.com/x/space/wbi/arc/search?" + q.Encode()
+	req, _ := http.NewRequest(http.MethodGet, apiURL, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", "https://space.bilibili.com/"+mid)
+	req.Header.Set("Origin", "https://space.bilibili.com")
+
+	resp, err := s.httpClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("拉取B站视频列表失败，请检查网络: %w", err)
+	}
+	defer resp.Body.Close()
+	var apiResp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			List struct {
+				Vlist []struct {
+					BVID        string `json:"bvid"`
+					Title       string `json:"title"`
+					Description string `json:"description"`
+					Created     int64  `json:"created"`
+					Length      string `json:"length"`
+				} `json:"vlist"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("解析B站响应失败: %w", err)
+	}
+	if apiResp.Code != 0 {
+		return nil, fmt.Errorf("b站接口返回错误: %s", apiResp.Message)
+	}
+
+	episodes := make([]FeedEpisode, 0, len(apiResp.Data.List.Vlist))
+	for _, v := range apiResp.Data.List.Vlist {
+		link := "https://www.bilibili.com/video/" + v.BVID
+		episodes = append(episodes, FeedEpisode{
+			Title:       strings.TrimSpace(v.Title),
+			Description: stripHTML(v.Description),
+			Link:        link,
+			Duration:    parseBilibiliDuration(v.Length),
+			PublishedAt: time.Unix(v.Created, 0).Format(time.RFC3339),
+			GUID:        v.BVID,
+		})
+	}
+
+	return &feedMeta{
+		title:    "Bilibili UP主 " + mid,
+		desc:     "B站视频列表（官方 API）",
+		siteURL:  "https://space.bilibili.com/" + mid,
+		episodes: episodes,
+	}, nil
+}
+
+// parseBilibiliDuration 把 B 站的 mm:ss 时长字符串转成秒数
+func parseBilibiliDuration(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	parts := strings.Split(s, ":")
+	total := 0
+	for _, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return 0
+		}
+		total = total*60 + n
+	}
+	return total
 }

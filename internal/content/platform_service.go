@@ -186,6 +186,7 @@ func (s *PlatformService) resolveYouTubeHandle(handle string) (string, error) {
 	client := s.feed.httpClient()
 	req, _ := http.NewRequest(http.MethodGet, "https://www.youtube.com/"+handle, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("无法访问 YouTube: %w", err)
@@ -194,11 +195,21 @@ func (s *PlatformService) resolveYouTubeHandle(handle string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("无法访问 YouTube: HTTP %s", resp.Status)
 	}
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	// 页面里有两种写法：externalId 或 channelId
-	re := regexp.MustCompile(`"channelId":"([A-Za-z0-9_-]{20,})"`)
-	m := re.FindSubmatch(data)
-	if len(m) == 2 {
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	return extractYouTubeChannelID(data)
+}
+
+// extractYouTubeChannelID 从 YouTube 频道页面 HTML 中提取频道 ID
+// 依次尝试：externalId、channelId、canonical link
+func extractYouTubeChannelID(data []byte) (string, error) {
+	// YouTube 页面字段名经历过 channelId → externalId 的变更，两种都匹配
+	re := regexp.MustCompile(`"(?:channelId|externalId)":"([A-Za-z0-9_-]{20,})"`)
+	if m := re.FindSubmatch(data); len(m) == 2 {
+		return string(m[1]), nil
+	}
+	// 兜底：从 canonical link 提取 /channel/UCxxx
+	canonicalRe := regexp.MustCompile(`youtube\.com/channel/([A-Za-z0-9_-]{20,})`)
+	if m := canonicalRe.FindSubmatch(data); len(m) == 2 {
 		return string(m[1]), nil
 	}
 	return "", fmt.Errorf("未能从页面解析出频道 ID")
@@ -208,6 +219,7 @@ func (s *PlatformService) resolveYouTubeUser(userName string) (string, error) {
 	client := s.feed.httpClient()
 	req, _ := http.NewRequest(http.MethodGet, "https://www.youtube.com/user/"+userName, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("无法访问 YouTube: %w", err)
@@ -216,16 +228,12 @@ func (s *PlatformService) resolveYouTubeUser(userName string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("无法访问 YouTube: HTTP %s", resp.Status)
 	}
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	re := regexp.MustCompile(`"channelId":"([A-Za-z0-9_-]{20,})"`)
-	m := re.FindSubmatch(data)
-	if len(m) == 2 {
-		return string(m[1]), nil
-	}
-	return "", fmt.Errorf("未能从页面解析出频道 ID")
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	return extractYouTubeChannelID(data)
 }
 
-// bilibiliToRSS 拼 RSSHub URL
+// bilibiliToRSS 返回 B站 UP 主空间链接，拉取时由 FeedService 直接调官方 wbi 签名 API
+// 不再依赖 RSSHub（公共实例普遍 403）
 func (s *PlatformService) bilibiliToRSS(id string) (string, error) {
 	if id == "" {
 		return "", fmt.Errorf("无法从链接中提取 UP主 ID")
@@ -233,11 +241,7 @@ func (s *PlatformService) bilibiliToRSS(id string) (string, error) {
 	if strings.HasPrefix(id, "bv:") || strings.HasPrefix(id, "av:") {
 		return "", fmt.Errorf("视频链接不能直接订阅，请粘贴 UP主 空间链接")
 	}
-	base := strings.TrimSpace(s.GetRSSHubURL())
-	if base == "" {
-		base = "https://rsshub.app"
-	}
-	return strings.TrimRight(base, "/") + "/bilibili/user/video/" + id, nil
+	return "https://space.bilibili.com/" + id, nil
 }
 
 // --- RSSHub 实例配置 ---
