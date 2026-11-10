@@ -537,7 +537,7 @@ export default function FavoritesPage() {
           </div>
           {renderMedia(reviewClip)}
           {mediaError && <p className="text-xs text-destructive">{mediaError}</p>}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               variant="outline"
               className="border-red-500/50 text-red-600 hover:bg-red-500/10"
