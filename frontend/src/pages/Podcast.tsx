@@ -27,6 +27,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  PlayCircle,
 } from 'lucide-react'
 
 // 推荐订阅源，都是公开发布的 RSS，不依赖任何私有接口
@@ -406,66 +407,112 @@ export default function PodcastPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="py-0 overflow-hidden">
-                <div className="divide-y">
-                  {episodes.map((ep) => {
-                    const pct = downloadProgress[ep.id]
-                    const downloading = pct !== undefined
-                    const isOnlineOnly = !ep.audioUrl && !!ep.link
-                    return (
-                      <div key={ep.id} className="p-3 flex items-start gap-3 hover:bg-muted/40">
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <p className="text-sm font-medium line-clamp-2">
-                            {ep.title || '未命名节目'}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {episodes.map((ep) => {
+                  const pct = downloadProgress[ep.id]
+                  const downloading = pct !== undefined
+                  const isOnlineOnly = !ep.audioUrl && !!ep.link
+                  const thumb = ep.image || selectedFeed?.image || ''
+                  const meta = [formatDate(ep.publishedAt), formatDuration(ep.duration)]
+                    .filter(Boolean)
+                    .join(' · ')
+                  return (
+                    <div
+                      key={ep.id}
+                      className="group rounded-lg border bg-card overflow-hidden hover:border-primary/50 transition-colors"
+                    >
+                      {/* 缩略图 */}
+                      <div className="relative aspect-video bg-muted overflow-hidden">
+                        {thumb ? (
+                          <img
+                            src={thumb}
+                            alt={ep.title}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            onError={(e) => {
+                              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
+                            <PlayCircle className="h-10 w-10" />
+                          </div>
+                        )}
+                        {isOnlineOnly && (
+                          <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
+                            <PlayCircle className="h-3 w-3" />
+                            视频
+                          </span>
+                        )}
+                        {ep.localPath && (
+                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
+                            <Check className="h-3 w-3" />
+                            已下载
+                          </span>
+                        )}
+                        {downloading && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <div className="text-center text-white">
+                              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                              <span className="text-sm">{pct}%</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {/* 内容 */}
+                      <div className="p-3 space-y-2">
+                        <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">
+                          {ep.title || '未命名节目'}
+                        </p>
+                        {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
+                        {ep.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {ep.description}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            {[formatDate(ep.publishedAt), formatDuration(ep.duration)]
-                              .filter(Boolean)
-                              .join(' · ') || '未知发布时间'}
-                          </p>
-                          {ep.description && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {ep.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="shrink-0 flex items-center gap-1">
+                        )}
+                        <div className="pt-1">
                           {isOnlineOnly ? (
                             <Button
                               size="sm"
                               variant="outline"
+                              className="w-full"
                               onClick={() => handleOnlineListen(ep)}
                             >
                               <Play className="h-4 w-4" />
                               在线精听
                             </Button>
                           ) : ep.localPath ? (
-                            <>
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Check className="h-3 w-3" /> 已下载
-                              </span>
-                              <Button size="sm" variant="outline" onClick={() => handlePlay(ep)}>
-                                <Play className="h-4 w-4" />
-                                播放
-                              </Button>
-                            </>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => handlePlay(ep)}
+                            >
+                              <Play className="h-4 w-4" />
+                              播放
+                            </Button>
                           ) : downloading ? (
-                            <span className="text-xs text-muted-foreground flex items-center gap-1 w-16 justify-end">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              {pct}%
-                            </span>
+                            <Button size="sm" variant="outline" className="w-full" disabled>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              下载中 {pct}%
+                            </Button>
                           ) : (
-                            <Button size="sm" variant="outline" onClick={() => handleDownload(ep)}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => handleDownload(ep)}
+                            >
                               <Download className="h-4 w-4" />
                               下载
                             </Button>
                           )}
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              </Card>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         </div>

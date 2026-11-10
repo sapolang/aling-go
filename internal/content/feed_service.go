@@ -49,6 +49,7 @@ type FeedEpisode struct {
 	Duration    int    `json:"duration"`
 	PublishedAt string `json:"publishedAt"`
 	LocalPath   string `json:"localPath"`
+	Image       string `json:"image"`
 	// GUID 仅用于入库去重，不返回前端
 	GUID string `json:"-"`
 }
@@ -125,6 +126,7 @@ func (s *FeedService) ensureTables() error {
 	}
 	// 增量迁移：老版本没有 link 列
 	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN link TEXT DEFAULT ''`)
+	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN image TEXT DEFAULT ''`)
 	return nil
 }
 
@@ -207,16 +209,26 @@ type rssDocument struct {
 }
 
 type rssItem struct {
-	Title          string     `xml:"title"`
-	Description    string     `xml:"description"`
-	Link           string     `xml:"link"`
-	GUID           string     `xml:"guid"`
-	PubDate        string     `xml:"pubDate"`
-	Enclosure      rssEnclose `xml:"enclosure"`
-	ItunesDuration string     `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd duration"`
+	Title          string      `xml:"title"`
+	Description    string      `xml:"description"`
+	Link           string      `xml:"link"`
+	GUID           string      `xml:"guid"`
+	PubDate        string      `xml:"pubDate"`
+	Enclosure      rssEnclose  `xml:"enclosure"`
+	ItunesDuration string      `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd duration"`
+	ItunesImage    rssAttrHref `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd image"`
+	MediaThumbnail rssAttrURL  `xml:"http://search.yahoo.com/mrss/ thumbnail"`
 }
 
 type rssEnclose struct {
+	URL string `xml:"url,attr"`
+}
+
+type rssAttrHref struct {
+	Href string `xml:"href,attr"`
+}
+
+type rssAttrURL struct {
 	URL string `xml:"url,attr"`
 }
 
@@ -307,6 +319,10 @@ func parseRSS2(data []byte) (title, desc, image, siteURL string, episodes []Feed
 				guid = link
 			}
 		}
+		img := strings.TrimSpace(it.MediaThumbnail.URL)
+		if img == "" {
+			img = strings.TrimSpace(it.ItunesImage.Href)
+		}
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(it.Title),
 			Description: stripHTML(it.Description),
@@ -314,6 +330,7 @@ func parseRSS2(data []byte) (title, desc, image, siteURL string, episodes []Feed
 			Link:        link,
 			Duration:    parseDuration(it.ItunesDuration),
 			PublishedAt: normalizePubDate(it.PubDate),
+			Image:       img,
 			GUID:        guid,
 		})
 	}
@@ -367,12 +384,14 @@ func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []Feed
 		if description == "" {
 			description = e.Content
 		}
+		img := strings.TrimSpace(e.Group.Thumbnail.URL)
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(e.Title),
 			Description: stripHTML(description),
 			AudioURL:    audioURL,
 			Link:        link,
 			PublishedAt: normalizePubDate(pubDate),
+			Image:       img,
 			GUID:        guid,
 		})
 	}
@@ -589,7 +608,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 		limit = 100
 	}
 	rows, err := core.DB.Query(`
-		SELECT id, feed_id, title, description, audio_url, link, duration, published_at, local_path
+		SELECT id, feed_id, title, description, audio_url, link, duration, published_at, local_path, image
 		FROM feed_episodes WHERE feed_id = ?
 		ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
 		LIMIT ?`, feedID, limit)
@@ -602,7 +621,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 	episodes := []FeedEpisode{}
 	for rows.Next() {
 		var e FeedEpisode
-		if err := rows.Scan(&e.ID, &e.FeedID, &e.Title, &e.Description, &e.AudioURL, &e.Link, &e.Duration, &e.PublishedAt, &e.LocalPath); err != nil {
+		if err := rows.Scan(&e.ID, &e.FeedID, &e.Title, &e.Description, &e.AudioURL, &e.Link, &e.Duration, &e.PublishedAt, &e.LocalPath, &e.Image); err != nil {
 			continue
 		}
 		episodes = append(episodes, e)
@@ -656,22 +675,23 @@ func (s *FeedService) fetchFeed(feedURL string) (*feedMeta, error) {
 // saveEpisodes 幂等写入节目列表：已存在则更新元信息，保留本地下载路径
 func (s *FeedService) saveEpisodes(feedID int64, episodes []FeedEpisode) {
 	stmt, err := core.DB.Prepare(`
-		INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, link, duration, published_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, link, duration, published_at, image)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(feed_id, guid) DO UPDATE SET
 			title = excluded.title,
 			description = excluded.description,
 			audio_url = excluded.audio_url,
 			link = excluded.link,
 			duration = excluded.duration,
-			published_at = excluded.published_at`)
+			published_at = excluded.published_at,
+			image = excluded.image`)
 	if err != nil {
 		return
 	}
 	defer stmt.Close()
 
 	for _, e := range episodes {
-		_, _ = stmt.Exec(feedID, e.GUID, e.Title, e.Description, e.AudioURL, e.Link, e.Duration, e.PublishedAt)
+		_, _ = stmt.Exec(feedID, e.GUID, e.Title, e.Description, e.AudioURL, e.Link, e.Duration, e.PublishedAt, e.Image)
 	}
 }
 
@@ -1027,6 +1047,7 @@ func (s *FeedService) fetchBilibiliFeed(mid string) (*feedMeta, error) {
 					Description string `json:"description"`
 					Created     int64  `json:"created"`
 					Length      string `json:"length"`
+					Pic         string `json:"pic"`
 				} `json:"vlist"`
 			} `json:"list"`
 		} `json:"data"`
@@ -1041,12 +1062,17 @@ func (s *FeedService) fetchBilibiliFeed(mid string) (*feedMeta, error) {
 	episodes := make([]FeedEpisode, 0, len(apiResp.Data.List.Vlist))
 	for _, v := range apiResp.Data.List.Vlist {
 		link := "https://www.bilibili.com/video/" + v.BVID
+		pic := strings.TrimSpace(v.Pic)
+		if strings.HasPrefix(pic, "//") {
+			pic = "https:" + pic
+		}
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(v.Title),
 			Description: stripHTML(v.Description),
 			Link:        link,
 			Duration:    parseBilibiliDuration(v.Length),
 			PublishedAt: time.Unix(v.Created, 0).Format(time.RFC3339),
+			Image:       pic,
 			GUID:        v.BVID,
 		})
 	}

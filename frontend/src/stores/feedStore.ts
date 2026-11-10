@@ -22,6 +22,7 @@ export interface FeedEpisode {
   duration: number
   publishedAt: string
   localPath: string
+  image: string
 }
 
 interface FeedStore {
