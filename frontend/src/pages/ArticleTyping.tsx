@@ -706,7 +706,7 @@ export default function ArticleTypingPage() {
   }
 
   return (
-    <div className="w-full max-w-6xl xl:max-w-7xl mx-auto space-y-6 pt-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <Button variant="ghost" size="icon" onClick={() => navigate('/articles')}>

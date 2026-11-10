@@ -181,7 +181,7 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="max-w-2xl lg:max-w-3xl xl:max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => handleBack()}>
@@ -194,7 +194,7 @@ export default function ReviewPage() {
 
       {/* Card */}
       <div
-        className="min-h-[300px] rounded-xl border bg-card p-8 flex flex-col items-center justify-center cursor-pointer select-none"
+        className="min-h-[300px] rounded-xl border bg-card p-6 sm:p-8 flex flex-col items-center justify-center cursor-pointer select-none max-w-md lg:max-w-lg xl:max-w-xl mx-auto"
         onClick={() => setFlipped(!flipped)}
       >
         {!flipped ? (

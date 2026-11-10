@@ -6,6 +6,13 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select'
+import {
   Star,
   Play,
   Pause,
@@ -466,7 +473,7 @@ export default function FavoritesPage() {
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addTag()}
-              className="w-40"
+              className="w-32 sm:w-40"
             />
             <Button variant="outline" size="sm" onClick={addTag} disabled={!newTag.trim()}>
               <Plus className="h-4 w-4 mr-1" /> 添加标签
@@ -565,7 +572,7 @@ export default function FavoritesPage() {
           </p>
           <div className="flex gap-4 items-start">
             {/* 左侧词表 */}
-            <Card className="w-56 shrink-0 p-2">
+            <Card className="w-56 lg:w-64 shrink-0 hidden lg:block p-2">
               <button
                 className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between ${
                   effectiveWord === null ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
@@ -597,6 +604,33 @@ export default function FavoritesPage() {
 
             {/* 右侧片段区 */}
             <div className="flex-1 min-w-0 space-y-3">
+              {/* 窄窗下的分组选择器替代左侧词表 */}
+              <div className="lg:hidden">
+                <Select
+                  value={
+                    effectiveWord === null
+                      ? '__all__'
+                      : effectiveWord === ''
+                        ? '__ungrouped__'
+                        : effectiveWord
+                  }
+                  onValueChange={(v) =>
+                    setActiveWord(v === '__all__' ? null : v === '__ungrouped__' ? '' : v)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择分组" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部片段 ({clips.length})</SelectItem>
+                    {groups.map((g) => (
+                      <SelectItem key={g.word || '__ungrouped__'} value={g.word || '__ungrouped__'}>
+                        {g.word || '未归类'} ({g.items.length})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {playingClip && (
                 <Card className="p-3 space-y-2">
                   <div className="flex items-start justify-between gap-2">
