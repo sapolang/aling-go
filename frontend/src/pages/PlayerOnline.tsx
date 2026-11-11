@@ -119,27 +119,34 @@ export default function PlayerOnlinePage() {
   // 抓取字幕
   useEffect(() => {
     if (!isValid || !state?.episodeId) return
+    let active = true
+    setSubtitleResult(null)
     setLoadingSubs(true)
     setSubError('')
     window.api
       .platformGetSubtitles(state.episodeId)
       .then((res: PlatformSubtitleResult) => {
+        if (!active) return
         setSubtitleResult(res)
         if (!res.ok) setSubError(res.error || '字幕获取失败')
       })
       .catch(() => {
-        setSubError('字幕请求异常')
+        if (active) setSubError('字幕请求异常')
       })
       .finally(() => {
-        setLoadingSubs(false)
+        if (active) setLoadingSubs(false)
       })
+    return () => {
+      active = false
+    }
   }, [isValid, state?.episodeId])
 
   const fetchSubtitles = () => {
     // 重试按钮复用同一个逻辑
+    if (!state?.episodeId) return
+    setSubtitleResult(null)
     setLoadingSubs(true)
     setSubError('')
-    if (!state?.episodeId) return
     window.api
       .platformGetSubtitles(state.episodeId)
       .then((res: PlatformSubtitleResult) => {
@@ -359,13 +366,11 @@ export default function PlayerOnlinePage() {
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-sm gap-2 px-6 text-center">
                 <div className="flex items-center">
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  {platform === 'youtube' ? '正在获取字幕…' : '正在抓取字幕...'}
+                  正在获取字幕…
                 </div>
-                {platform === 'youtube' && (
-                  <p className="text-xs leading-relaxed">
-                    没有现成字幕时会下载音轨并本地转录，可能需要几分钟
-                  </p>
-                )}
+                <p className="text-xs leading-relaxed">
+                  没有现成字幕时会下载音轨并本地转录，可能需要几分钟
+                </p>
               </div>
             ) : subtitleResult?.cues && subtitleResult.cues.length > 0 ? (
               <div className="flex-1 overflow-y-auto py-1">

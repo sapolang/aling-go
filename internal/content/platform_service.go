@@ -7,10 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"aling-go/internal/core"
 
@@ -305,22 +308,36 @@ func (s *PlatformService) GetSubtitles(episodeID int64) string {
 	}
 
 	kind, id := DetectPlatform(link)
-	var (
-		cues []SubtitleCue
-		err  error
-	)
-	switch kind {
-	case platformYouTube:
-		cues, err = s.fetchYouTubeSubtitles(id)
-	case platformBilibili:
-		cues, err = s.fetchBilibiliSubtitles(id)
-	default:
-		err = fmt.Errorf("不支持的平台链接")
+	cacheKey := md5Hash("platform:" + kindLabel(kind) + ":" + id)
+	cachePath := filepath.Join(s.dataDir, "subtitle-cache", cacheKey+".json")
+
+	var cues []SubtitleCue
+	if raw, err := os.ReadFile(cachePath); err == nil {
+		var cached []SubtitleCue
+		if err := json.Unmarshal(raw, &cached); err == nil {
+			cues = cached
+		}
 	}
 
-	if err != nil {
-		b, _ := json.Marshal(map[string]any{"ok": false, "error": err.Error(), "platform": kindLabel(kind)})
-		return string(b)
+	if len(cues) == 0 {
+		var err error
+		switch kind {
+		case platformYouTube:
+			cues, err = s.fetchYouTubeSubtitles(id)
+		case platformBilibili:
+			cues, err = s.fetchBilibiliSubtitles(id)
+		default:
+			err = fmt.Errorf("不支持的平台链接")
+		}
+		if err != nil {
+			b, _ := json.Marshal(map[string]any{"ok": false, "error": err.Error(), "platform": kindLabel(kind)})
+			return string(b)
+		}
+
+		if raw, err := json.Marshal(cues); err == nil {
+			_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+			_ = os.WriteFile(cachePath, raw, 0644)
+		}
 	}
 
 	b, _ := json.Marshal(map[string]any{
@@ -363,13 +380,27 @@ func (s *PlatformService) fetchYouTubeSubtitles(id string) ([]SubtitleCue, error
 	return nil, fmt.Errorf("YouTube 无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
 }
 
-// fetchBilibiliSubtitles 抓 B站视频字幕
+// fetchBilibiliSubtitles 先抓 B站字幕，接口连续未返回字幕时下载音轨走本地 Whisper 转录。
 func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, error) {
 	bvid := strings.TrimPrefix(id, "bv:")
 	if bvid == "" || !strings.HasPrefix(bvid, "BV") {
 		return nil, fmt.Errorf("无效的 B站视频 ID")
 	}
 
+	cues, subErr := s.fetchBilibiliSubtitleTrack(bvid)
+	if subErr == nil && len(cues) > 0 {
+		return cues, nil
+	}
+	s.app.Logger.Info("B站字幕抓取失败，尝试本地转录", "bvid", bvid, "error", subErr)
+
+	cues, trErr := s.transcribeBilibiliAudio(bvid)
+	if trErr == nil && len(cues) > 0 {
+		return cues, nil
+	}
+	return nil, fmt.Errorf("B站无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
+}
+
+func (s *PlatformService) fetchBilibiliSubtitleTrack(bvid string) ([]SubtitleCue, error) {
 	// BV 转 cid（view 的 subtitle.list 为空，AI 字幕要走 player/v2）
 	client := s.feed.httpClient()
 	cookie := s.feed.bilibiliCookie()
@@ -388,7 +419,8 @@ func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, erro
 		return nil, fmt.Errorf("bilibili api error: %s", viewResp.Message)
 	}
 
-	// player/v2 才会返回 UP 主字幕与 AI 字幕（ai-zh / ai-en）
+	// player/v2 才会返回 UP 主字幕与 AI 字幕（ai-zh / ai-en）。
+	// 接口偶尔会返回空列表；AI 字幕接口实测会返回与视频不符的内容，这里只采用 UP 主上传的字幕。
 	var playerResp struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -403,8 +435,26 @@ func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, erro
 		} `json:"data"`
 	}
 	playerAPI := fmt.Sprintf("https://api.bilibili.com/x/player/v2?bvid=%s&cid=%d", bvid, viewResp.Data.Cid)
-	if err := fetchBiliJSON(client, cookie, playerAPI, &playerResp); err != nil {
-		return nil, fmt.Errorf("获取字幕列表失败: %w", err)
+	var fetchErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(300 * time.Millisecond)
+			playerResp.Data.Subtitle.Subtitles = nil
+		}
+		fetchErr = fetchBiliJSON(client, cookie, playerAPI, &playerResp)
+		hasOfficial := false
+		for _, sub := range playerResp.Data.Subtitle.Subtitles {
+			if !strings.HasPrefix(sub.Lan, "ai-") {
+				hasOfficial = true
+				break
+			}
+		}
+		if fetchErr == nil && playerResp.Code == 0 && hasOfficial {
+			break
+		}
+	}
+	if fetchErr != nil {
+		return nil, fmt.Errorf("获取字幕列表失败: %w", fetchErr)
 	}
 	if playerResp.Code != 0 {
 		return nil, fmt.Errorf("bilibili api error: %s", playerResp.Message)
@@ -414,15 +464,15 @@ func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, erro
 		return nil, fmt.Errorf("该视频没有可用字幕")
 	}
 
-	// 优先官方字幕（英文其次中文），没有官方字幕时退回 AI 字幕
+	// 优先 UP 主上传的英文字幕，其次中文和其他官方字幕
 	var target *string
-	choose := func(ai bool, langs ...string) {
+	choose := func(langs ...string) {
 		if target != nil {
 			return
 		}
 		for i := range subs {
 			lan := subs[i].Lan
-			if strings.HasPrefix(lan, "ai-") != ai {
+			if strings.HasPrefix(lan, "ai-") {
 				continue
 			}
 			for _, want := range langs {
@@ -433,13 +483,11 @@ func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, erro
 			}
 		}
 	}
-	choose(false, "en", "e")
-	choose(false, "zh")
-	choose(false, "*")
-	choose(true, "ai-en")
-	choose(true, "ai-zh")
+	choose("en", "e")
+	choose("zh")
+	choose("*")
 	if target == nil {
-		target = &subs[0].SubtitleURL
+		return nil, fmt.Errorf("没有 UP 主上传的字幕")
 	}
 
 	subURL := *target

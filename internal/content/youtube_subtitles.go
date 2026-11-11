@@ -122,6 +122,55 @@ func pickSubtitleFile(files []string) string {
 
 // transcribeYouTubeAudio 没有字幕时下载音轨，交给本地 Whisper 转录
 func (s *PlatformService) transcribeYouTubeAudio(videoID string) ([]SubtitleCue, error) {
+	return s.transcribeAudio("https://www.youtube.com/watch?v=" + videoID)
+}
+
+// transcribeBilibiliAudio 通过临时 Netscape Cookie 文件携带登录态，避免把 Cookie 暴露在进程参数中。
+func (s *PlatformService) transcribeBilibiliAudio(bvid string) ([]SubtitleCue, error) {
+	var extraArgs []string
+	cookiePath, err := bilibiliYtDlpCookieFile(s.feed.bilibiliCookie())
+	if err != nil {
+		return nil, err
+	}
+	if cookiePath != "" {
+		defer func() { _ = os.Remove(cookiePath) }()
+		extraArgs = append(extraArgs, "--cookies", cookiePath)
+	}
+	return s.transcribeAudio("https://www.bilibili.com/video/"+bvid, extraArgs...)
+}
+
+func bilibiliYtDlpCookieFile(cookie string) (string, error) {
+	if strings.TrimSpace(cookie) == "" {
+		return "", nil
+	}
+	var content strings.Builder
+	content.WriteString("# Netscape HTTP Cookie File\n")
+	for _, part := range strings.Split(cookie, ";") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 || kv[0] == "" || strings.ContainsAny(kv[0]+kv[1], "\t\r\n") {
+			continue
+		}
+		fmt.Fprintf(&content, ".bilibili.com\tTRUE\t/\tFALSE\t0\t%s\t%s\n", kv[0], kv[1])
+	}
+
+	f, err := os.CreateTemp("", "aling-bili-cookies-*")
+	if err != nil {
+		return "", fmt.Errorf("创建临时 Cookie 文件失败: %w", err)
+	}
+	path := f.Name()
+	if _, err := f.WriteString(content.String()); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return "", fmt.Errorf("写入临时 Cookie 文件失败: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("关闭临时 Cookie 文件失败: %w", err)
+	}
+	return path, nil
+}
+
+func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) ([]SubtitleCue, error) {
 	if s.whisper == nil {
 		return nil, fmt.Errorf("本地转录服务不可用")
 	}
@@ -132,17 +181,19 @@ func (s *PlatformService) transcribeYouTubeAudio(videoID string) ([]SubtitleCue,
 		return nil, fmt.Errorf("尚未下载 Whisper 模型，请先在设置里下载")
 	}
 
-	dir, err := os.MkdirTemp("", "aling-yt-audio-*")
+	dir, err := os.MkdirTemp("", "aling-online-audio-*")
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	if err := s.runYtDlp(15*time.Minute,
+	args := []string{
 		"-f", "bestaudio/best", "--no-part",
 		"-o", filepath.Join(dir, "audio.%(ext)s"),
-		"https://www.youtube.com/watch?v="+videoID,
-	); err != nil {
+	}
+	args = append(args, extraArgs...)
+	args = append(args, videoURL)
+	if err := s.runYtDlp(15*time.Minute, args...); err != nil {
 		return nil, err
 	}
 
