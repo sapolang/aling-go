@@ -370,66 +370,76 @@ func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, erro
 		return nil, fmt.Errorf("无效的 B站视频 ID")
 	}
 
-	// BV 转 aid + cid
+	// BV 转 cid（view 的 subtitle.list 为空，AI 字幕要走 player/v2）
 	client := s.feed.httpClient()
-	viewURL := fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?bvid=%s", bvid)
-	req, _ := http.NewRequest(http.MethodGet, viewURL, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120")
-	req.Header.Set("Referer", "https://www.bilibili.com")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("无法访问 B站: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	cookie := s.feed.bilibiliCookie()
 
 	var viewResp struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		Data    struct {
-			Aid      int `json:"aid"`
-			Cid      int `json:"cid"`
-			Subtitle struct {
-				List []struct {
-					SubtitleURL string `json:"subtitle_url"`
-					Lan         string `json:"lan"`
-					LanDoc      string `json:"lan_doc"`
-				} `json:"list"`
-			} `json:"subtitle"`
+			Cid int `json:"cid"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(raw, &viewResp); err != nil {
-		return nil, fmt.Errorf("解析 B站响应失败: %w", err)
+	if err := fetchBiliJSON(client, cookie, "https://api.bilibili.com/x/web-interface/view?bvid="+bvid, &viewResp); err != nil {
+		return nil, fmt.Errorf("无法访问 B站: %w", err)
 	}
 	if viewResp.Code != 0 {
 		return nil, fmt.Errorf("bilibili api error: %s", viewResp.Message)
 	}
 
-	if len(viewResp.Data.Subtitle.List) == 0 {
+	// player/v2 才会返回 UP 主字幕与 AI 字幕（ai-zh / ai-en）
+	var playerResp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Subtitle struct {
+				Subtitles []struct {
+					Lan         string `json:"lan"`
+					LanDoc      string `json:"lan_doc"`
+					SubtitleURL string `json:"subtitle_url"`
+				} `json:"subtitles"`
+			} `json:"subtitle"`
+		} `json:"data"`
+	}
+	playerAPI := fmt.Sprintf("https://api.bilibili.com/x/player/v2?bvid=%s&cid=%d", bvid, viewResp.Data.Cid)
+	if err := fetchBiliJSON(client, cookie, playerAPI, &playerResp); err != nil {
+		return nil, fmt.Errorf("获取字幕列表失败: %w", err)
+	}
+	if playerResp.Code != 0 {
+		return nil, fmt.Errorf("bilibili api error: %s", playerResp.Message)
+	}
+	subs := playerResp.Data.Subtitle.Subtitles
+	if len(subs) == 0 {
 		return nil, fmt.Errorf("该视频没有可用字幕")
 	}
 
-	// 优先选英文（e），其次选中文（zh-CN），第一个兜底
+	// 优先官方字幕（英文其次中文），没有官方字幕时退回 AI 字幕
 	var target *string
-	for i := range viewResp.Data.Subtitle.List {
-		sub := &viewResp.Data.Subtitle.List[i]
-		if sub.Lan == "e" || sub.Lan == "en" {
-			target = &sub.SubtitleURL
-			break
+	choose := func(ai bool, langs ...string) {
+		if target != nil {
+			return
 		}
-	}
-	if target == nil {
-		for i := range viewResp.Data.Subtitle.List {
-			sub := &viewResp.Data.Subtitle.List[i]
-			if strings.HasPrefix(sub.Lan, "zh") {
-				target = &sub.SubtitleURL
-				break
+		for i := range subs {
+			lan := subs[i].Lan
+			if strings.HasPrefix(lan, "ai-") != ai {
+				continue
+			}
+			for _, want := range langs {
+				if want == "*" || strings.HasPrefix(lan, want) {
+					target = &subs[i].SubtitleURL
+					return
+				}
 			}
 		}
 	}
+	choose(false, "en", "e")
+	choose(false, "zh")
+	choose(false, "*")
+	choose(true, "ai-en")
+	choose(true, "ai-zh")
 	if target == nil {
-		target = &viewResp.Data.Subtitle.List[0].SubtitleURL
+		target = &subs[0].SubtitleURL
 	}
 
 	subURL := *target
