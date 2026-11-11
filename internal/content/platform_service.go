@@ -18,21 +18,23 @@ import (
 )
 
 // PlatformService 处理 YouTube / Bilibili 的链接解析与字幕抓取。
-// 不依赖 yt-dlp：YouTube 用公开的 timedtext 端点拿自动字幕，B 站调官方公开 API。
+// YouTube 字幕交给 yt-dlp，视频没有字幕轨道时用本地 Whisper 转录音轨；B 站调官方公开 API。
 // 订阅层面仍然复用 FeedService，本服务只做「链接转换」和「字幕获取」两件事。
 type PlatformService struct {
 	app     *application.App
 	feed    *FeedService
+	whisper *WhisperService
 	dataDir string
 
 	mu        sync.RWMutex
 	rssHubURL string
 }
 
-func NewPlatformService(app *application.App, dataDir string, feed *FeedService) *PlatformService {
+func NewPlatformService(app *application.App, dataDir string, feed *FeedService, whisper *WhisperService) *PlatformService {
 	return &PlatformService{
 		app:     app,
 		feed:    feed,
+		whisper: whisper,
 		dataDir: dataDir,
 	}
 }
@@ -341,96 +343,24 @@ func kindLabel(k platformKind) string {
 	return "unknown"
 }
 
-// fetchYouTubeSubtitles 抓 YouTube 自动字幕
-// 公开 HTTP 请求 timedtext 端点，无 API Key
+// fetchYouTubeSubtitles 先由 yt-dlp 取现成字幕，取不到时下载音轨走本地 Whisper 转录
 func (s *PlatformService) fetchYouTubeSubtitles(id string) ([]SubtitleCue, error) {
 	videoID := strings.TrimPrefix(id, "video:")
 	if len(videoID) != 11 {
 		return nil, fmt.Errorf("无效的 YouTube 视频 ID")
 	}
 
-	// 第一步：拿 video 的 caption tracks 列表
-	client := s.feed.httpClient()
-	captionsURL := fmt.Sprintf(
-		"https://www.youtube.com/watch?v=%s&hl=en&persist_gl=1&gl=US",
-		videoID,
-	)
-	req, _ := http.NewRequest(http.MethodGet, captionsURL, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	cues, subErr := s.fetchYouTubeSubtitlesViaYtDlp(videoID)
+	if subErr == nil && len(cues) > 0 {
+		return cues, nil
+	}
+	s.app.Logger.Info("YouTube 字幕抓取失败，尝试本地转录", "videoId", videoID, "error", subErr)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("无法访问 YouTube: %w", err)
+	cues, trErr := s.transcribeYouTubeAudio(videoID)
+	if trErr == nil && len(cues) > 0 {
+		return cues, nil
 	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-
-	// 从页面里提取 timedtext URL
-	// "baseUrl":"https://www.youtube.com/api/timedtext?...}"
-	re := regexp.MustCompile(`"baseUrl":"([^"]+)"`)
-	m := re.FindSubmatch(data)
-	if len(m) != 2 {
-		return nil, fmt.Errorf("该视频没有可用字幕，可能没有自动字幕或地区限制")
-	}
-	baseURL, _ := url.QueryUnescape(string(m[1]))
-	// 加 fmt=json 参数拿 JSON 格式（默认是 XML）
-	sep := "?"
-	if strings.Contains(baseURL, "?") {
-		sep = "&"
-	}
-	jsonURL := baseURL + sep + "fmt=json3"
-
-	req2, _ := http.NewRequest(http.MethodGet, jsonURL, nil)
-	req2.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120")
-	resp2, err := client.Do(req2)
-	if err != nil {
-		return nil, fmt.Errorf("获取字幕失败: %w", err)
-	}
-	defer resp2.Body.Close()
-	if resp2.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("获取字幕失败: HTTP %s", resp2.Status)
-	}
-	raw, _ := io.ReadAll(resp2.Body)
-
-	return parseYouTubeTimedtext(raw)
-}
-
-type ytTimedtextResp struct {
-	Events []struct {
-		TStartMs    int64 `json:"tStartMs"`
-		DTurationMs int64 `json:"dDurationMs"`
-		Segs        []struct {
-			Utf8 string `json:"utf8"`
-		} `json:"segs"`
-	} `json:"events"`
-}
-
-func parseYouTubeTimedtext(raw []byte) ([]SubtitleCue, error) {
-	var resp ytTimedtextResp
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("解析字幕失败: %w", err)
-	}
-	cues := make([]SubtitleCue, 0, len(resp.Events))
-	for _, ev := range resp.Events {
-		text := ""
-		for _, seg := range ev.Segs {
-			text += seg.Utf8
-		}
-		text = strings.TrimSpace(text)
-		if text == "" {
-			continue
-		}
-		cues = append(cues, SubtitleCue{
-			Start: float64(ev.TStartMs) / 1000.0,
-			End:   float64(ev.TStartMs+ev.DTurationMs) / 1000.0,
-			Text:  text,
-		})
-	}
-	if len(cues) == 0 {
-		return nil, fmt.Errorf("该视频没有可用字幕条目")
-	}
-	return cues, nil
+	return nil, fmt.Errorf("YouTube 无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
 }
 
 // fetchBilibiliSubtitles 抓 B站视频字幕

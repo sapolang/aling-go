@@ -75,7 +75,9 @@ func newAppOptions(assets embed.FS) application.Options {
 func registerServices(app *application.App, dataDir, version string) {
 	librarySvc := content.NewLibraryService(app, dataDir)
 	feedSvc := content.NewFeedService(app, dataDir, librarySvc)
-	platformSvc := content.NewPlatformService(app, dataDir, feedSvc)
+	whisperSvc := content.NewWhisperService(app, dataDir)
+	// YouTube 无字幕时复用本地 Whisper 转录音轨
+	platformSvc := content.NewPlatformService(app, dataDir, feedSvc, whisperSvc)
 	mediaSvc := content.NewMediaService(app, dataDir)
 	// B 站 iframe 拿不到 Cookie，由 Go 侧带登录 Cookie 取流再本地代理
 	mediaSvc.SetBilibiliAuth(feedSvc.GetBilibiliCookie, feedSvc.HTTPClient)
@@ -88,7 +90,7 @@ func registerServices(app *application.App, dataDir, version string) {
 		application.NewService(feedSvc),
 		application.NewService(platformSvc),
 		application.NewService(mediaSvc),
-		application.NewService(content.NewWhisperService(app, dataDir)),
+		application.NewService(whisperSvc),
 		application.NewService(system.NewPlatformService(app, version)),
 		application.NewService(system.NewBackupService(app, dataDir)),
 		application.NewService(system.NewUpdateService(app, version)),

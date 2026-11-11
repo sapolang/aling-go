@@ -356,9 +356,16 @@ export default function PlayerOnlinePage() {
                 </Button>
               </div>
             ) : loadingSubs ? (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                正在抓取字幕...
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-sm gap-2 px-6 text-center">
+                <div className="flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  {platform === 'youtube' ? '正在获取字幕…' : '正在抓取字幕...'}
+                </div>
+                {platform === 'youtube' && (
+                  <p className="text-xs leading-relaxed">
+                    没有现成字幕时会下载音轨并本地转录，可能需要几分钟
+                  </p>
+                )}
               </div>
             ) : subtitleResult?.cues && subtitleResult.cues.length > 0 ? (
               <div className="flex-1 overflow-y-auto py-1">
