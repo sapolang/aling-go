@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -62,6 +63,7 @@ func (s *MediaService) ServiceShutdown() error {
 func (s *MediaService) startMediaServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media/", s.handleMediaStream)
+	mux.HandleFunc("/yt-embed", s.handleYTEmbed)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -151,6 +153,86 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 	defer f.Close()
 	_, _ = io.Copy(w, f)
 }
+
+// --- YouTube 中转页 ---
+
+var ytVideoIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+
+// handleYTEmbed 输出一个 http 源下的中转页再嵌入 YouTube 播放器。
+// WKWebView 在 wails:// 页面里加载子 frame 不带 Referer，YouTube 会报错误 153，
+// 通过 127.0.0.1 的 http 页面中转后 Referer 正常，同时把播放进度回传给外层页面。
+func (s *MediaService) handleYTEmbed(w http.ResponseWriter, r *http.Request) {
+	videoID := r.URL.Query().Get("v")
+	if !ytVideoIDRe.MatchString(videoID) {
+		http.Error(w, "invalid video id", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	// 页面自身从 URL 读取 videoId，避免把请求参数拼接进 HTML
+	_, _ = io.WriteString(w, ytEmbedPage)
+}
+
+const ytEmbedPage = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  var player = null;
+  var videoId = new URLSearchParams(location.search).get('v') || '';
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) videoId = '';
+
+  function postStatus() {
+    if (!player || typeof player.getCurrentTime !== 'function') return;
+    parent.postMessage({
+      source: 'yt-embed',
+      event: 'status',
+      currentTime: player.getCurrentTime() || 0,
+      duration: player.getDuration() || 0,
+      state: player.getPlayerState()
+    }, '*');
+  }
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      videoId: videoId,
+      playerVars: {
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        origin: location.origin
+      },
+      events: {
+        onReady: function () {
+          postStatus();
+          setInterval(postStatus, 250);
+        },
+        onStateChange: postStatus
+      }
+    });
+  }
+
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.source !== 'aling' || !player) return;
+    if (d.command === 'play') player.playVideo();
+    else if (d.command === 'pause') player.pauseVideo();
+    postStatus();
+  });
+</script>
+</body>
+</html>`
 
 // --- Thumbnail ---
 

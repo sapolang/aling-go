@@ -35,9 +35,11 @@ function extractID(link: string): { platform: Platform | null; id: string } {
   return { platform: null, id: '' }
 }
 
-function buildEmbedURL(platform: Platform, id: string): string {
+function buildEmbedURL(platform: Platform, id: string, mediaPort: number): string {
   if (platform === 'youtube') {
-    return `https://www.youtube.com/embed/${id}?enablejsapi=1&rel=0&modestbranding=1&playerapiid=ytplayer`
+    // 通过本地 http 中转页嵌入：wails:// 页面直接嵌 YouTube 会因缺少 Referer 报错误 153
+    if (!mediaPort) return ''
+    return `http://127.0.0.1:${mediaPort}/yt-embed?v=${id}`
   }
   return `//player.bilibili.com/player.html?bvid=${id}&page=1&high_quality=1&danmaku=0&autoplay=1`
 }
@@ -62,13 +64,17 @@ export default function PlayerOnlinePage() {
   const [loadingSubs, setLoadingSubs] = useState(false)
   const [subError, setSubError] = useState<string>('')
 
-  // 播放时间（通过 iframe postMessage 或轮询获取）
+  // 播放时间（由本地中转页 postMessage 回传）
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [mediaPort, setMediaPort] = useState(0)
 
-  const iframeRef = useRef<HTMLIFrameElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const subtitleRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  useEffect(() => {
+    window.api.getMediaPort().then(setMediaPort)
+  }, [])
 
   // 抓取字幕
   useEffect(() => {
@@ -108,7 +114,7 @@ export default function PlayerOnlinePage() {
       })
   }
 
-  // YouTube iframe player API —— 监听 postMessage 获取播放进度
+  // 本地中转页通过 postMessage 回传播放进度与时长
   useEffect(() => {
     if (!isValid || platform !== 'youtube') return
 
@@ -121,75 +127,17 @@ export default function PlayerOnlinePage() {
           return
         }
       }
-      if (!data || typeof data !== 'object') return
-      if (data.event === 'onReady') {
-        const iframe = iframeRef.current
-        if (iframe?.contentWindow) {
-          iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 0 }), '*')
-        }
+      if (!data || data.source !== 'yt-embed' || data.event !== 'status') return
+      if (typeof data.currentTime === 'number') {
+        setCurrentTime(data.currentTime)
+      }
+      if (typeof data.duration === 'number' && data.duration > 0) {
+        setDuration(data.duration)
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [isValid, platform])
-
-  // 轮询 YouTube iframe 获取当前播放时间
-  useEffect(() => {
-    if (!isValid || platform !== 'youtube') return
-
-    let timer: ReturnType<typeof setInterval> | null = null
-    const poll = () => {
-      const iframe = iframeRef.current
-      if (!iframe?.contentWindow) return
-      iframe.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'getCurrentTime', args: [] }),
-        '*',
-      )
-      iframe.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'getDuration', args: [] }),
-        '*',
-      )
-    }
-
-    const waitAndPoll = setTimeout(() => {
-      poll()
-      timer = setInterval(poll, 500)
-    }, 3000)
-
-    return () => {
-      clearTimeout(waitAndPoll)
-      if (timer) clearInterval(timer)
-    }
-  }, [isValid, platform])
-
-  // 处理 YouTube postMessage 响应
-  useEffect(() => {
-    if (!isValid || platform !== 'youtube') return
-
-    const handleResponse = (event: MessageEvent) => {
-      let data: any = event.data
-      if (typeof data === 'string') {
-        try {
-          data = JSON.parse(data)
-        } catch {
-          return
-        }
-      }
-      if (!data || typeof data !== 'object') return
-
-      if (data.event === 'infoDelivery') {
-        if (typeof data.currentTime === 'number') {
-          setCurrentTime(data.currentTime)
-        }
-        if (typeof data.duration === 'number') {
-          setDuration(data.duration)
-        }
-      }
-    }
-
-    window.addEventListener('message', handleResponse)
-    return () => window.removeEventListener('message', handleResponse)
   }, [isValid, platform])
 
   // 高亮当前字幕：用 useMemo 计算，避免在 effect 里 setState
@@ -246,7 +194,7 @@ export default function PlayerOnlinePage() {
     )
   }
 
-  const iframeURL = buildEmbedURL(platform!, id)
+  const iframeURL = buildEmbedURL(platform!, id, mediaPort)
 
   return (
     <div className="flex flex-col h-full">
@@ -275,7 +223,6 @@ export default function PlayerOnlinePage() {
           <Card className="flex-1 overflow-hidden">
             <CardContent className="p-0 h-full">
               <iframe
-                ref={iframeRef}
                 src={iframeURL}
                 title={state.title || '在线播放器'}
                 className="w-full h-full border-0 bg-black"
