@@ -426,6 +426,10 @@ func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []Feed
 	title = strings.TrimSpace(feed.Title)
 	desc = stripHTML(feed.Subtitle)
 	image = strings.TrimSpace(feed.Logo)
+	// YouTube 的 Atom 源没有 <logo>，用首个视频的封面兜底
+	if image == "" && len(feed.Entries) > 0 {
+		image = strings.TrimSpace(feed.Entries[0].Group.Thumbnail.URL)
+	}
 	for _, l := range feed.Links {
 		if l.Rel == "alternate" || l.Rel == "" {
 			siteURL = strings.TrimSpace(l.Href)
@@ -1145,9 +1149,31 @@ func (s *FeedService) fetchBilibiliFeed(mid string) (*feedMeta, error) {
 	return &feedMeta{
 		title:    "Bilibili UP主 " + mid,
 		desc:     "B站视频列表",
+		image:    s.bilibiliUploaderFace(mid),
 		siteURL:  "https://space.bilibili.com/" + mid,
 		episodes: episodes,
 	}, nil
+}
+
+// bilibiliUploaderFace 取 UP 主头像作为订阅列表封面，失败时返回空串（前端回退到通用图标）
+func (s *FeedService) bilibiliUploaderFace(mid string) string {
+	var out struct {
+		Code int `json:"code"`
+		Data struct {
+			Card struct {
+				Face string `json:"face"`
+			} `json:"card"`
+		} `json:"data"`
+	}
+	api := "https://api.bilibili.com/x/web-interface/card?mid=" + url.QueryEscape(mid)
+	if err := fetchBiliJSON(s.httpClient(), s.bilibiliCookie(), api, &out); err != nil || out.Code != 0 {
+		return ""
+	}
+	face := strings.TrimSpace(out.Data.Card.Face)
+	if strings.HasPrefix(face, "http://") {
+		face = "https://" + strings.TrimPrefix(face, "http://")
+	}
+	return face
 }
 
 // bilibiliRiskHint 生成风控相关提示：未配置登录 Cookie 时引导扫码登录
