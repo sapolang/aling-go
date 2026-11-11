@@ -267,7 +267,8 @@ type atomThumbnail struct {
 }
 
 type atomMediaContent struct {
-	URL string `xml:"url,attr"`
+	URL  string `xml:"url,attr"`
+	Type string `xml:"type,attr"`
 }
 
 // parseRSS 解析 RSS 2.0 或 Atom 1.0 文档，返回订阅元信息与节目列表
@@ -371,6 +372,10 @@ func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []Feed
 			}
 		}
 		audioURL := strings.TrimSpace(e.Group.Content.URL)
+		// YouTube 的 media:content 是视频播放页地址，直接下载只会拿到 HTML
+		if isVideoMediaURL(audioURL, e.Group.Content.Type) {
+			audioURL = ""
+		}
 		if audioURL == "" && link == "" {
 			continue
 		}
@@ -633,6 +638,12 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 		if err := rows.Scan(&e.ID, &e.FeedID, &e.Title, &e.Description, &e.AudioURL, &e.Link, &e.Duration, &e.PublishedAt, &e.LocalPath, &e.Image); err != nil {
 			continue
 		}
+		// 兼容历史数据：旧版本把 YouTube 播放页当成了音频地址，下载结果是网页；
+		// 没有音频直链的在线节目同样不应展示"已下载"
+		if isVideoMediaURL(e.AudioURL, "") || (e.Link != "" && e.AudioURL == "") {
+			e.AudioURL = ""
+			e.LocalPath = ""
+		}
 		episodes = append(episodes, e)
 	}
 	b, _ := json.Marshal(map[string]any{"episodes": episodes})
@@ -762,6 +773,12 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 	if resp.StatusCode != http.StatusOK {
 		return episodeResultJSON(episodeDownloadResult{Error: downloadStatusError(resp.StatusCode, resp.Status)})
 	}
+	// 有些视频源返回 200 但内容其实是网页，直接落盘会得到一个打不开的假音频
+	if isWebPageContentType(resp.Header.Get("Content-Type")) {
+		return episodeResultJSON(episodeDownloadResult{
+			Error: "该节目没有可直接下载的音频文件（服务器返回的是网页），请在浏览器中打开或使用在线精听",
+		})
+	}
 
 	ext := audioExtFromURL(audioURL, resp.Header.Get("Content-Type"))
 	name := sanitizeFileName(title)
@@ -825,6 +842,42 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 	s.app.Event.Emit("feed:download-progress", map[string]any{"episodeId": episodeID, "pct": 100})
 
 	return episodeResultJSON(episodeDownloadResult{OK: true, Path: dest})
+}
+
+// isVideoMediaURL 判断 media:content 指向的是视频播放页而非音频直链。
+// YouTube/B站 的视频页需要走在线精听，下载下来只会得到 HTML。
+func isVideoMediaURL(rawURL, mediaType string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return false
+	}
+	mt := strings.ToLower(strings.TrimSpace(mediaType))
+	if strings.HasPrefix(mt, "video/") || strings.Contains(mt, "shockwave-flash") {
+		return true
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	for _, videoHost := range []string{"youtube.com", "youtu.be", "bilibili.com", "b23.tv"} {
+		if host == videoHost || strings.HasSuffix(host, "."+videoHost) {
+			return !audioExts[strings.TrimPrefix(strings.ToLower(filepath.Ext(u.Path)), ".")]
+		}
+	}
+	return false
+}
+
+// isWebPageContentType 判断响应是否为网页而非音频文件
+func isWebPageContentType(contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return strings.HasPrefix(ct, "text/") ||
+		strings.Contains(ct, "html") ||
+		strings.Contains(ct, "json") ||
+		strings.Contains(ct, "xml")
 }
 
 // audioExtFromURL 依据 URL 后缀或 Content-Type 判断音频扩展名
