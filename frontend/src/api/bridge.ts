@@ -73,6 +73,7 @@ import {
   GetVideoThumbnail,
   GetWaveformData,
   GetMediaPort,
+  GetBilibiliStream,
 } from '../../bindings/aling-go/internal/content/mediaservice'
 
 import {
@@ -84,6 +85,10 @@ import {
   EpisodeDownload,
   GetProxy as FeedGetProxy,
   SetProxy as FeedSetProxy,
+  GetBilibiliCookie as FeedGetBilibiliCookie,
+  SetBilibiliCookie as FeedSetBilibiliCookie,
+  StartBilibiliQRLogin as FeedStartBilibiliQRLogin,
+  PollBilibiliQRLogin as FeedPollBilibiliQRLogin,
 } from '../../bindings/aling-go/internal/content/feedservice'
 
 import {
@@ -214,6 +219,13 @@ export function initBridge(): void {
     episodeDownload: (id: number) => EpisodeDownload(id).then((s: string) => JSON.parse(s)),
     feedGetProxy: () => FeedGetProxy(),
     feedSetProxy: (proxy: string) => FeedSetProxy(proxy).then((s: string) => JSON.parse(s)),
+    feedGetBilibiliCookie: () => FeedGetBilibiliCookie(),
+    feedSetBilibiliCookie: (cookie: string) =>
+      FeedSetBilibiliCookie(cookie).then((s: string) => JSON.parse(s)),
+    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid).then((s: string) => JSON.parse(s)),
+    feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin().then((s: string) => JSON.parse(s)),
+    feedPollBilibiliQRLogin: (key: string) =>
+      FeedPollBilibiliQRLogin(key).then((s: string) => JSON.parse(s)),
     feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => {
       Events.On('feed:download-progress', (e: any) => cb(e.data))
       return () => Events.Off('feed:download-progress')

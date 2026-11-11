@@ -18,6 +18,16 @@ interface OnlinePlayerState {
   title: string
 }
 
+interface BiliStreamResult {
+  ok: boolean
+  url: string
+  quality: number
+  qualityLabel: string
+  duration: number
+  title: string
+  error?: string
+}
+
 // 从 YouTube/B站 视频页面 URL 提取 videoId / bvid
 function extractID(link: string): { platform: Platform | null; id: string } {
   // YouTube
@@ -35,13 +45,10 @@ function extractID(link: string): { platform: Platform | null; id: string } {
   return { platform: null, id: '' }
 }
 
-function buildEmbedURL(platform: Platform, id: string, mediaPort: number): string {
-  if (platform === 'youtube') {
-    // 通过本地 http 中转页嵌入：wails:// 页面直接嵌 YouTube 会因缺少 Referer 报错误 153
-    if (!mediaPort) return ''
-    return `http://127.0.0.1:${mediaPort}/yt-embed?v=${id}`
-  }
-  return `//player.bilibili.com/player.html?bvid=${id}&page=1&high_quality=1&danmaku=0&autoplay=1`
+function buildEmbedURL(id: string, mediaPort: number): string {
+  // 通过本地 http 中转页嵌入：wails:// 页面直接嵌 YouTube 会因缺少 Referer 报错误 153
+  if (!mediaPort) return ''
+  return `http://127.0.0.1:${mediaPort}/yt-embed?v=${id}`
 }
 
 function formatTime(seconds: number): string {
@@ -72,9 +79,42 @@ export default function PlayerOnlinePage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const subtitleRefs = useRef<(HTMLDivElement | null)[]>([])
 
+  const isBilibili = platform === 'bilibili'
+
+  // B 站视频流：Go 侧带登录 Cookie 取流后由本地媒体服务代理，页面内直接用 <video> 播放
+  const [streamURL, setStreamURL] = useState('')
+  const [streamQuality, setStreamQuality] = useState('')
+  const [streamError, setStreamError] = useState('')
+  const [loadingStream, setLoadingStream] = useState(false)
+
   useEffect(() => {
     window.api.getMediaPort().then(setMediaPort)
   }, [])
+
+  const fetchBilibiliStream = () => {
+    if (!isBilibili || !id) return
+    setLoadingStream(true)
+    setStreamError('')
+    window.api
+      .getBilibiliStream(id)
+      .then((res: BiliStreamResult) => {
+        if (!res.ok) {
+          setStreamError(res.error || '获取播放地址失败')
+          return
+        }
+        setStreamURL(res.url)
+        setStreamQuality(res.qualityLabel)
+        if (res.duration > 0) setDuration(res.duration)
+      })
+      .catch(() => setStreamError('获取播放地址异常'))
+      .finally(() => setLoadingStream(false))
+  }
+
+  useEffect(() => {
+    if (!isValid || !isBilibili) return
+    fetchBilibiliStream()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isValid, isBilibili, id])
 
   // 抓取字幕
   useEffect(() => {
@@ -194,7 +234,7 @@ export default function PlayerOnlinePage() {
     )
   }
 
-  const iframeURL = buildEmbedURL(platform!, id, mediaPort)
+  const iframeURL = platform === 'youtube' ? buildEmbedURL(id, mediaPort) : ''
 
   return (
     <div className="flex flex-col h-full">
@@ -222,21 +262,66 @@ export default function PlayerOnlinePage() {
         <div className="flex-1 min-h-0 min-w-0 flex flex-col">
           <Card className="flex-1 overflow-hidden">
             <CardContent className="p-0 h-full">
-              <iframe
-                src={iframeURL}
-                title={state.title || '在线播放器'}
-                className="w-full h-full border-0 bg-black"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
+              {isBilibili ? (
+                streamError ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+                    <p className="text-sm text-destructive max-w-sm">{streamError}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={fetchBilibiliStream}
+                      disabled={loadingStream}
+                    >
+                      {loadingStream ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      重试
+                    </Button>
+                  </div>
+                ) : loadingStream || !streamURL ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    正在获取播放地址…
+                  </div>
+                ) : (
+                  <video
+                    src={streamURL}
+                    controls
+                    autoPlay
+                    className="w-full h-full bg-black"
+                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    onLoadedMetadata={(e) => {
+                      const d = e.currentTarget.duration
+                      if (d && Number.isFinite(d)) setDuration(d)
+                    }}
+                  />
+                )
+              ) : iframeURL ? (
+                <iframe
+                  src={iframeURL}
+                  title={state.title || '在线播放器'}
+                  className="w-full h-full border-0 bg-black"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  正在准备播放器…
+                </div>
+              )}
             </CardContent>
           </Card>
-          {currentTime > 0 && (
+          {(currentTime > 0 || duration > 0) && (
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
               <span>{formatTime(currentTime)}</span>
               <span>/</span>
               <span>{formatTime(duration)}</span>
-              <span className="ml-auto">{platform === 'youtube' ? 'YouTube' : 'Bilibili'}</span>
+              <span className="ml-auto">
+                {platform === 'youtube'
+                  ? 'YouTube'
+                  : streamQuality
+                    ? `Bilibili · ${streamQuality}`
+                    : 'Bilibili'}
+              </span>
             </div>
           )}
         </div>

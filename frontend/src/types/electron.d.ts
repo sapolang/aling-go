@@ -255,6 +255,31 @@ export interface ElectronAPI {
   episodeDownload: (id: number) => Promise<{ ok: boolean; error: string; path: string }>
   feedGetProxy: () => Promise<string>
   feedSetProxy: (proxy: string) => Promise<FeedActionResult>
+  feedGetBilibiliCookie: () => Promise<string>
+  feedSetBilibiliCookie: (cookie: string) => Promise<FeedActionResult>
+  getBilibiliStream: (bvid: string) => Promise<{
+    ok: boolean
+    url: string
+    quality: number
+    qualityLabel: string
+    duration: number
+    title: string
+    error?: string
+  }>
+  feedStartBilibiliQRLogin: () => Promise<{
+    ok: boolean
+    url?: string
+    key?: string
+    error?: string
+  }>
+  feedPollBilibiliQRLogin: (key: string) => Promise<{
+    ok: boolean
+    url?: string
+    key?: string
+    status?: string
+    message?: string
+    error?: string
+  }>
   feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => () => void
 
   // Platform helpers (YouTube / Bilibili)

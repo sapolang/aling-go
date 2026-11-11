@@ -76,6 +76,9 @@ func registerServices(app *application.App, dataDir, version string) {
 	librarySvc := content.NewLibraryService(app, dataDir)
 	feedSvc := content.NewFeedService(app, dataDir, librarySvc)
 	platformSvc := content.NewPlatformService(app, dataDir, feedSvc)
+	mediaSvc := content.NewMediaService(app, dataDir)
+	// B 站 iframe 拿不到 Cookie，由 Go 侧带登录 Cookie 取流再本地代理
+	mediaSvc.SetBilibiliAuth(feedSvc.GetBilibiliCookie, feedSvc.HTTPClient)
 	services := []application.Service{
 		application.NewService(study.NewWordService(app)),
 		application.NewService(study.NewDictService(app)),
@@ -84,7 +87,7 @@ func registerServices(app *application.App, dataDir, version string) {
 		application.NewService(librarySvc),
 		application.NewService(feedSvc),
 		application.NewService(platformSvc),
-		application.NewService(content.NewMediaService(app, dataDir)),
+		application.NewService(mediaSvc),
 		application.NewService(content.NewWhisperService(app, dataDir)),
 		application.NewService(system.NewPlatformService(app, version)),
 		application.NewService(system.NewBackupService(app, dataDir)),

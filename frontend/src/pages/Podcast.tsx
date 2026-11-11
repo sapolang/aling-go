@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { confirmDialog, showToast } from '@/components/feedback'
+import { QRCodeSVG } from 'qrcode.react'
 import { useFeedStore, type FeedEpisode } from '@/stores/feedStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import {
@@ -83,7 +84,17 @@ export default function PodcastPage() {
   const [feedURL, setFeedURL] = useState('')
   const [adding, setAdding] = useState(false)
   const [proxy, setProxy] = useState('')
+  const [biliCookie, setBiliCookie] = useState('')
   const [savingProxy, setSavingProxy] = useState(false)
+
+  // B站 扫码登录
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrURL, setQrURL] = useState('')
+  const [qrKey, setQrKey] = useState('')
+  const [qrStatus, setQrStatus] = useState<
+    'loading' | 'waiting' | 'scanned' | 'expired' | 'failed'
+  >('loading')
+  const [qrError, setQrError] = useState('')
 
   // YouTube/B站 链接转换
   const [showPlatformConvert, setShowPlatformConvert] = useState(false)
@@ -145,6 +156,7 @@ export default function PodcastPage() {
 
   const openProxyDialog = async () => {
     setProxy(await window.api.feedGetProxy())
+    setBiliCookie(await window.api.feedGetBilibiliCookie())
     setShowProxy(true)
   }
 
@@ -152,16 +164,86 @@ export default function PodcastPage() {
     setSavingProxy(true)
     try {
       const res = await window.api.feedSetProxy(proxy)
-      if (res?.ok) {
-        showToast('代理设置已保存', 'success')
+      if (!res?.ok) {
+        showToast(res?.error || '保存失败', 'error')
+        return
+      }
+      const cookieRes = await window.api.feedSetBilibiliCookie(biliCookie)
+      if (cookieRes?.ok) {
+        showToast('网络与 Cookie 设置已保存', 'success')
         setShowProxy(false)
       } else {
-        showToast(res?.error || '保存失败', 'error')
+        showToast(cookieRes?.error || '保存失败', 'error')
       }
     } finally {
       setSavingProxy(false)
     }
   }
+
+  const resetQR = () => {
+    setQrOpen(false)
+    setQrURL('')
+    setQrKey('')
+    setQrStatus('loading')
+    setQrError('')
+  }
+
+  const startQR = async () => {
+    setQrOpen(true)
+    setQrStatus('loading')
+    setQrError('')
+    setQrURL('')
+    setQrKey('')
+    const res = await window.api.feedStartBilibiliQRLogin()
+    if (!res?.ok || !res.url || !res.key) {
+      setQrStatus('failed')
+      setQrError(res?.error || '生成二维码失败')
+      return
+    }
+    setQrURL(res.url)
+    setQrKey(res.key)
+    setQrStatus('waiting')
+  }
+
+  // 扫码后每 2 秒轮询一次登录状态
+  useEffect(() => {
+    if (!qrOpen || !qrKey) return
+    let cancelled = false
+    let timer: number | undefined
+    const tick = async () => {
+      const res = await window.api.feedPollBilibiliQRLogin(qrKey)
+      if (cancelled) return
+      if (res?.ok && res.status === 'success') {
+        showToast('B站 登录成功', 'success')
+        setBiliCookie(await window.api.feedGetBilibiliCookie())
+        resetQR()
+        return
+      }
+      if (res?.status === 'expired' || res?.status === 'failed' || !res?.ok) {
+        setQrStatus(res?.status === 'expired' ? 'expired' : 'failed')
+        setQrError(res?.error || '')
+        return
+      }
+      setQrStatus(res.status === 'scanned' ? 'scanned' : 'waiting')
+      timer = window.setTimeout(tick, 2000)
+    }
+    timer = window.setTimeout(tick, 1500)
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [qrOpen, qrKey])
+
+  const qrStatusText =
+    qrStatus === 'loading'
+      ? '正在生成二维码…'
+      : qrStatus === 'waiting'
+        ? '请使用 B站 App 扫码'
+        : qrStatus === 'scanned'
+          ? '已扫码，请在手机上确认登录'
+          : qrStatus === 'expired'
+            ? '二维码已过期，请刷新'
+            : qrError || '登录失败，请重试'
 
   const playLocalFile = async (path: string) => {
     player.setFilePath(path)
@@ -593,10 +675,16 @@ export default function PodcastPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showProxy} onOpenChange={setShowProxy}>
+      <Dialog
+        open={showProxy}
+        onOpenChange={(open) => {
+          setShowProxy(open)
+          if (!open) resetQR()
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>网络代理</DialogTitle>
+            <DialogTitle>网络与 Cookie</DialogTitle>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="feed-proxy">代理地址</Label>
@@ -610,8 +698,67 @@ export default function PodcastPage() {
               仅用于拉取订阅源和下载节目音频，留空表示直连
             </p>
           </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label>B站 登录态</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={qrOpen && qrStatus === 'loading'}
+                onClick={startQR}
+              >
+                {qrOpen && qrStatus === 'loading' ? (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                {qrOpen ? '刷新二维码' : '扫码登录'}
+              </Button>
+            </div>
+            {qrOpen ? (
+              <div className="flex flex-col items-center gap-2 rounded-md border p-3">
+                {qrURL ? (
+                  <QRCodeSVG value={qrURL} size={160} />
+                ) : (
+                  <div className="flex h-40 w-40 items-center justify-center text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                )}
+                <p
+                  className={`text-xs ${
+                    qrStatus === 'expired' || qrStatus === 'failed'
+                      ? 'text-destructive'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {qrStatusText}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                扫码登录后可稳定拉取 B站 订阅源列表，登录态仅保存在本机。
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bili-cookie">B站 Cookie（可选）</Label>
+            <Input
+              id="bili-cookie"
+              placeholder="SESSDATA=xxx; bili_jct=xxx"
+              value={biliCookie}
+              onChange={(e) => setBiliCookie(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              扫码成功后会自动填入。也可以手动在浏览器登录 B站 后按 F12 → Application →
+              Cookies，复制 SESSDATA（建议连同 bili_jct、buvid3）粘贴到这里。
+            </p>
+          </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowProxy(false)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowProxy(false)
+                resetQR()
+              }}
+            >
               取消
             </Button>
             <Button disabled={savingProxy} onClick={handleSaveProxy}>

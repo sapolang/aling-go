@@ -40,6 +40,9 @@ type MediaService struct {
 	dataDir       string
 	mediaPort     int
 	mediaListener net.Listener
+	// B站取流依赖订阅 Cookie 与带代理配置的 HTTP 客户端，由 bootstrap 注入
+	biliCookieFn func() string
+	biliClientFn func() *http.Client
 }
 
 func NewMediaService(app *application.App, dataDir string) *MediaService {
@@ -64,6 +67,7 @@ func (s *MediaService) startMediaServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media/", s.handleMediaStream)
 	mux.HandleFunc("/yt-embed", s.handleYTEmbed)
+	mux.HandleFunc("/bili-stream", s.handleBiliStream)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
