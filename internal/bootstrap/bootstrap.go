@@ -106,6 +106,7 @@ func newMainWindow(app *application.App) *application.WebviewWindow {
 		Title:            "语练",
 		Width:            1200,
 		Height:           720,
+		StartState:       application.WindowStateMaximised,
 		MinWidth:         800,
 		MinHeight:        500,
 		EnableFileDrop:   true,

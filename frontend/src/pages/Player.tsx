@@ -17,13 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { showToast } from '@/components/feedback'
 import { PlayerHud, showPlayerHud } from '@/components/PlayerHud'
 import { basename } from '@/utils/path'
@@ -49,7 +43,6 @@ import {
   X as XIcon,
   FileDown,
   ArrowLeft,
-  Globe,
   Star,
   Headphones,
   Sparkles,
@@ -120,8 +113,6 @@ export default function PlayerPage() {
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
   const [mediaPort, setMediaPort] = useState(0)
-  const [showTranscribeLangModal, setShowTranscribeLangModal] = useState(false)
-  const [transcribeLang, setTranscribeLang] = useState('auto')
   const [favTarget, setFavTarget] = useState<{
     startTime: number
     endTime: number
@@ -270,10 +261,6 @@ export default function PlayerPage() {
         .filter((s) => s.displayText.length > 0),
     [store.subtitles, store.subtitleDisplayMode],
   )
-
-  useEffect(() => {
-    window.api.getWhisperLang().then(setTranscribeLang)
-  }, [])
 
   // 生词库词表：已收藏的词在字幕中高亮显示
   const savedWordList = useWordStore((s) => s.words)
@@ -558,8 +545,7 @@ export default function PlayerPage() {
       aiTarget ||
       aiTranslate ||
       aiExplain ||
-      favTarget ||
-      showTranscribeLangModal
+      favTarget
     )
     closeTopLayerRef.current = () => {
       if (showShortcutHelp) {
@@ -580,10 +566,6 @@ export default function PlayerPage() {
       }
       if (favTarget) {
         setFavTarget(null)
-        return true
-      }
-      if (showTranscribeLangModal) {
-        setShowTranscribeLangModal(false)
         return true
       }
       if (showSubMenu) {
@@ -952,7 +934,7 @@ export default function PlayerPage() {
     }
   }
 
-  const startTranscription = async (filePath: string, lang?: string) => {
+  const startTranscription = async (filePath: string) => {
     const isPodcast = /^https?:\/\//i.test(filePath) && store.mediaEpisodeID > 0
     const force = store.subtitles.length > 0
     const status = await window.api.whisperStatus()
@@ -984,9 +966,6 @@ export default function PlayerPage() {
       if (d.status === 'transcribing') setTranscribingLabel('转录中')
     })
     try {
-      if (lang) {
-        window.api.setWhisperLang(lang)
-      }
       let subs: SubtitleItem[]
       if (isPodcast) {
         const result = await window.api.platformTranscribePodcast(store.mediaEpisodeID, force)
@@ -1032,7 +1011,7 @@ export default function PlayerPage() {
   }
 
   const retranscribe = () => {
-    if (store.filePath) setShowTranscribeLangModal(true)
+    if (store.filePath) startTranscription(store.filePath)
   }
   const closeSubtitles = () => {
     store.setSubtitles([])
@@ -1655,7 +1634,7 @@ export default function PlayerPage() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => store.filePath && setShowTranscribeLangModal(true)}
+                  onClick={() => store.filePath && startTranscription(store.filePath)}
                 >
                   <Loader2 className="h-4 w-4 mr-1" /> 转录字幕
                 </Button>
@@ -1793,53 +1772,6 @@ export default function PlayerPage() {
             }}
           />
         )}
-
-        <Dialog
-          open={showTranscribeLangModal && !!store.filePath}
-          onOpenChange={(open) => !open && setShowTranscribeLangModal(false)}
-        >
-          <DialogContent className="max-w-xs">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" /> 选择识别语言
-              </DialogTitle>
-            </DialogHeader>
-            <div>
-              <label className="text-sm font-medium">音频语言</label>
-              <p className="text-xs text-muted-foreground mt-1 mb-3">
-                指定音频语言可提高识别准确率，auto 为自动检测
-              </p>
-            </div>
-            <select
-              className="w-full bg-background border rounded px-3 py-2 text-sm"
-              value={transcribeLang}
-              onChange={(e) => setTranscribeLang(e.target.value)}
-            >
-              <option value="auto">自动检测</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-              <option value="ja">日本語</option>
-              <option value="ko">한국어</option>
-              <option value="fr">Français</option>
-              <option value="de">Deutsch</option>
-              <option value="es">Español</option>
-              <option value="ru">Русский</option>
-            </select>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowTranscribeLangModal(false)}>
-                取消
-              </Button>
-              <Button
-                onClick={() => {
-                  setShowTranscribeLangModal(false)
-                  startTranscription(store.filePath!, transcribeLang)
-                }}
-              >
-                开始转录
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* AI 当前句翻译/详解面板（由控制栏 Sparkles 按钮触发） */}
         {aiTarget && (

@@ -74,7 +74,7 @@ func NewWhisperService(app *application.App, dataDir string) *WhisperService {
 		app:         app,
 		dataDir:     dataDir,
 		modelFile:   "ggml-tiny.bin",
-		whisperLang: "auto",
+		whisperLang: "en",
 		dlProgress:  -1,
 	}
 	s.loadWhisperLang()
