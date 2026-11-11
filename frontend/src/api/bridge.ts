@@ -96,6 +96,7 @@ import {
   GetRSSHubURL,
   SetRSSHubURL,
   GetSubtitles,
+  TranscribePodcast as PlatformTranscribePodcast,
 } from '../../bindings/aling-go/internal/content/platformservice'
 
 import {
@@ -236,6 +237,8 @@ export function initBridge(): void {
     platformSetRSSHubURL: (u: string) => SetRSSHubURL(u).then((s: string) => JSON.parse(s)),
     platformGetSubtitles: (episodeId: number) =>
       GetSubtitles(episodeId).then((s: string) => JSON.parse(s)),
+    platformTranscribePodcast: (episodeId: number, force: boolean) =>
+      PlatformTranscribePodcast(episodeId, force).then((s: string) => JSON.parse(s)),
 
     dbDictTags: () => DbDictTags(),
     dbDictWords: (tag: string) => DbDictWords(tag),

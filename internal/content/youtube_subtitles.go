@@ -170,15 +170,22 @@ func bilibiliYtDlpCookieFile(cookie string) (string, error) {
 	return path, nil
 }
 
-func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) ([]SubtitleCue, error) {
+func (s *PlatformService) checkWhisperReady() error {
 	if s.whisper == nil {
-		return nil, fmt.Errorf("本地转录服务不可用")
+		return fmt.Errorf("本地转录服务不可用")
 	}
 	if s.whisper.findWhisperSidecar() == "" {
-		return nil, fmt.Errorf("缺少本地转录组件 whisper-sidecar")
+		return fmt.Errorf("缺少本地转录组件 whisper-sidecar")
 	}
 	if _, err := os.Stat(s.whisper.modelPath()); err != nil {
-		return nil, fmt.Errorf("尚未下载 Whisper 模型，请先在设置里下载")
+		return fmt.Errorf("尚未下载 Whisper 模型，请先在设置里下载")
+	}
+	return nil
+}
+
+func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) ([]SubtitleCue, error) {
+	if err := s.checkWhisperReady(); err != nil {
+		return nil, err
 	}
 
 	dir, err := os.MkdirTemp("", "aling-online-audio-*")
@@ -201,9 +208,12 @@ func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) 
 	if len(files) == 0 {
 		return nil, fmt.Errorf("下载音频失败")
 	}
+	return s.transcribeAudioFile(files[0])
+}
 
+func (s *PlatformService) transcribeAudioFile(path string) ([]SubtitleCue, error) {
 	var items []SubtitleItem
-	if err := json.Unmarshal([]byte(s.whisper.Transcribe(files[0])), &items); err != nil {
+	if err := json.Unmarshal([]byte(s.whisper.Transcribe(path)), &items); err != nil {
 		return nil, fmt.Errorf("解析转录结果失败: %w", err)
 	}
 	cues := make([]SubtitleCue, 0, len(items))

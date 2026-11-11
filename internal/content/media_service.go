@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"aling-go/internal/core"
 )
 
 var mimeTypes = map[string]string{
@@ -40,9 +42,9 @@ type MediaService struct {
 	dataDir       string
 	mediaPort     int
 	mediaListener net.Listener
-	// B站取流依赖订阅 Cookie 与带代理配置的 HTTP 客户端，由 bootstrap 注入
-	biliCookieFn func() string
-	biliClientFn func() *http.Client
+	// B站取流与在线播客依赖订阅 Cookie 和带代理配置的 HTTP 客户端，由 bootstrap 注入
+	biliCookieFn   func() string
+	remoteClientFn func() *http.Client
 }
 
 func NewMediaService(app *application.App, dataDir string) *MediaService {
@@ -66,6 +68,7 @@ func (s *MediaService) ServiceShutdown() error {
 func (s *MediaService) startMediaServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media/", s.handleMediaStream)
+	mux.HandleFunc("/podcast-stream", s.handlePodcastStream)
 	mux.HandleFunc("/yt-embed", s.handleYTEmbed)
 	mux.HandleFunc("/bili-stream", s.handleBiliStream)
 
@@ -156,6 +159,70 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 	}
 	defer f.Close()
 	_, _ = io.Copy(w, f)
+}
+
+// handlePodcastStream 代理已订阅节目的在线音频，避免 HTTP 混合内容并复用订阅代理设置。
+// 只接受数据库中的节目 ID，不代理前端提供的任意 URL；仅转发播放请求，不落盘。
+func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Request) {
+	if s.remoteClientFn == nil {
+		http.Error(w, "podcast stream not initialized", http.StatusServiceUnavailable)
+		return
+	}
+	episodeID, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if err != nil || episodeID <= 0 {
+		http.Error(w, "invalid episode id", http.StatusBadRequest)
+		return
+	}
+	var raw string
+	if err := core.DB.QueryRow(`SELECT audio_url FROM feed_episodes WHERE id = ?`, episodeID).Scan(&raw); err != nil || raw == "" {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		http.Error(w, "invalid audio url", http.StatusBadRequest)
+		return
+	}
+
+	// 流式播放不能使用订阅请求的 60 秒整体超时，连接会随页面关闭而取消。
+	baseClient := s.remoteClientFn()
+	client := *baseClient
+	client.Timeout = 0
+	doRequest := func(target string) (*http.Response, error) {
+		req, reqErr := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+			req.Header.Set("Range", rangeHeader)
+		}
+		req.Header.Set("User-Agent", "Aling/1.0 (Podcast Player)")
+		return client.Do(req)
+	}
+
+	resp, err := doRequest(parsed.String())
+	// 部分 RSS 仍写 HTTP，代理会返回 502；同地址的 HTTPS 通常可用。
+	if parsed.Scheme == "http" && (err != nil || resp.StatusCode == http.StatusBadGateway) {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		httpsURL := *parsed
+		httpsURL.Scheme = "https"
+		resp, err = doRequest(httpsURL.String())
+	}
+	if err != nil {
+		http.Error(w, "upstream request failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	for _, header := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"} {
+		if value := resp.Header.Get(header); value != "" {
+			w.Header().Set(header, value)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 // --- YouTube 中转页 ---

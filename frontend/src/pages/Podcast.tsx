@@ -75,7 +75,6 @@ export default function PodcastPage() {
     removeFeed,
     refreshFeed,
     selectFeed,
-    downloadEpisode,
     setDownloadProgress,
   } = useFeedStore()
 
@@ -245,8 +244,8 @@ export default function PodcastPage() {
             ? '二维码已过期，请刷新'
             : qrError || '登录失败，请重试'
 
-  const playLocalFile = async (path: string) => {
-    player.setFilePath(path)
+  const playLocalFile = async (path: string, title?: string) => {
+    player.setFilePath(path, title)
     await window.api.recentAdd(path)
     navigate('/player')
     player.setWaveformLoading(true)
@@ -270,22 +269,22 @@ export default function PodcastPage() {
       })
       return
     }
-    // 已下载的音频：直接播放
+    // 已下载的音频优先播放本地文件，未下载的直接在线播放
     if (ep.localPath) {
-      await playLocalFile(ep.localPath)
+      await playLocalFile(ep.localPath, ep.title)
       return
     }
-    // 未下载的音频：先下载，完成后自动播放
-    const res = await downloadEpisode(ep.id)
-    if (res.ok) {
-      const updated = useFeedStore.getState().episodes.find((e) => e.id === ep.id)
-      if (updated?.localPath) {
-        showToast('下载完成，开始播放', 'success')
-        loadFeeds()
-        await playLocalFile(updated.localPath)
+    if (ep.audioUrl) {
+      player.setFilePath(ep.audioUrl, ep.title, ep.id)
+      navigate('/player')
+      try {
+        const cached = await window.api.getCachedSubtitles(ep.audioUrl)
+        if (cached && cached.length > 0 && usePlayerStore.getState().filePath === ep.audioUrl) {
+          player.setSubtitles(cached)
+        }
+      } catch {
+        // 缓存读取失败不影响在线播放，可在播放页重新转录
       }
-    } else {
-      showToast(res.message, 'error')
     }
   }
 
@@ -331,10 +330,10 @@ export default function PodcastPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={refreshing || feeds.length === 0}
+            disabled={refreshing !== null || feeds.length === 0}
             onClick={() => handleRefresh(0)}
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${refreshing === 0 ? 'animate-spin' : ''}`} />
             全部刷新
           </Button>
           <Button size="sm" onClick={() => setShowAdd(true)}>
@@ -465,10 +464,12 @@ export default function PodcastPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={refreshing}
+                    disabled={refreshing !== null}
                     onClick={() => handleRefresh(selectedFeed.id)}
                   >
-                    <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`h-4 w-4 ${refreshing === selectedFeed.id ? 'animate-spin' : ''}`}
+                    />
                     刷新
                   </Button>
                   <Button

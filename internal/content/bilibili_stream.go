@@ -67,7 +67,7 @@ type biliPlayURLResponse struct {
 // SetBilibiliAuth 注入 B站 Cookie 与 HTTP 客户端（会带上用户配置的代理）
 func (s *MediaService) SetBilibiliAuth(cookie func() string, client func() *http.Client) {
 	s.biliCookieFn = cookie
-	s.biliClientFn = client
+	s.remoteClientFn = client
 }
 
 // GetBilibiliStream 用登录 Cookie 换取可直连的播放地址，返回给前端的是本地代理地址
@@ -76,11 +76,11 @@ func (s *MediaService) GetBilibiliStream(bvid string) string {
 	if !bvidRe.MatchString(bvid) {
 		return biliStreamJSON(biliStreamResult{Error: "视频 ID 不合法"})
 	}
-	if s.biliCookieFn == nil || s.biliClientFn == nil {
+	if s.biliCookieFn == nil || s.remoteClientFn == nil {
 		return biliStreamJSON(biliStreamResult{Error: "B 站取流未初始化"})
 	}
 
-	client := s.biliClientFn()
+	client := s.remoteClientFn()
 	cookie := s.biliCookieFn()
 
 	view, err := fetchBiliView(client, cookie, bvid)
@@ -179,7 +179,7 @@ func (s *MediaService) biliProxyURL(upstream string) string {
 
 // handleBiliStream 代理 B站 CDN 的视频分片：补上 Referer/UA，透传 Range 以支持拖动进度
 func (s *MediaService) handleBiliStream(w http.ResponseWriter, r *http.Request) {
-	if s.biliClientFn == nil {
+	if s.remoteClientFn == nil {
 		http.Error(w, "bilibili stream not initialized", http.StatusServiceUnavailable)
 		return
 	}
@@ -202,7 +202,7 @@ func (s *MediaService) handleBiliStream(w http.ResponseWriter, r *http.Request) 
 	req.Header.Set("Referer", "https://www.bilibili.com/")
 	req.Header.Set("User-Agent", bilibiliWebUA)
 
-	resp, err := s.biliClientFn().Do(req) //nolint:gosec // G704: 见上方域名白名单校验
+	resp, err := s.remoteClientFn().Do(req) //nolint:gosec // G704: 见上方域名白名单校验
 	if err != nil {
 		http.Error(w, "upstream request failed", http.StatusBadGateway)
 		return

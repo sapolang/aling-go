@@ -31,7 +31,8 @@ interface FeedStore {
   selectedFeedId: number | null
   loadingFeeds: boolean
   loadingEpisodes: boolean
-  refreshing: boolean
+  /** null 未刷新，0 全部刷新，大于 0 为正在刷新的订阅源 ID */
+  refreshing: number | null
   /** episodeId -> 下载进度百分比 */
   downloadProgress: Record<number, number>
 
@@ -52,7 +53,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
   selectedFeedId: null,
   loadingFeeds: false,
   loadingEpisodes: false,
-  refreshing: false,
+  refreshing: null,
   downloadProgress: {},
 
   loadFeeds: async () => {
@@ -89,7 +90,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
   },
 
   refreshFeed: async (id) => {
-    set({ refreshing: true })
+    set({ refreshing: id })
     try {
       const res = await window.api.feedRefresh(id)
       await get().loadFeeds()
@@ -98,7 +99,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
       }
       return { ok: !!res?.ok, message: res?.error || res?.message || '' }
     } finally {
-      set({ refreshing: false })
+      set({ refreshing: null })
     }
   },
 

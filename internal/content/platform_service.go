@@ -281,6 +281,78 @@ type SubtitleCue struct {
 	Text  string  `json:"text"`
 }
 
+// TranscribePodcast 转录 RSS 节目。已下载节目直接使用本地文件；在线节目临时下载音频，
+// 转录完成后删除临时文件。字幕按本地路径或音频 URL 缓存，force 用于显式重新转录。
+func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) string {
+	fail := func(err error) string {
+		b, _ := json.Marshal(map[string]any{"ok": false, "error": err.Error()})
+		return string(b)
+	}
+
+	var audioURL, localPath string
+	if err := core.DB.QueryRow(`SELECT audio_url, local_path FROM feed_episodes WHERE id = ?`, episodeID).
+		Scan(&audioURL, &localPath); err != nil {
+		return fail(fmt.Errorf("节目不存在"))
+	}
+	if localPath != "" {
+		if _, err := os.Stat(localPath); err != nil {
+			localPath = ""
+		}
+	}
+	cacheKey := localPath
+	if cacheKey == "" {
+		cacheKey = audioURL
+	}
+	if cacheKey == "" {
+		return fail(fmt.Errorf("该节目没有可转录的音频"))
+	}
+
+	cachePath := filepath.Join(s.dataDir, "subtitle-cache", md5Hash(cacheKey)+".json")
+	if !force {
+		if raw, err := os.ReadFile(cachePath); err == nil {
+			var cached []SubtitleItem
+			if json.Unmarshal(raw, &cached) == nil && len(cached) > 0 {
+				b, _ := json.Marshal(map[string]any{"ok": true, "subtitles": cached, "cached": true})
+				return string(b)
+			}
+		}
+	}
+
+	if err := s.checkWhisperReady(); err != nil {
+		return fail(err)
+	}
+	var (
+		cues []SubtitleCue
+		err  error
+	)
+	if localPath != "" {
+		cues, err = s.transcribeAudioFile(localPath)
+	} else {
+		s.app.Event.Emit("whisper:progress", whisperProgress{Progress: 0, Status: "downloading"})
+		// 与 YouTube/B站一致：yt-dlp 下载到临时目录，函数返回前自动清理。
+		cues, err = s.transcribeAudio(audioURL)
+	}
+	if err != nil {
+		return fail(err)
+	}
+
+	items := make([]SubtitleItem, 0, len(cues))
+	for i, cue := range cues {
+		items = append(items, SubtitleItem{
+			ID:        i + 1,
+			StartTime: cue.Start,
+			EndTime:   cue.End,
+			Text:      cue.Text,
+		})
+	}
+	if raw, marshalErr := json.Marshal(items); marshalErr == nil {
+		_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+		_ = os.WriteFile(cachePath, raw, 0644)
+	}
+	b, _ := json.Marshal(map[string]any{"ok": true, "subtitles": items, "cached": false})
+	return string(b)
+}
+
 // GetSubtitles 根据 FeedEpisode 的 link 字段抓取平台字幕
 // 输入是 platformService 内部存储的 episode_link，自动识别平台
 func (s *PlatformService) GetSubtitles(episodeID int64) string {

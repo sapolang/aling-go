@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import type { LibraryFile } from '@/stores/libraryStore'
+import type { SubtitleItem } from '@/types/electron'
 import type { SubtitleDisplayMode } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import {
@@ -254,8 +255,9 @@ export default function PlayerPage() {
     setAiTarget(null)
   }
 
+  const isRemoteAudio = /^https?:\/\//i.test(store.filePath || '')
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
-  const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
+  const isAudio = isRemoteAudio || ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
 
   // 按显示模式派生字幕：过滤中/英文行，过滤后无内容的条目在列表中隐藏
   const displaySubtitles = useMemo(
@@ -951,6 +953,8 @@ export default function PlayerPage() {
   }
 
   const startTranscription = async (filePath: string, lang?: string) => {
+    const isPodcast = /^https?:\/\//i.test(filePath) && store.mediaEpisodeID > 0
+    const force = store.subtitles.length > 0
     const status = await window.api.whisperStatus()
     if (!status.loaded) {
       store.setTranscribing(true)
@@ -973,20 +977,29 @@ export default function PlayerPage() {
     }
     store.setTranscribing(true)
     store.setTranscriptionProgress(0)
-    setTranscribingLabel('转录中')
-    const cleanup = window.api.onWhisperProgress((d: { progress: number }) =>
-      store.setTranscriptionProgress(d.progress),
-    )
+    setTranscribingLabel(isPodcast ? '下载音频' : '转录中')
+    const cleanup = window.api.onWhisperProgress((d: { progress: number; status: string }) => {
+      store.setTranscriptionProgress(d.progress)
+      if (d.status === 'downloading') setTranscribingLabel('下载音频')
+      if (d.status === 'transcribing') setTranscribingLabel('转录中')
+    })
     try {
       if (lang) {
         window.api.setWhisperLang(lang)
       }
-      const subs = await window.api.whisperTranscribe(filePath)
+      let subs: SubtitleItem[]
+      if (isPodcast) {
+        const result = await window.api.platformTranscribePodcast(store.mediaEpisodeID, force)
+        if (!result.ok) throw new Error(result.error || '转录失败')
+        subs = result.subtitles || []
+      } else {
+        subs = await window.api.whisperTranscribe(filePath)
+        window.api.cacheSubtitles(filePath, subs)
+      }
       if (subs.length === 0) {
         showToast('转录完成，但未识别到语音。请在设置页检查模型和语言设置是否正确', 'warning')
       }
       store.setSubtitles(subs)
-      window.api.cacheSubtitles(filePath, subs)
     } catch (err: any) {
       const msg = err?.message || String(err)
       store.setTranscriptionProgress(-1)
@@ -1156,10 +1169,15 @@ export default function PlayerPage() {
   useEffect(() => {
     window.api.getMediaPort().then(setMediaPort)
   }, [])
-  const mediaUrl =
-    store.filePath && mediaPort
-      ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
-      : ''
+  const mediaUrl = store.filePath
+    ? isRemoteAudio
+      ? store.filePath.startsWith('https://') || !store.mediaEpisodeID || !mediaPort
+        ? store.filePath
+        : `http://127.0.0.1:${mediaPort}/podcast-stream?id=${store.mediaEpisodeID}`
+      : mediaPort
+        ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
+        : ''
+    : ''
 
   // 播放控制按钮组：视频时内嵌到画面底部，音频时放在播放器下方
   const renderTransportControls = () => (
@@ -1399,7 +1417,7 @@ export default function PlayerPage() {
           <div className="rounded-lg border bg-gradient-to-br from-primary/15 via-muted/60 to-background flex flex-col items-center justify-center gap-3 py-10 px-4">
             <Headphones className="h-16 w-16 text-primary" />
             <div className="text-sm text-muted-foreground max-w-[80%] truncate">
-              {basename(store.filePath)}
+              {store.mediaTitle || basename(store.filePath)}
             </div>
             {(() => {
               const pa = store.played - store.subtitleOffset
@@ -1740,7 +1758,7 @@ export default function PlayerPage() {
           </Button>
           {store.filePath && (
             <span className="text-sm text-muted-foreground truncate max-w-[200px]">
-              {basename(store.filePath)}
+              {store.mediaTitle || basename(store.filePath)}
             </span>
           )}
         </div>

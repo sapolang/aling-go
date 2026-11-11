@@ -289,6 +289,15 @@ export interface ElectronAPI {
   platformGetRSSHubURL: () => Promise<string>
   platformSetRSSHubURL: (u: string) => Promise<FeedActionResult>
   platformGetSubtitles: (episodeId: number) => Promise<PlatformSubtitleResult>
+  platformTranscribePodcast: (
+    episodeId: number,
+    force: boolean,
+  ) => Promise<{
+    ok: boolean
+    subtitles?: SubtitleItem[]
+    cached?: boolean
+    error?: string
+  }>
 }
 
 export interface Feed {
