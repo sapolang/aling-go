@@ -7,6 +7,7 @@ import { useThemeStore } from '@/stores/themeStore'
 
 const Home = lazy(() => import('@/pages/Home'))
 const Player = lazy(() => import('@/pages/Player'))
+const PlayerOnline = lazy(() => import('@/pages/PlayerOnline'))
 const WordList = lazy(() => import('@/pages/WordList'))
 const WordCard = lazy(() => import('@/pages/WordCard'))
 const Settings = lazy(() => import('@/pages/Settings'))
@@ -16,6 +17,7 @@ const ArticleList = lazy(() => import('@/pages/ArticleList'))
 const ArticleTyping = lazy(() => import('@/pages/ArticleTyping'))
 const Stats = lazy(() => import('@/pages/StatsPage'))
 const Favorites = lazy(() => import('@/pages/Favorites'))
+const Podcast = lazy(() => import('@/pages/Podcast'))
 
 function Loading() {
   return (
@@ -105,6 +107,8 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
+          <Route path="/podcast" element={<Podcast />} />
+          <Route path="/player-online" element={<PlayerOnline />} />
           <Route path="/words" element={<WordList />} />
           <Route path="/dict" element={<Dict />} />
           <Route path="/dict/:tag" element={<Review />} />

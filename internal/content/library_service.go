@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,6 +51,7 @@ func containsFile(files []LibraryFile, path string) bool {
 type LibraryService struct {
 	app     *application.App
 	dataDir string
+	mu      sync.Mutex
 }
 
 func NewLibraryService(app *application.App, dataDir string) *LibraryService {
@@ -77,6 +79,17 @@ func (s *LibraryService) readLibrary() LibraryData {
 	if lib.Files == nil {
 		lib.Files = []LibraryFile{}
 	}
+	// 按 Path 去重，保留首次出现的条目（修复历史并发写入导致的重复数据）
+	seen := make(map[string]bool, len(lib.Files))
+	deduped := make([]LibraryFile, 0, len(lib.Files))
+	for _, f := range lib.Files {
+		if seen[f.Path] {
+			continue
+		}
+		seen[f.Path] = true
+		deduped = append(deduped, f)
+	}
+	lib.Files = deduped
 	return lib
 }
 
@@ -94,6 +107,8 @@ func (s *LibraryService) writeLibrary(lib LibraryData) {
 // --- Library CRUD ---
 
 func (s *LibraryService) LibraryList() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	b, _ := json.Marshal(lib)
 	return string(b)
@@ -116,7 +131,7 @@ func (s *LibraryService) LibraryImport(category, folderID string) string {
 		b, _ := json.Marshal(LibraryImportResult{Files: []LibraryFile{}})
 		return string(b)
 	}
-	result := s.importFiles(files, folderID)
+	result := s.ImportFiles(files, folderID)
 	b, _ := json.Marshal(result)
 	return string(b)
 }
@@ -129,9 +144,16 @@ func (s *LibraryService) LibraryImportPaths(pathsJSON, folderID string) string {
 		b, _ := json.Marshal(LibraryImportResult{Files: []LibraryFile{}})
 		return string(b)
 	}
-	result := s.importFiles(files, folderID)
+	result := s.ImportFiles(files, folderID)
 	b, _ := json.Marshal(result)
 	return string(b)
+}
+
+// ImportFiles 是 importFiles 的公开加锁版本，供其他服务（如 FeedService）调用。
+func (s *LibraryService) ImportFiles(files []string, folderID string) LibraryImportResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.importFiles(files, folderID)
 }
 
 func (s *LibraryService) importFiles(files []string, folderID string) LibraryImportResult {
@@ -174,6 +196,8 @@ func (s *LibraryService) LibraryRemove(pathsJSON string) string {
 		fmt.Fprintf(os.Stderr, "LibraryRemove: unmarshal error: %v\n", err)
 		return "[]"
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	pathSet := make(map[string]bool, len(paths))
 	for _, p := range paths {
 		pathSet[p] = true
@@ -192,6 +216,8 @@ func (s *LibraryService) LibraryRemove(pathsJSON string) string {
 }
 
 func (s *LibraryService) LibraryRename(path, newName string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	for i := range lib.Files {
 		if lib.Files[i].Path == path {
@@ -215,6 +241,8 @@ func (s *LibraryService) LibraryMove(pathsJSON, folderID string) string {
 	if err := json.Unmarshal([]byte(pathsJSON), &paths); err != nil {
 		fmt.Fprintf(os.Stderr, "LibraryMove: unmarshal error: %v\n", err)
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	pathSet := make(map[string]bool, len(paths))
 	for _, p := range paths {
 		pathSet[p] = true
@@ -238,6 +266,8 @@ func (s *LibraryService) LibraryMove(pathsJSON, folderID string) string {
 // --- Folders ---
 
 func (s *LibraryService) FolderCreate(name, parentID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	if len(lib.Folders) >= 50 {
 		b, _ := json.Marshal(lib.Folders)
@@ -255,6 +285,8 @@ func (s *LibraryService) FolderCreate(name, parentID string) string {
 }
 
 func (s *LibraryService) FolderDelete(id string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	filtered := make([]Folder, 0, len(lib.Folders))
 	for _, f := range lib.Folders {
@@ -274,6 +306,8 @@ func (s *LibraryService) FolderDelete(id string) string {
 }
 
 func (s *LibraryService) FolderRename(id, name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	for i := range lib.Folders {
 		if lib.Folders[i].ID == id {
@@ -289,6 +323,8 @@ func (s *LibraryService) FolderRename(id, name string) string {
 // --- Recent ---
 
 func (s *LibraryService) RecentList() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	type recentEntry struct {
 		Path         string  `json:"path"`
@@ -311,6 +347,8 @@ func (s *LibraryService) RecentList() string {
 
 // RecentGetPosition 返回文件上次播放位置（秒），无记录时返回 "0"
 func (s *LibraryService) RecentGetPosition(filePath string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	for _, f := range lib.Files {
 		if f.Path == filePath {
@@ -323,6 +361,8 @@ func (s *LibraryService) RecentGetPosition(filePath string) string {
 
 // RecentUpdatePosition 保存文件播放位置（秒）
 func (s *LibraryService) RecentUpdatePosition(filePath string, position float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	for i := range lib.Files {
 		if lib.Files[i].Path == filePath {
@@ -334,6 +374,8 @@ func (s *LibraryService) RecentUpdatePosition(filePath string, position float64)
 }
 
 func (s *LibraryService) RecentAdd(filePath string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	found := false
 	for i, f := range lib.Files {
@@ -371,7 +413,24 @@ func (s *LibraryService) RecentAdd(filePath string) string {
 		}
 	}
 	s.writeLibrary(lib)
-	return s.RecentList()
+	// 直接构建返回值，避免调用 RecentList 导致死锁
+	type recentEntry struct {
+		Path         string  `json:"path"`
+		Name         string  `json:"name"`
+		Type         string  `json:"type"`
+		LastPosition float64 `json:"lastPosition,omitempty"`
+	}
+	entries := make([]recentEntry, 0, len(lib.Files))
+	for _, f := range lib.Files {
+		entries = append(entries, recentEntry{
+			Path:         f.Path,
+			Name:         f.Name,
+			Type:         f.Type,
+			LastPosition: f.LastPosition,
+		})
+	}
+	b, _ := json.Marshal(entries)
+	return string(b)
 }
 
 // --- Subtitle cache ---

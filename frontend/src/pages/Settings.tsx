@@ -77,6 +77,7 @@ export default function SettingsPage() {
     { name: string; file: string; size: string; downloaded: boolean }[]
   >([])
   const [selectedModel, setSelectedModel] = useState('tiny')
+  const [transcribeLang, setTranscribeLang] = useState('en')
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
 
@@ -252,6 +253,7 @@ export default function SettingsPage() {
       setSelectedModel(current)
     })
     window.api.listWhisperModels().then(setWhisperModels)
+    window.api.getWhisperLang().then(setTranscribeLang)
 
     window.api.aiGetConfig().then((cfg: any) => {
       setAiBaseURL(cfg.baseUrl)
@@ -604,67 +606,99 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Mic className="h-5 w-5" /> Whisper 语音模型
+            <Mic className="h-5 w-5" /> Whisper 语音转录
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          {whisperModels.map((m) => {
-            const active = whisperStatus?.model === m.file && m.downloaded
-            const isDownloading = downloading && selectedModel === m.name
-            return (
-              <div
-                key={m.name}
-                className={`px-3 py-2 rounded text-sm ${active ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/50'}`}
-              >
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap min-w-0">
-                    <span className="font-medium capitalize">{m.name}</span>
-                    <span className="text-muted-foreground">{m.size}</span>
-                    {m.downloaded && (
-                      <span className="text-xs text-green-600 dark:text-green-400">✓</span>
-                    )}
-                    {active && <span className="text-xs text-primary font-medium">使用中</span>}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {isDownloading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary transition-all"
-                            style={{ width: `${downloadProgress}%` }}
-                          />
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-4 px-3 py-2">
+            <div>
+              <label className="text-sm font-medium">转录语言</label>
+              <p className="text-xs text-muted-foreground mt-1">
+                默认使用 English，可按音频语言调整
+              </p>
+            </div>
+            <Select
+              value={transcribeLang}
+              onValueChange={(value) => {
+                setTranscribeLang(value)
+                window.api.setWhisperLang(value)
+              }}
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">自动检测</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="zh">中文</SelectItem>
+                <SelectItem value="ja">日本語</SelectItem>
+                <SelectItem value="ko">한국어</SelectItem>
+                <SelectItem value="fr">Français</SelectItem>
+                <SelectItem value="de">Deutsch</SelectItem>
+                <SelectItem value="es">Español</SelectItem>
+                <SelectItem value="ru">Русский</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            {whisperModels.map((m) => {
+              const active = whisperStatus?.model === m.file && m.downloaded
+              const isDownloading = downloading && selectedModel === m.name
+              return (
+                <div
+                  key={m.name}
+                  className={`px-3 py-2 rounded text-sm ${active ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/50'}`}
+                >
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="font-medium capitalize">{m.name}</span>
+                      <span className="text-muted-foreground">{m.size}</span>
+                      {m.downloaded && (
+                        <span className="text-xs text-green-600 dark:text-green-400">✓</span>
+                      )}
+                      {active && <span className="text-xs text-primary font-medium">使用中</span>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {isDownloading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary transition-all"
+                              style={{ width: `${downloadProgress}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {downloadProgress}%
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {downloadProgress}%
-                        </span>
-                      </div>
-                    ) : m.downloaded ? (
-                      <Button
-                        size="sm"
-                        variant={active ? 'default' : 'outline'}
-                        onClick={() => {
-                          window.api.setWhisperModel(m.name)
-                          setSelectedModel(m.name)
-                          window.api.whisperStatus().then(setWhisperStatus)
-                        }}
-                      >
-                        {active ? '使用中' : '切换'}
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={downloading}
-                        onClick={() => handleDownloadModel(m.name)}
-                      >
-                        <Download className="h-3 w-3 mr-1" /> 下载
-                      </Button>
-                    )}
+                      ) : m.downloaded ? (
+                        <Button
+                          size="sm"
+                          variant={active ? 'default' : 'outline'}
+                          onClick={() => {
+                            window.api.setWhisperModel(m.name)
+                            setSelectedModel(m.name)
+                            window.api.whisperStatus().then(setWhisperStatus)
+                          }}
+                        >
+                          {active ? '使用中' : '切换'}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={downloading}
+                          onClick={() => handleDownloadModel(m.name)}
+                        >
+                          <Download className="h-3 w-3 mr-1" /> 下载
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </CardContent>
       </Card>
 

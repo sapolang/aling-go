@@ -22,10 +22,12 @@ import {
   Type,
   BarChart3,
   Star,
+  Rss,
 } from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '文件库', icon: Home },
+  { path: '/podcast', label: '播客订阅', icon: Rss },
   { path: '/favorites', label: '收藏片段', icon: Star },
   { path: '/words', label: '生词库', icon: BookOpen },
   { path: '/dict', label: '词库浏览', icon: Library },

@@ -245,6 +245,104 @@ export interface ElectronAPI {
   saveTypingRecord: (recordJson: string) => Promise<void>
   getAllTypingProgress: () => Promise<TypingProgress[]>
   addWordsBatch: (wordsJson: string) => Promise<number>
+
+  // Podcast feeds
+  feedList: () => Promise<{ feeds: Feed[] }>
+  feedAdd: (url: string) => Promise<FeedActionResult>
+  feedRemove: (id: number) => Promise<FeedActionResult>
+  feedRefresh: (id: number) => Promise<FeedActionResult>
+  feedEpisodes: (id: number, limit: number) => Promise<{ episodes: FeedEpisode[] }>
+  episodeDownload: (id: number) => Promise<{ ok: boolean; error: string; path: string }>
+  feedGetProxy: () => Promise<string>
+  feedSetProxy: (proxy: string) => Promise<FeedActionResult>
+  feedGetBilibiliCookie: () => Promise<string>
+  feedSetBilibiliCookie: (cookie: string) => Promise<FeedActionResult>
+  getBilibiliStream: (bvid: string) => Promise<{
+    ok: boolean
+    url: string
+    quality: number
+    qualityLabel: string
+    duration: number
+    title: string
+    error?: string
+  }>
+  feedStartBilibiliQRLogin: () => Promise<{
+    ok: boolean
+    url?: string
+    key?: string
+    error?: string
+  }>
+  feedPollBilibiliQRLogin: (key: string) => Promise<{
+    ok: boolean
+    url?: string
+    key?: string
+    status?: string
+    message?: string
+    error?: string
+  }>
+  feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => () => void
+
+  // Platform helpers (YouTube / Bilibili)
+  platformConvertToRSS: (
+    url: string,
+  ) => Promise<{ ok: boolean; rssUrl?: string; platform?: string; error?: string }>
+  platformGetRSSHubURL: () => Promise<string>
+  platformSetRSSHubURL: (u: string) => Promise<FeedActionResult>
+  platformGetSubtitles: (episodeId: number) => Promise<PlatformSubtitleResult>
+  platformTranscribePodcast: (
+    episodeId: number,
+    force: boolean,
+  ) => Promise<{
+    ok: boolean
+    subtitles?: SubtitleItem[]
+    cached?: boolean
+    error?: string
+  }>
+}
+
+export interface Feed {
+  id: number
+  url: string
+  title: string
+  description: string
+  image: string
+  siteUrl: string
+  lastFetchedAt: string
+  lastError: string
+  episodeCount: number
+}
+
+export interface FeedEpisode {
+  id: number
+  feedId: number
+  title: string
+  description: string
+  audioUrl: string
+  link: string
+  duration: number
+  publishedAt: string
+  localPath: string
+}
+
+export interface FeedActionResult {
+  ok: boolean
+  error: string
+  message: string
+}
+
+export interface PlatformSubtitleCue {
+  start: number
+  end: number
+  text: string
+}
+
+export interface PlatformSubtitleResult {
+  ok: boolean
+  platform?: string
+  videoId?: string
+  title?: string
+  cues?: PlatformSubtitleCue[]
+  error?: string
 }
 
 declare global {

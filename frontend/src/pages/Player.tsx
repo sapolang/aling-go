@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import type { LibraryFile } from '@/stores/libraryStore'
+import type { SubtitleItem } from '@/types/electron'
 import type { SubtitleDisplayMode } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import {
@@ -16,13 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { showToast } from '@/components/feedback'
 import { PlayerHud, showPlayerHud } from '@/components/PlayerHud'
 import { basename } from '@/utils/path'
@@ -48,7 +43,6 @@ import {
   X as XIcon,
   FileDown,
   ArrowLeft,
-  Globe,
   Star,
   Headphones,
   Sparkles,
@@ -119,8 +113,6 @@ export default function PlayerPage() {
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
   const [mediaPort, setMediaPort] = useState(0)
-  const [showTranscribeLangModal, setShowTranscribeLangModal] = useState(false)
-  const [transcribeLang, setTranscribeLang] = useState('auto')
   const [favTarget, setFavTarget] = useState<{
     startTime: number
     endTime: number
@@ -254,8 +246,9 @@ export default function PlayerPage() {
     setAiTarget(null)
   }
 
+  const isRemoteAudio = /^https?:\/\//i.test(store.filePath || '')
   const ext = store.filePath?.toLowerCase().match(/\.(\w+)$/)?.[1]
-  const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
+  const isAudio = isRemoteAudio || ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
 
   // 按显示模式派生字幕：过滤中/英文行，过滤后无内容的条目在列表中隐藏
   const displaySubtitles = useMemo(
@@ -268,10 +261,6 @@ export default function PlayerPage() {
         .filter((s) => s.displayText.length > 0),
     [store.subtitles, store.subtitleDisplayMode],
   )
-
-  useEffect(() => {
-    window.api.getWhisperLang().then(setTranscribeLang)
-  }, [])
 
   // 生词库词表：已收藏的词在字幕中高亮显示
   const savedWordList = useWordStore((s) => s.words)
@@ -556,8 +545,7 @@ export default function PlayerPage() {
       aiTarget ||
       aiTranslate ||
       aiExplain ||
-      favTarget ||
-      showTranscribeLangModal
+      favTarget
     )
     closeTopLayerRef.current = () => {
       if (showShortcutHelp) {
@@ -578,10 +566,6 @@ export default function PlayerPage() {
       }
       if (favTarget) {
         setFavTarget(null)
-        return true
-      }
-      if (showTranscribeLangModal) {
-        setShowTranscribeLangModal(false)
         return true
       }
       if (showSubMenu) {
@@ -950,7 +934,9 @@ export default function PlayerPage() {
     }
   }
 
-  const startTranscription = async (filePath: string, lang?: string) => {
+  const startTranscription = async (filePath: string) => {
+    const isPodcast = /^https?:\/\//i.test(filePath) && store.mediaEpisodeID > 0
+    const force = store.subtitles.length > 0
     const status = await window.api.whisperStatus()
     if (!status.loaded) {
       store.setTranscribing(true)
@@ -973,20 +959,26 @@ export default function PlayerPage() {
     }
     store.setTranscribing(true)
     store.setTranscriptionProgress(0)
-    setTranscribingLabel('转录中')
-    const cleanup = window.api.onWhisperProgress((d: { progress: number }) =>
-      store.setTranscriptionProgress(d.progress),
-    )
+    setTranscribingLabel(isPodcast ? '下载音频' : '转录中')
+    const cleanup = window.api.onWhisperProgress((d: { progress: number; status: string }) => {
+      store.setTranscriptionProgress(d.progress)
+      if (d.status === 'downloading') setTranscribingLabel('下载音频')
+      if (d.status === 'transcribing') setTranscribingLabel('转录中')
+    })
     try {
-      if (lang) {
-        window.api.setWhisperLang(lang)
+      let subs: SubtitleItem[]
+      if (isPodcast) {
+        const result = await window.api.platformTranscribePodcast(store.mediaEpisodeID, force)
+        if (!result.ok) throw new Error(result.error || '转录失败')
+        subs = result.subtitles || []
+      } else {
+        subs = await window.api.whisperTranscribe(filePath)
+        window.api.cacheSubtitles(filePath, subs)
       }
-      const subs = await window.api.whisperTranscribe(filePath)
       if (subs.length === 0) {
         showToast('转录完成，但未识别到语音。请在设置页检查模型和语言设置是否正确', 'warning')
       }
       store.setSubtitles(subs)
-      window.api.cacheSubtitles(filePath, subs)
     } catch (err: any) {
       const msg = err?.message || String(err)
       store.setTranscriptionProgress(-1)
@@ -1019,7 +1011,7 @@ export default function PlayerPage() {
   }
 
   const retranscribe = () => {
-    if (store.filePath) setShowTranscribeLangModal(true)
+    if (store.filePath) startTranscription(store.filePath)
   }
   const closeSubtitles = () => {
     store.setSubtitles([])
@@ -1156,10 +1148,15 @@ export default function PlayerPage() {
   useEffect(() => {
     window.api.getMediaPort().then(setMediaPort)
   }, [])
-  const mediaUrl =
-    store.filePath && mediaPort
-      ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
-      : ''
+  const mediaUrl = store.filePath
+    ? isRemoteAudio
+      ? store.filePath.startsWith('https://') || !store.mediaEpisodeID || !mediaPort
+        ? store.filePath
+        : `http://127.0.0.1:${mediaPort}/podcast-stream?id=${store.mediaEpisodeID}`
+      : mediaPort
+        ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
+        : ''
+    : ''
 
   // 播放控制按钮组：视频时内嵌到画面底部，音频时放在播放器下方
   const renderTransportControls = () => (
@@ -1399,7 +1396,7 @@ export default function PlayerPage() {
           <div className="rounded-lg border bg-gradient-to-br from-primary/15 via-muted/60 to-background flex flex-col items-center justify-center gap-3 py-10 px-4">
             <Headphones className="h-16 w-16 text-primary" />
             <div className="text-sm text-muted-foreground max-w-[80%] truncate">
-              {basename(store.filePath)}
+              {store.mediaTitle || basename(store.filePath)}
             </div>
             {(() => {
               const pa = store.played - store.subtitleOffset
@@ -1637,7 +1634,7 @@ export default function PlayerPage() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => store.filePath && setShowTranscribeLangModal(true)}
+                  onClick={() => store.filePath && startTranscription(store.filePath)}
                 >
                   <Loader2 className="h-4 w-4 mr-1" /> 转录字幕
                 </Button>
@@ -1740,7 +1737,7 @@ export default function PlayerPage() {
           </Button>
           {store.filePath && (
             <span className="text-sm text-muted-foreground truncate max-w-[200px]">
-              {basename(store.filePath)}
+              {store.mediaTitle || basename(store.filePath)}
             </span>
           )}
         </div>
@@ -1775,53 +1772,6 @@ export default function PlayerPage() {
             }}
           />
         )}
-
-        <Dialog
-          open={showTranscribeLangModal && !!store.filePath}
-          onOpenChange={(open) => !open && setShowTranscribeLangModal(false)}
-        >
-          <DialogContent className="max-w-xs">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" /> 选择识别语言
-              </DialogTitle>
-            </DialogHeader>
-            <div>
-              <label className="text-sm font-medium">音频语言</label>
-              <p className="text-xs text-muted-foreground mt-1 mb-3">
-                指定音频语言可提高识别准确率，auto 为自动检测
-              </p>
-            </div>
-            <select
-              className="w-full bg-background border rounded px-3 py-2 text-sm"
-              value={transcribeLang}
-              onChange={(e) => setTranscribeLang(e.target.value)}
-            >
-              <option value="auto">自动检测</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-              <option value="ja">日本語</option>
-              <option value="ko">한국어</option>
-              <option value="fr">Français</option>
-              <option value="de">Deutsch</option>
-              <option value="es">Español</option>
-              <option value="ru">Русский</option>
-            </select>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowTranscribeLangModal(false)}>
-                取消
-              </Button>
-              <Button
-                onClick={() => {
-                  setShowTranscribeLangModal(false)
-                  startTranscription(store.filePath!, transcribeLang)
-                }}
-              >
-                开始转录
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* AI 当前句翻译/详解面板（由控制栏 Sparkles 按钮触发） */}
         {aiTarget && (

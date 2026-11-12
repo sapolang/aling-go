@@ -63,6 +63,8 @@ const SUBTITLE_MODE_KEY = 'aling.subtitleDisplayMode'
 
 interface PlayerStore {
   filePath: string | null
+  mediaTitle: string
+  mediaEpisodeID: number
   playing: boolean
   played: number
   duration: number
@@ -88,7 +90,7 @@ interface PlayerStore {
   muted: boolean
   subtitleFontScale: number
 
-  setFilePath: (path: string | null) => void
+  setFilePath: (path: string | null, title?: string, episodeID?: number) => void
   setPlaying: (playing: boolean) => void
   setPlayed: (played: number) => void
   setDuration: (duration: number) => void
@@ -117,6 +119,8 @@ interface PlayerStore {
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
   filePath: null,
+  mediaTitle: '',
+  mediaEpisodeID: 0,
   playing: false,
   played: 0,
   duration: 0,
@@ -149,9 +153,11 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   muted: typeof localStorage !== 'undefined' && localStorage.getItem(MUTED_KEY) === '1',
   subtitleFontScale: loadFontScale(),
 
-  setFilePath: (filePath) =>
+  setFilePath: (filePath, title, episodeID) =>
     set({
       filePath,
+      mediaTitle: title || '',
+      mediaEpisodeID: episodeID || 0,
       playing: false,
       played: 0,
       duration: 0,
@@ -180,6 +186,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   closeFile: () =>
     set({
       filePath: null,
+      mediaTitle: '',
+      mediaEpisodeID: 0,
       playing: false,
       played: 0,
       duration: 0,

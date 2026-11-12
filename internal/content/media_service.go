@@ -14,10 +14,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"aling-go/internal/core"
 )
 
 var mimeTypes = map[string]string{
@@ -39,6 +43,13 @@ type MediaService struct {
 	dataDir       string
 	mediaPort     int
 	mediaListener net.Listener
+	// B站取流与在线播客依赖订阅 Cookie 和带代理配置的 HTTP 客户端，由 bootstrap 注入
+	biliCookieFn   func() string
+	remoteClientFn func() *http.Client
+	// B站上游地址只保存在 Go 侧，页面通过随机 ID 请求，避免代理目标受 URL 参数控制
+	biliMu       sync.RWMutex
+	biliStreamID string
+	biliUpstream string
 }
 
 func NewMediaService(app *application.App, dataDir string) *MediaService {
@@ -62,6 +73,9 @@ func (s *MediaService) ServiceShutdown() error {
 func (s *MediaService) startMediaServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media/", s.handleMediaStream)
+	mux.HandleFunc("/podcast-stream", s.handlePodcastStream)
+	mux.HandleFunc("/yt-embed", s.handleYTEmbed)
+	mux.HandleFunc("/bili-stream", s.handleBiliStream)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -151,6 +165,150 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 	defer f.Close()
 	_, _ = io.Copy(w, f)
 }
+
+// handlePodcastStream 代理已订阅节目的在线音频，避免 HTTP 混合内容并复用订阅代理设置。
+// 只接受数据库中的节目 ID，不代理前端提供的任意 URL；仅转发播放请求，不落盘。
+func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Request) {
+	if s.remoteClientFn == nil {
+		http.Error(w, "podcast stream not initialized", http.StatusServiceUnavailable)
+		return
+	}
+	episodeID, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if err != nil || episodeID <= 0 {
+		http.Error(w, "invalid episode id", http.StatusBadRequest)
+		return
+	}
+	var raw string
+	if err := core.DB.QueryRow(`SELECT audio_url FROM feed_episodes WHERE id = ?`, episodeID).Scan(&raw); err != nil || raw == "" {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		http.Error(w, "invalid audio url", http.StatusBadRequest)
+		return
+	}
+
+	// 流式播放不能使用订阅请求的 60 秒整体超时，连接会随页面关闭而取消。
+	baseClient := s.remoteClientFn()
+	client := *baseClient
+	client.Timeout = 0
+	doRequest := func(target string) (*http.Response, error) {
+		req, reqErr := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+			req.Header.Set("Range", rangeHeader)
+		}
+		req.Header.Set("User-Agent", "Aling/1.0 (Podcast Player)")
+		return client.Do(req)
+	}
+
+	resp, err := doRequest(parsed.String())
+	// 部分 RSS 仍写 HTTP，代理会返回 502；同地址的 HTTPS 通常可用。
+	if parsed.Scheme == "http" && (err != nil || resp.StatusCode == http.StatusBadGateway) {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		httpsURL := *parsed
+		httpsURL.Scheme = "https"
+		resp, err = doRequest(httpsURL.String())
+	}
+	if err != nil {
+		http.Error(w, "upstream request failed", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	for _, header := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"} {
+		if value := resp.Header.Get(header); value != "" {
+			w.Header().Set(header, value)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
+}
+
+// --- YouTube 中转页 ---
+
+var ytVideoIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+
+// handleYTEmbed 输出一个 http 源下的中转页再嵌入 YouTube 播放器。
+// WKWebView 在 wails:// 页面里加载子 frame 不带 Referer，YouTube 会报错误 153，
+// 通过 127.0.0.1 的 http 页面中转后 Referer 正常，同时把播放进度回传给外层页面。
+func (s *MediaService) handleYTEmbed(w http.ResponseWriter, r *http.Request) {
+	videoID := r.URL.Query().Get("v")
+	if !ytVideoIDRe.MatchString(videoID) {
+		http.Error(w, "invalid video id", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	// 页面自身从 URL 读取 videoId，避免把请求参数拼接进 HTML
+	_, _ = io.WriteString(w, ytEmbedPage)
+}
+
+const ytEmbedPage = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  var player = null;
+  var videoId = new URLSearchParams(location.search).get('v') || '';
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) videoId = '';
+
+  function postStatus() {
+    if (!player || typeof player.getCurrentTime !== 'function') return;
+    parent.postMessage({
+      source: 'yt-embed',
+      event: 'status',
+      currentTime: player.getCurrentTime() || 0,
+      duration: player.getDuration() || 0,
+      state: player.getPlayerState()
+    }, '*');
+  }
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      videoId: videoId,
+      playerVars: {
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        origin: location.origin
+      },
+      events: {
+        onReady: function () {
+          postStatus();
+          setInterval(postStatus, 250);
+        },
+        onStateChange: postStatus
+      }
+    });
+  }
+
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.source !== 'aling' || !player) return;
+    if (d.command === 'play') player.playVideo();
+    else if (d.command === 'pause') player.pauseVideo();
+    postStatus();
+  });
+</script>
+</body>
+</html>`
 
 // --- Thumbnail ---
 
