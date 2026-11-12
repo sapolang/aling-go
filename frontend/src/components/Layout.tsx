@@ -186,7 +186,7 @@ export function Layout({
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <main className={`flex-1 overflow-y-auto ${isPlayerRoute ? 'p-3' : 'p-6'}`}>
+        <main className={`flex-1 overflow-y-auto ${isPlayerRoute ? 'p-3 md:p-6' : 'p-6'}`}>
           {children}
         </main>
 
@@ -206,7 +206,7 @@ export function Layout({
               variant="ghost"
               size="sm"
               className="text-xs"
-              onClick={() => navigate('/player')}
+              onClick={() => navigate('/player', { state: { from: location.pathname } })}
             >
               打开播放器
             </Button>

@@ -287,6 +287,10 @@ const ytEmbedPage = `<!DOCTYPE html>
         rel: 0,
         modestbranding: 1,
         playsinline: 1,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        iv_load_policy: 3,
         origin: location.origin
       },
       events: {
@@ -304,6 +308,15 @@ const ytEmbedPage = `<!DOCTYPE html>
     if (!d || d.source !== 'aling' || !player) return;
     if (d.command === 'play') player.playVideo();
     else if (d.command === 'pause') player.pauseVideo();
+    else if (d.command === 'seek' && typeof d.time === 'number') {
+      player.seekTo(Math.max(0, d.time), true);
+      if (d.playing) player.playVideo();
+    } else if (d.command === 'rate' && typeof d.rate === 'number') {
+      player.setPlaybackRate(d.rate);
+    } else if (d.command === 'volume' && typeof d.volume === 'number') {
+      player.setVolume(Math.round(Math.max(0, Math.min(1, d.volume)) * 100));
+      if (d.muted) player.mute(); else player.unMute();
+    }
     postStatus();
   });
 </script>

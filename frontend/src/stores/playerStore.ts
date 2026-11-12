@@ -50,6 +50,12 @@ interface SubtitleItem {
   text: string
 }
 
+// 播放源类型：决定媒体 URL 如何解析、由哪个播放器渲染
+export type SourceKind = 'html5' | 'bilibili' | 'youtube'
+
+// 媒体形态：决定 UI 用音频 deck 还是视频舞台；null 表示按扩展名/URL 自动推断
+export type MediaKind = 'audio' | 'video'
+
 interface PlayClipRequest {
   filePath: string
   startTime: number
@@ -63,6 +69,8 @@ const SUBTITLE_MODE_KEY = 'aling.subtitleDisplayMode'
 
 interface PlayerStore {
   filePath: string | null
+  sourceKind: SourceKind
+  mediaKind: MediaKind | null
   mediaTitle: string
   mediaEpisodeID: number
   playing: boolean
@@ -90,7 +98,12 @@ interface PlayerStore {
   muted: boolean
   subtitleFontScale: number
 
-  setFilePath: (path: string | null, title?: string, episodeID?: number) => void
+  setFilePath: (
+    path: string | null,
+    title?: string,
+    episodeID?: number,
+    opts?: { sourceKind?: SourceKind; mediaKind?: MediaKind },
+  ) => void
   setPlaying: (playing: boolean) => void
   setPlayed: (played: number) => void
   setDuration: (duration: number) => void
@@ -119,6 +132,8 @@ interface PlayerStore {
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
   filePath: null,
+  sourceKind: 'html5',
+  mediaKind: null,
   mediaTitle: '',
   mediaEpisodeID: 0,
   playing: false,
@@ -153,9 +168,11 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   muted: typeof localStorage !== 'undefined' && localStorage.getItem(MUTED_KEY) === '1',
   subtitleFontScale: loadFontScale(),
 
-  setFilePath: (filePath, title, episodeID) =>
+  setFilePath: (filePath, title, episodeID, opts) =>
     set({
       filePath,
+      sourceKind: opts?.sourceKind ?? 'html5',
+      mediaKind: opts?.mediaKind ?? null,
       mediaTitle: title || '',
       mediaEpisodeID: episodeID || 0,
       playing: false,
@@ -186,6 +203,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   closeFile: () =>
     set({
       filePath: null,
+      sourceKind: 'html5',
+      mediaKind: null,
       mediaTitle: '',
       mediaEpisodeID: 0,
       playing: false,

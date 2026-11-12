@@ -15,6 +15,7 @@ import { confirmDialog, showToast } from '@/components/feedback'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFeedStore, type FeedEpisode } from '@/stores/feedStore'
 import { usePlayerStore } from '@/stores/playerStore'
+import type { PlatformSubtitleCue, PlatformSubtitleResult } from '@/types/electron.d.ts'
 import {
   Rss,
   Plus,
@@ -61,6 +62,8 @@ function formatDuration(seconds: number): string {
 
 export default function PodcastPage() {
   const navigate = useNavigate()
+  // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库
+  const openPlayer = () => navigate('/player', { state: { from: '/podcast' } })
   const player = usePlayerStore()
   const {
     feeds,
@@ -99,6 +102,9 @@ export default function PodcastPage() {
   const [showPlatformConvert, setShowPlatformConvert] = useState(false)
   const [platformURL, setPlatformURL] = useState('')
   const [converting, setConverting] = useState(false)
+
+  // 正在获取 B站 播放地址的节目，避免重复点击
+  const [biliLoadingId, setBiliLoadingId] = useState<number | null>(null)
 
   const selectedFeed = useMemo(
     () => feeds.find((f) => f.id === selectedFeedId) || null,
@@ -247,7 +253,7 @@ export default function PodcastPage() {
   const playLocalFile = async (path: string, title?: string) => {
     player.setFilePath(path, title)
     await window.api.recentAdd(path)
-    navigate('/player')
+    openPlayer()
     player.setWaveformLoading(true)
     window.api
       .getWaveformData(path)
@@ -260,13 +266,78 @@ export default function PodcastPage() {
     if (cached && cached.length > 0) player.setSubtitles(cached)
   }
 
+  // 平台字幕在后台拉取，回来后确认用户没有切走再写入
+  const loadPlatformSubtitles = (episodeId: number, expectedPath: string) => {
+    window.api
+      .platformGetSubtitles(episodeId)
+      .then((r: PlatformSubtitleResult) => {
+        if (!r.ok || !r.cues || r.cues.length === 0) return
+        if (usePlayerStore.getState().filePath !== expectedPath) return
+        usePlayerStore.getState().setSubtitles(
+          r.cues.map((c: PlatformSubtitleCue, i: number) => ({
+            id: i,
+            startTime: c.start,
+            endTime: c.end,
+            text: c.text,
+          })),
+        )
+      })
+      .catch(() => {
+        // 字幕失败不影响播放，用户可在播放页重新转录
+      })
+  }
+
+  // B站 节目：先用登录态换取本地代理播放地址，再交给统一播放页
+  const playBilibiliEpisode = async (ep: FeedEpisode, bvid: string) => {
+    if (biliLoadingId !== null) return
+    setBiliLoadingId(ep.id)
+    try {
+      const res = await window.api.getBilibiliStream(bvid)
+      if (!res.ok || !res.url) {
+        showToast(res.error || '获取 B站 播放地址失败', 'error')
+        return
+      }
+      player.setFilePath(res.url, ep.title || res.title || 'B站 视频', ep.id, {
+        sourceKind: 'bilibili',
+        mediaKind: 'video',
+      })
+      if (res.duration > 0) player.setDuration(res.duration)
+      openPlayer()
+      loadPlatformSubtitles(ep.id, res.url)
+    } catch {
+      showToast('获取 B站 播放地址失败', 'error')
+    } finally {
+      setBiliLoadingId(null)
+    }
+  }
+
+  // YouTube 节目：把 videoId 交给统一播放页，iframe 通过本地中转页播放
+  const playYouTubeEpisode = (ep: FeedEpisode, videoId: string) => {
+    const sourcePath = `yt:${videoId}`
+    player.setFilePath(sourcePath, ep.title || 'YouTube', ep.id, {
+      sourceKind: 'youtube',
+      mediaKind: 'video',
+    })
+    openPlayer()
+    loadPlatformSubtitles(ep.id, sourcePath)
+  }
+
   const handleEpisodeClick = async (ep: FeedEpisode) => {
     const isOnlineOnly = !ep.audioUrl && !!ep.link
-    // 在线视频：直接跳转到在线精听页
+    // 在线视频：B站 和 YouTube 都进统一播放页
     if (isOnlineOnly) {
-      navigate('/player-online', {
-        state: { episodeId: ep.id, link: ep.link, title: ep.title },
-      })
+      const bv = ep.link.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/)
+      if (bv) {
+        await playBilibiliEpisode(ep, bv[1])
+        return
+      }
+      const yt = ep.link.match(/(?:[?&]v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})/)
+      if (yt) {
+        playYouTubeEpisode(ep, yt[1])
+        return
+      }
+      // 识别不出视频 ID 的站点暂不支持播放
+      showToast('暂不支持该站点的视频，目前仅支持 B站 与 YouTube', 'error')
       return
     }
     // 已下载的音频优先播放本地文件，未下载的直接在线播放
@@ -276,7 +347,7 @@ export default function PodcastPage() {
     }
     if (ep.audioUrl) {
       player.setFilePath(ep.audioUrl, ep.title, ep.id)
-      navigate('/player')
+      openPlayer()
       try {
         const cached = await window.api.getCachedSubtitles(ep.audioUrl)
         if (cached && cached.length > 0 && usePlayerStore.getState().filePath === ep.audioUrl) {
@@ -310,7 +381,7 @@ export default function PodcastPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-center gap-2 flex-wrap">
         <Rss className="h-5 w-5 text-muted-foreground" />
         <h2 className="text-lg font-semibold">播客订阅</h2>
@@ -372,9 +443,9 @@ export default function PodcastPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 items-start">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
           {/* 窄窗口下订阅源横向滚动，宽窗口下左侧竖排 */}
-          <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
+          <div className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:hidden">
             {feeds.map((f) => (
               <button
                 key={f.id}
@@ -391,8 +462,8 @@ export default function PodcastPage() {
             ))}
           </div>
 
-          <Card className="hidden lg:block py-2">
-            <div className="px-2 space-y-1 max-h-[calc(100vh-220px)] overflow-y-auto">
+          <Card className="hidden py-2 lg:flex lg:w-[260px] lg:shrink-0 lg:flex-col">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2">
               {feeds.map((f) => (
                 <div
                   key={f.id}
@@ -439,7 +510,7 @@ export default function PodcastPage() {
             </div>
           </Card>
 
-          <div className="space-y-3 min-w-0">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             {selectedFeed && (
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="min-w-0">
@@ -489,97 +560,105 @@ export default function PodcastPage() {
               <p className="text-xs text-destructive break-all">{selectedFeed.lastError}</p>
             )}
 
-            {loadingEpisodes ? (
-              <div className="text-center text-muted-foreground py-12">加载节目列表...</div>
-            ) : episodes.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center text-sm text-muted-foreground">
-                  该订阅源暂无可播放的节目，点「刷新」重新拉取
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {episodes.map((ep) => {
-                  const pct = downloadProgress[ep.id]
-                  const downloading = pct !== undefined
-                  const isOnlineOnly = !ep.audioUrl && !!ep.link
-                  const thumb = ep.image || selectedFeed?.image || ''
-                  const meta = [formatDate(ep.publishedAt), formatDuration(ep.duration)]
-                    .filter(Boolean)
-                    .join(' · ')
-                  return (
-                    <div
-                      key={ep.id}
-                      onClick={() => !downloading && handleEpisodeClick(ep)}
-                      className={`group rounded-lg border bg-card overflow-hidden transition-colors ${
-                        downloading ? 'opacity-80' : 'cursor-pointer hover:border-primary/50'
-                      }`}
-                    >
-                      {/* 缩略图 */}
-                      <div className="relative aspect-video bg-muted overflow-hidden">
-                        {thumb ? (
-                          <img
-                            src={thumb}
-                            alt={ep.title}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            onError={(e) => {
-                              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
-                            <PlayCircle className="h-10 w-10" />
-                          </div>
-                        )}
-                        {/* 悬浮播放图标 */}
-                        {!downloading && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
-                                <Play className="h-6 w-6 text-black ml-0.5" />
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+              {loadingEpisodes ? (
+                <div className="text-center text-muted-foreground py-12">加载节目列表...</div>
+              ) : episodes.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-sm text-muted-foreground">
+                    该订阅源暂无可播放的节目，点「刷新」重新拉取
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {episodes.map((ep) => {
+                    const pct = downloadProgress[ep.id]
+                    const downloading = pct !== undefined
+                    const isOnlineOnly = !ep.audioUrl && !!ep.link
+                    const thumb = ep.image || selectedFeed?.image || ''
+                    const meta = [formatDate(ep.publishedAt), formatDuration(ep.duration)]
+                      .filter(Boolean)
+                      .join(' · ')
+                    return (
+                      <div
+                        key={ep.id}
+                        onClick={() => !downloading && handleEpisodeClick(ep)}
+                        className={`group rounded-lg border bg-card overflow-hidden transition-colors ${
+                          downloading ? 'opacity-80' : 'cursor-pointer hover:border-primary/50'
+                        }`}
+                      >
+                        {/* 缩略图 */}
+                        <div className="relative aspect-video bg-muted overflow-hidden">
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={ep.title}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              onError={(e) => {
+                                ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
+                              <PlayCircle className="h-10 w-10" />
+                            </div>
+                          )}
+                          {/* 悬浮播放图标 */}
+                          {!downloading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                                  <Play className="h-6 w-6 text-black ml-0.5" />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
-                        {isOnlineOnly && (
-                          <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
-                            <PlayCircle className="h-3 w-3" />
-                            视频
-                          </span>
-                        )}
-                        {ep.localPath && (
-                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
-                            <Check className="h-3 w-3" />
-                            已下载
-                          </span>
-                        )}
-                        {downloading && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <div className="text-center text-white">
-                              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                              <span className="text-sm">{pct}%</span>
+                          )}
+                          {isOnlineOnly && (
+                            <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
+                              <PlayCircle className="h-3 w-3" />
+                              视频
+                            </span>
+                          )}
+                          {ep.localPath && (
+                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
+                              <Check className="h-3 w-3" />
+                              已下载
+                            </span>
+                          )}
+                          {downloading && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <div className="text-center text-white">
+                                <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                                <span className="text-sm">{pct}%</span>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                      {/* 内容 */}
-                      <div className="p-3 space-y-1.5">
-                        <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">
-                          {ep.title || '未命名节目'}
-                        </p>
-                        {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
-                        {ep.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2">
-                            {ep.description}
+                          )}
+                          {biliLoadingId === ep.id && (
+                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 text-white">
+                              <Loader2 className="h-6 w-6 animate-spin" />
+                              <span className="text-xs">获取播放地址…</span>
+                            </div>
+                          )}
+                        </div>
+                        {/* 内容 */}
+                        <div className="p-3 space-y-1.5">
+                          <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">
+                            {ep.title || '未命名节目'}
                           </p>
-                        )}
+                          {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
+                          {ep.description && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {ep.description}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

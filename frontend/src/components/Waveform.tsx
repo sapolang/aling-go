@@ -12,6 +12,10 @@ interface WaveformProps {
   subtitles?: SubtitleSegment[]
   loading?: boolean
   dark?: boolean
+  /** 画布底色，默认跟随深浅色主题 */
+  background?: string
+  /** 波形主色，默认跟随全局主题 */
+  accent?: string
   /** A/B 循环区间（秒），仅 A 点时 loopEnd 为 null */
   loopStart?: number | null
   loopEnd?: number | null
@@ -25,6 +29,8 @@ export default function Waveform({
   subtitles,
   loading,
   dark,
+  background,
+  accent,
   loopStart,
   loopEnd,
   onSeek,
@@ -70,7 +76,7 @@ export default function Waveform({
     canvas.height = logicalH * dpr
     ctx.scale(dpr, dpr)
 
-    ctx.fillStyle = dark ? '#1a1a2e' : '#ffffff'
+    ctx.fillStyle = background ?? (dark ? '#020817' : '#ffffff')
     ctx.fillRect(0, 0, logicalW, logicalH)
 
     if (!data || data.length === 0) return
@@ -117,7 +123,7 @@ export default function Waveform({
       }
     }
 
-    ctx.fillStyle = '#22c55e'
+    ctx.fillStyle = accent ?? primaryColor(1)
 
     for (let i = 0; i < data.length; i++) {
       const x = centerX + (i - centerSample) * pxPerSample + gap / 2
@@ -159,6 +165,9 @@ export default function Waveform({
     zoom,
     pxPerSample,
     gapPx,
+    background,
+    accent,
+    dark,
   ])
 
   useEffect(() => {
@@ -217,9 +226,10 @@ export default function Waveform({
   if (loading) {
     return (
       <div
-        className={`w-full h-full rounded flex items-center justify-center ${dark ? 'bg-[#1a1a2e]' : 'bg-white'}`}
+        className={`w-full h-full rounded flex items-center justify-center bg-card`}
+        style={background ? { background } : undefined}
       >
-        <div className="h-2 bg-gray-200 rounded w-3/4 animate-pulse" />
+        <div className="h-2 bg-muted rounded w-3/4 animate-pulse" />
       </div>
     )
   }
@@ -229,14 +239,15 @@ export default function Waveform({
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full relative rounded overflow-hidden cursor-grab active:cursor-grabbing select-none ${dark ? 'bg-[#1a1a2e]' : 'bg-white'}`}
+      className={`w-full h-full relative rounded overflow-hidden cursor-grab active:cursor-grabbing select-none bg-card`}
+      style={background ? { background } : undefined}
       onMouseDown={handleMouseDown}
     >
       <canvas ref={canvasRef} className="w-full h-full block" />
 
       <div className="absolute top-0 bottom-0 left-1/2 z-10 pointer-events-none flex flex-col items-center">
-        <div className="w-2 h-2 bg-gray-700 rounded-full shrink-0" />
-        <div className="w-[2px] flex-1 bg-gray-700" />
+        <div className="w-2 h-2 bg-muted-foreground rounded-full shrink-0" />
+        <div className="w-[2px] flex-1 bg-muted-foreground" />
       </div>
     </div>
   )

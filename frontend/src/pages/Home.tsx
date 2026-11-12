@@ -312,7 +312,8 @@ export default function HomePage() {
       return
     }
     player.setFilePath(file.path)
-    navigate('/player')
+    // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库
+    navigate('/player', { state: { from: '/' } })
     player.setWaveformLoading(true)
     window.api
       .getWaveformData(file.path)
