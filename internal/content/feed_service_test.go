@@ -1,6 +1,11 @@
 package content
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+)
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
@@ -96,5 +101,93 @@ func TestSanitizeFileName(t *testing.T) {
 	}
 	if got := sanitizeFileName("   "); got != "" {
 		t.Errorf("blank name = %q", got)
+	}
+}
+
+func TestBilibiliProxyUsesServerSideStreamID(t *testing.T) {
+	s := &MediaService{mediaPort: 18080}
+	for _, raw := range []string{
+		"https://example.com/video.mp4",
+		"http://upos-sz-mirror.bilivideo.com/video.mp4",
+		"https://bilivideo.com.evil.example/video.mp4",
+		"https://upos-sz-mirror.bilivideo.com@evil.example/video.mp4",
+	} {
+		if got := s.biliProxyURL(raw); got != "" {
+			t.Errorf("biliProxyURL(%q) = %q, want empty", raw, got)
+		}
+	}
+
+	upstream := "https://upos-sz-mirror.bilivideo.com/video.mp4?foo=bar"
+	proxy := s.biliProxyURL(upstream)
+	parsed, err := url.Parse(proxy)
+	if err != nil {
+		t.Fatalf("parse proxy URL: %v", err)
+	}
+	if parsed.Query().Get("url") != "" {
+		t.Fatalf("proxy URL still exposes upstream URL: %q", proxy)
+	}
+	id := parsed.Query().Get("id")
+	if id == "" {
+		t.Fatalf("proxy URL has no stream ID: %q", proxy)
+	}
+	if s.biliStreamID != id || s.biliUpstream != upstream {
+		t.Fatalf("stored stream = (%q, %q), want (%q, %q)", s.biliStreamID, s.biliUpstream, id, upstream)
+	}
+
+	s.remoteClientFn = func() *http.Client { return http.DefaultClient }
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/bili-stream?url="+url.QueryEscape("https://example.com/video.mp4"), nil)
+	s.handleBiliStream(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("legacy URL parameter status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDetectPlatformAnchorsURL(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		kind platformKind
+		id   string
+	}{
+		{name: "youtube watch", raw: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", kind: platformYouTube, id: "video:dQw4w9WgXcQ"},
+		{name: "youtube watch with params", raw: "https://www.youtube.com/watch?foo=1&v=dQw4w9WgXcQ", kind: platformYouTube, id: "video:dQw4w9WgXcQ"},
+		{name: "youtube short", raw: "https://youtu.be/dQw4w9WgXcQ?t=1", kind: platformYouTube, id: "video:dQw4w9WgXcQ"},
+		{name: "youtube handle without scheme", raw: "www.youtube.com/@MKBHD", kind: platformYouTube, id: "@MKBHD"},
+		{name: "bilibili space", raw: "https://space.bilibili.com/123456", kind: platformBilibili, id: "123456"},
+		{name: "fake youtube in query", raw: "https://evil.example/?next=https://www.youtube.com/@MKBHD", kind: platformYouTube, id: ""},
+		{name: "fake bilibili in path", raw: "https://evil.example/https://space.bilibili.com/123456", kind: platformBilibili, id: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kind, id := DetectPlatform(tt.raw)
+			if kind != tt.kind || id != tt.id {
+				t.Fatalf("DetectPlatform(%q) = (%v, %q), want (%v, %q)", tt.raw, kind, id, tt.kind, tt.id)
+			}
+		})
+	}
+}
+
+func TestExtractYouTubeChannelIDFromCanonicalHref(t *testing.T) {
+	const channelID = "UC1234567890123456789012"
+	data := []byte(`<html><head><link rel="alternate" href="https://evil.example/"><link rel="canonical" href="https://www.youtube.com/channel/` + channelID + `"></head></html>`)
+	got, err := extractYouTubeChannelID(data)
+	if err != nil || got != channelID {
+		t.Fatalf("extractYouTubeChannelID() = %q, %v; want %q", got, err, channelID)
+	}
+}
+
+func TestBilibiliMidFromURLBoundaries(t *testing.T) {
+	for _, raw := range []string{
+		"https://rsshub.app/bilibili/user/video/12345",
+		"https://space.bilibili.com/12345",
+	} {
+		if got := bilibiliMidFromURL(raw); got != "12345" {
+			t.Errorf("bilibiliMidFromURL(%q) = %q, want 12345", raw, got)
+		}
+	}
+	fake := "https://evil.example/?next=space.bilibili.com/12345"
+	if got := bilibiliMidFromURL(fake); got != "" {
+		t.Errorf("bilibiliMidFromURL(%q) = %q, want empty", fake, got)
 	}
 }

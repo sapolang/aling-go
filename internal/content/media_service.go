@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -45,6 +46,10 @@ type MediaService struct {
 	// B站取流与在线播客依赖订阅 Cookie 和带代理配置的 HTTP 客户端，由 bootstrap 注入
 	biliCookieFn   func() string
 	remoteClientFn func() *http.Client
+	// B站上游地址只保存在 Go 侧，页面通过随机 ID 请求，避免代理目标受 URL 参数控制
+	biliMu       sync.RWMutex
+	biliStreamID string
+	biliUpstream string
 }
 
 func NewMediaService(app *application.App, dataDir string) *MediaService {

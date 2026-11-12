@@ -62,19 +62,19 @@ var (
 	// YouTube 各种链接形态
 	// 频道: https://www.youtube.com/@MKBHD  https://www.youtube.com/channel/UCxxx
 	// 视频: https://www.youtube.com/watch?v=abc123  https://youtu.be/abc123
-	youtubeShortRe   = regexp.MustCompile(`youtu\.be/([a-zA-Z0-9_-]{11})`)
-	youtubeWatchRe   = regexp.MustCompile(`[?&]v=([a-zA-Z0-9_-]{11})`)
-	youtubeEmbedRe   = regexp.MustCompile(`youtube\.com/embed/([a-zA-Z0-9_-]{11})`)
-	youtubeAtRe      = regexp.MustCompile(`youtube\.com/@([^/?#]+)`)
-	youtubeChannelRe = regexp.MustCompile(`youtube\.com/channel/([a-zA-Z0-9_-]{16,32})`)
-	youtubeUserRe    = regexp.MustCompile(`youtube\.com/user/([^/?#]+)`)
+	youtubeShortRe   = regexp.MustCompile(`^(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})`)
+	youtubeWatchRe   = regexp.MustCompile(`^(?:https?://)?(?:www\.)?youtube\.com/watch\?(?:[^#]*&)?v=([a-zA-Z0-9_-]{11})`)
+	youtubeEmbedRe   = regexp.MustCompile(`^(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})`)
+	youtubeAtRe      = regexp.MustCompile(`^(?:https?://)?(?:www\.)?youtube\.com/@([^/?#]+)`)
+	youtubeChannelRe = regexp.MustCompile(`^(?:https?://)?(?:www\.)?youtube\.com/channel/([a-zA-Z0-9_-]{16,32})`)
+	youtubeUserRe    = regexp.MustCompile(`^(?:https?://)?(?:www\.)?youtube\.com/user/([^/?#]+)`)
 
 	// Bilibili
 	// UP主空间: https://space.bilibili.com/123456
 	// 视频: https://www.bilibili.com/video/BV1xxx
-	bilibiliSpaceRe = regexp.MustCompile(`space\.bilibili\.com/(\d+)`)
-	bilibiliBVRe    = regexp.MustCompile(`bilibili\.com/video/(BV[a-zA-Z0-9]+)`)
-	bilibiliAvRe    = regexp.MustCompile(`bilibili\.com/video/av(\d+)`)
+	bilibiliSpaceRe = regexp.MustCompile(`^(?:https?://)?space\.bilibili\.com/(\d+)`)
+	bilibiliBVRe    = regexp.MustCompile(`^(?:https?://)?(?:www\.)?bilibili\.com/video/(BV[a-zA-Z0-9]+)`)
+	bilibiliAvRe    = regexp.MustCompile(`^(?:https?://)?(?:www\.)?bilibili\.com/video/av(\d+)`)
 )
 
 // DetectPlatform 识别一个 URL 属于哪个平台，返回平台类型和提取到的关键标识
@@ -212,10 +212,12 @@ func extractYouTubeChannelID(data []byte) (string, error) {
 	if m := re.FindSubmatch(data); len(m) == 2 {
 		return string(m[1]), nil
 	}
-	// 兜底：从 canonical link 提取 /channel/UCxxx
-	canonicalRe := regexp.MustCompile(`youtube\.com/channel/([A-Za-z0-9_-]{20,})`)
-	if m := canonicalRe.FindSubmatch(data); len(m) == 2 {
-		return string(m[1]), nil
+	// 兜底：先提取 link href，再用已锚定的频道 URL 规则校验，避免匹配页面正文中的伪造地址
+	canonicalHrefRe := regexp.MustCompile(`(?i)<link\b[^>]*\bhref="([^"]+)"`)
+	for _, m := range canonicalHrefRe.FindAllSubmatch(data, -1) {
+		if channel := youtubeChannelRe.FindSubmatch(m[1]); len(channel) == 2 {
+			return string(channel[1]), nil
+		}
 	}
 	return "", fmt.Errorf("未能从页面解析出频道 ID")
 }

@@ -1027,7 +1027,7 @@ func downloadStatusError(code int, status string) string {
 
 // bilibiliMidFromURL 从 RSSHub 风格的 B 站 URL 中提取 UP 主 mid
 // 支持 https://rsshub.app/bilibili/user/video/12345 以及直接 https://space.bilibili.com/12345
-var bilibiliUserVideoRe = regexp.MustCompile(`bilibili\.com?/user/video/(\d+)`)
+var bilibiliUserVideoRe = regexp.MustCompile(`^(?:https?://)?[^/]+/bilibili/user/video/(\d+)(?:[?#].*)?$`)
 
 func bilibiliMidFromURL(rawURL string) string {
 	if m := bilibiliUserVideoRe.FindStringSubmatch(rawURL); len(m) == 2 {

@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // B站播放器 iframe 相对应用页面属第三方站点，WebKit/Chromium 都会拦截其 Cookie，
@@ -105,13 +107,17 @@ func (s *MediaService) GetBilibiliStream(bvid string) string {
 		return biliStreamJSON(biliStreamResult{Error: "该视频暂不支持直连播放（可能需要大会员或仅提供 DASH 分轨）"})
 	}
 
+	proxyURL := s.biliProxyURL(play.Data.DURL[0].URL)
+	if proxyURL == "" {
+		return biliStreamJSON(biliStreamResult{Error: "播放地址未通过安全校验"})
+	}
 	label := biliQualityLabels[play.Data.Quality]
 	if label == "" {
 		label = fmt.Sprintf("%dP", play.Data.Quality)
 	}
 	return biliStreamJSON(biliStreamResult{
 		OK:           true,
-		URL:          s.biliProxyURL(play.Data.DURL[0].URL),
+		URL:          proxyURL,
 		Quality:      play.Data.Quality,
 		QualityLabel: label,
 		Duration:     view.Data.Duration,
@@ -174,24 +180,35 @@ func biliStreamJSON(r biliStreamResult) string {
 }
 
 func (s *MediaService) biliProxyURL(upstream string) string {
-	return fmt.Sprintf("http://127.0.0.1:%d/bili-stream?url=%s", s.mediaPort, url.QueryEscape(upstream))
+	parsed, err := url.Parse(upstream)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || !isBiliMediaHost(parsed.Hostname()) {
+		return ""
+	}
+	id := uuid.NewString()
+	s.biliMu.Lock()
+	s.biliStreamID = id
+	s.biliUpstream = parsed.String()
+	s.biliMu.Unlock()
+	return fmt.Sprintf("http://127.0.0.1:%d/bili-stream?id=%s", s.mediaPort, id)
 }
 
-// handleBiliStream 代理 B站 CDN 的视频分片：补上 Referer/UA，透传 Range 以支持拖动进度
+// handleBiliStream 代理 B站 CDN 的视频分片：补上 Referer/UA，透传 Range 以支持拖动进度。
+// 客户端只能提供 Go 侧生成的流 ID，不能直接指定上游 URL。
 func (s *MediaService) handleBiliStream(w http.ResponseWriter, r *http.Request) {
 	if s.remoteClientFn == nil {
 		http.Error(w, "bilibili stream not initialized", http.StatusServiceUnavailable)
 		return
 	}
-	raw := r.URL.Query().Get("url")
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "https" || !isBiliMediaHost(parsed.Host) {
-		http.Error(w, "invalid url", http.StatusBadRequest)
+	s.biliMu.RLock()
+	streamID, upstream := s.biliStreamID, s.biliUpstream
+	s.biliMu.RUnlock()
+	if streamID == "" || r.URL.Query().Get("id") != streamID {
+		http.Error(w, "invalid stream id", http.StatusBadRequest)
 		return
 	}
 
-	// 上游地址已在上面校验为 https + B站 CDN 白名单，不构成开放代理
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, parsed.String(), nil) //nolint:gosec // G704: 见上方域名白名单校验
+	// upstream 只能由 biliProxyURL 在 HTTPS + CDN 白名单校验后登记，客户端无法直接提供。
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstream, nil)
 	if err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
@@ -202,7 +219,7 @@ func (s *MediaService) handleBiliStream(w http.ResponseWriter, r *http.Request) 
 	req.Header.Set("Referer", "https://www.bilibili.com/")
 	req.Header.Set("User-Agent", bilibiliWebUA)
 
-	resp, err := s.remoteClientFn().Do(req) //nolint:gosec // G704: 见上方域名白名单校验
+	resp, err := s.remoteClientFn().Do(req)
 	if err != nil {
 		http.Error(w, "upstream request failed", http.StatusBadGateway)
 		return
