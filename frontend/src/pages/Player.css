@@ -317,6 +317,12 @@
   border-color: rgba(59, 130, 246, 0.08);
 }
 
+.pp-deck.is-loading .pp-orbit-ring:first-child {
+  border-top-color: var(--pp-accent);
+  border-right-color: rgba(59, 130, 246, 0.55);
+  animation: pp-orbit-loading 1.4s linear infinite;
+}
+
 .pp-pulse {
   position: absolute;
   left: 50%;
@@ -1407,6 +1413,12 @@
   }
 }
 
+@keyframes pp-orbit-loading {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pp-stage,
   .pp-deck,
@@ -1417,7 +1429,8 @@
     animation: none;
     opacity: 0.18;
   }
-  .pp-deck.is-playing .pp-orbit-bars > span {
+  .pp-deck.is-playing .pp-orbit-bars > span,
+  .pp-deck.is-loading .pp-orbit-ring:first-child {
     animation: none;
   }
 }

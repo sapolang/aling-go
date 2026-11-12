@@ -572,6 +572,7 @@ export default function PlayerPage() {
     const onMeta = () => onMetaRef.current()
     const onPlaying = () => {
       setActiveMediaPath(store.filePath)
+      setPlayError(null)
       store.setPlaying(true)
     }
     const onPlaybackHalted = () => setActiveMediaPath(null)
@@ -1600,6 +1601,7 @@ export default function PlayerPage() {
     const title = store.mediaTitle || (store.filePath ? basename(store.filePath) : '')
     const deckPlaying =
       store.playing && (isYouTube || (!!store.filePath && activeMediaPath === store.filePath))
+    const deckLoading = store.playing && !deckPlaying && !playError
     const deckIdleText = deckPlaying
       ? '纯音频播放 · 暂无字幕'
       : store.playing
@@ -1671,7 +1673,10 @@ export default function PlayerPage() {
           </div>
 
           {showDeck && (
-            <div className={`pp-deck ${deckPlaying ? 'is-playing' : ''}`} onClick={togglePlay}>
+            <div
+              className={`pp-deck ${deckPlaying ? 'is-playing' : ''} ${deckLoading ? 'is-loading' : ''}`}
+              onClick={togglePlay}
+            >
               {store.subtitles.length > 0 && <DeckOrbit playing={deckPlaying} />}
               <div className="pp-deck-body">
                 <div className="pp-deck-top">
