@@ -21,8 +21,16 @@ func md5Hash(s string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-var videoExts = map[string]bool{"mp4": true, "mkv": true, "avi": true, "mov": true, "webm": true, "flv": true, "wmv": true}
-var audioExts = map[string]bool{"mp3": true, "wav": true, "m4a": true, "ogg": true, "flac": true, "aac": true, "wma": true}
+var videoExts = map[string]bool{
+	"mp4": true, "mkv": true, "avi": true, "mov": true, "webm": true, "flv": true,
+	"wmv": true, "ogv": true, "ts": true, "m2ts": true, "mts": true, "mpg": true,
+	"mpeg": true, "3gp": true, "rmvb": true, "rm": true,
+}
+var audioExts = map[string]bool{
+	"mp3": true, "wav": true, "m4a": true, "m4b": true, "ogg": true, "oga": true,
+	"opus": true, "flac": true, "aac": true, "wma": true, "aiff": true, "aif": true,
+	"caf": true, "ape": true, "wv": true, "mka": true, "amr": true,
+}
 var pdfExts = map[string]bool{"pdf": true}
 
 func detectFileType(name string) string {

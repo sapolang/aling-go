@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-const PODCAST_MODE_KEY = 'aling.podcastMode'
+const FOCUS_MODE_KEY = 'aling.focusMode'
 const AUTO_NEXT_KEY = 'aling.autoNextEpisode'
 const AUTO_PAUSE_KEY = 'aling.autoPause'
 const HOVER_PAUSE_KEY = 'aling.hoverPause'
@@ -50,6 +50,12 @@ interface SubtitleItem {
   text: string
 }
 
+// 播放源类型：决定媒体 URL 如何解析、由哪个播放器渲染
+export type SourceKind = 'html5' | 'bilibili' | 'youtube'
+
+// 媒体形态：决定 UI 用音频 deck 还是视频舞台；null 表示按扩展名/URL 自动推断
+export type MediaKind = 'audio' | 'video'
+
 interface PlayClipRequest {
   filePath: string
   startTime: number
@@ -63,6 +69,8 @@ const SUBTITLE_MODE_KEY = 'aling.subtitleDisplayMode'
 
 interface PlayerStore {
   filePath: string | null
+  sourceKind: SourceKind
+  mediaKind: MediaKind | null
   mediaTitle: string
   mediaEpisodeID: number
   playing: boolean
@@ -81,7 +89,7 @@ interface PlayerStore {
   waveformLoading: boolean
   subtitleOffset: number
   playClip: PlayClipRequest | null
-  podcastMode: boolean
+  focusMode: boolean
   autoNextEpisode: boolean
   autoPause: boolean
   hoverPause: boolean
@@ -90,7 +98,12 @@ interface PlayerStore {
   muted: boolean
   subtitleFontScale: number
 
-  setFilePath: (path: string | null, title?: string, episodeID?: number) => void
+  setFilePath: (
+    path: string | null,
+    title?: string,
+    episodeID?: number,
+    opts?: { sourceKind?: SourceKind; mediaKind?: MediaKind },
+  ) => void
   setPlaying: (playing: boolean) => void
   setPlayed: (played: number) => void
   setDuration: (duration: number) => void
@@ -107,7 +120,7 @@ interface PlayerStore {
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
   setPlayClip: (clip: PlayClipRequest | null) => void
-  setPodcastMode: (v: boolean) => void
+  setFocusMode: (v: boolean) => void
   setAutoNextEpisode: (v: boolean) => void
   setAutoPause: (v: boolean) => void
   setHoverPause: (v: boolean) => void
@@ -119,6 +132,8 @@ interface PlayerStore {
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
   filePath: null,
+  sourceKind: 'html5',
+  mediaKind: null,
   mediaTitle: '',
   mediaEpisodeID: 0,
   playing: false,
@@ -137,8 +152,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformLoading: false,
   subtitleOffset: 0,
   playClip: null,
-  podcastMode:
-    typeof localStorage !== 'undefined' && localStorage.getItem(PODCAST_MODE_KEY) === '1',
+  focusMode: typeof localStorage !== 'undefined' && localStorage.getItem(FOCUS_MODE_KEY) === '1',
   // 默认开启；localStorage 存 '0' 表示关闭
   autoNextEpisode:
     typeof localStorage === 'undefined' || localStorage.getItem(AUTO_NEXT_KEY) !== '0',
@@ -153,9 +167,11 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   muted: typeof localStorage !== 'undefined' && localStorage.getItem(MUTED_KEY) === '1',
   subtitleFontScale: loadFontScale(),
 
-  setFilePath: (filePath, title, episodeID) =>
+  setFilePath: (filePath, title, episodeID, opts) =>
     set({
       filePath,
+      sourceKind: opts?.sourceKind ?? 'html5',
+      mediaKind: opts?.mediaKind ?? null,
       mediaTitle: title || '',
       mediaEpisodeID: episodeID || 0,
       playing: false,
@@ -186,6 +202,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   closeFile: () =>
     set({
       filePath: null,
+      sourceKind: 'html5',
+      mediaKind: null,
       mediaTitle: '',
       mediaEpisodeID: 0,
       playing: false,
@@ -213,13 +231,13 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       return { subtitleOffset: next }
     }),
   setPlayClip: (playClip) => set({ playClip }),
-  setPodcastMode: (podcastMode) => {
+  setFocusMode: (focusMode) => {
     try {
-      localStorage.setItem(PODCAST_MODE_KEY, podcastMode ? '1' : '0')
+      localStorage.setItem(FOCUS_MODE_KEY, focusMode ? '1' : '0')
     } catch {
       // 忽略持久化失败（如隐私模式）
     }
-    set({ podcastMode })
+    set({ focusMode })
   },
   setAutoNextEpisode: (autoNextEpisode) => {
     try {

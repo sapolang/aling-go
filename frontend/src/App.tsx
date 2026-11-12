@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Window, Screens } from '@wailsio/runtime'
 import { Layout } from '@/components/Layout'
@@ -7,7 +7,6 @@ import { useThemeStore } from '@/stores/themeStore'
 
 const Home = lazy(() => import('@/pages/Home'))
 const Player = lazy(() => import('@/pages/Player'))
-const PlayerOnline = lazy(() => import('@/pages/PlayerOnline'))
 const WordList = lazy(() => import('@/pages/WordList'))
 const WordCard = lazy(() => import('@/pages/WordCard'))
 const Settings = lazy(() => import('@/pages/Settings'))
@@ -108,7 +107,8 @@ function AppContent() {
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/podcast" element={<Podcast />} />
-          <Route path="/player-online" element={<PlayerOnline />} />
+          {/* 旧在线播放页已并入 /player，保留路径做重定向 */}
+          <Route path="/player-online" element={<Navigate to="/player" replace />} />
           <Route path="/words" element={<WordList />} />
           <Route path="/dict" element={<Dict />} />
           <Route path="/dict/:tag" element={<Review />} />

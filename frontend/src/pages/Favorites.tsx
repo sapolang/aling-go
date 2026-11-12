@@ -326,7 +326,7 @@ export default function FavoritesPage() {
       })
       window.api.recentAdd(clip.filePath)
     }
-    navigate('/player')
+    navigate('/player', { state: { from: '/favorites' } })
   }
 
   // 键盘操作通过 ref 读取最新状态，避免反复绑定监听器

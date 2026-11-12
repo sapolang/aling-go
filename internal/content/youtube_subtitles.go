@@ -208,7 +208,36 @@ func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) 
 	if len(files) == 0 {
 		return nil, fmt.Errorf("下载音频失败")
 	}
-	return s.transcribeAudioFile(files[0])
+	// 下载到的多为 webm/opus，内置 whisper 只带 miniaudio，解码不了这类封装
+	wavPath := filepath.Join(dir, "audio-16k.wav")
+	if err := s.transcodeToWav(files[0], wavPath); err != nil {
+		return nil, err
+	}
+	return s.transcribeAudioFile(wavPath)
+}
+
+// transcodeToWav 把下载到的音轨转成 whisper 需要的 16kHz 单声道 PCM
+func (s *PlatformService) transcodeToWav(input, output string) error {
+	ffmpeg := findFFmpeg(s.dataDir, s.app.Logger)
+	if ffmpeg == "" {
+		return fmt.Errorf("缺少 ffmpeg，无法转码音轨")
+	}
+	cmd := exec.Command(ffmpeg, "-y", "-i", input, "-vn", "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", output)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if i := strings.LastIndex(msg, "\n"); i >= 0 {
+			msg = msg[i+1:]
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("音轨转码失败: %s", msg)
+	}
+	if fi, statErr := os.Stat(output); statErr != nil || fi.Size() == 0 {
+		return fmt.Errorf("音轨转码失败: 输出文件为空")
+	}
+	return nil
 }
 
 func (s *PlatformService) transcribeAudioFile(path string) ([]SubtitleCue, error) {
