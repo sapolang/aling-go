@@ -258,6 +258,22 @@
   background: rgba(0, 0, 0, 0.82);
 }
 
+/* 专注模式里没有视频舞台，转码/失败提示直接落在面板内 */
+.pp-deck-notice {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--pp-muted);
+  font-family: var(--pp-sans);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.pp-deck-notice--error {
+  color: #fecaca;
+}
+
 /* ---------- Audio / focus deck ---------- */
 
 .pp-deck {

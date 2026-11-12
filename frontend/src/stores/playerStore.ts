@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-const PODCAST_MODE_KEY = 'aling.podcastMode'
+const FOCUS_MODE_KEY = 'aling.focusMode'
 const AUTO_NEXT_KEY = 'aling.autoNextEpisode'
 const AUTO_PAUSE_KEY = 'aling.autoPause'
 const HOVER_PAUSE_KEY = 'aling.hoverPause'
@@ -89,7 +89,7 @@ interface PlayerStore {
   waveformLoading: boolean
   subtitleOffset: number
   playClip: PlayClipRequest | null
-  podcastMode: boolean
+  focusMode: boolean
   autoNextEpisode: boolean
   autoPause: boolean
   hoverPause: boolean
@@ -120,7 +120,7 @@ interface PlayerStore {
   setWaveformLoading: (loading: boolean) => void
   adjustSubtitleOffset: (delta: number) => void
   setPlayClip: (clip: PlayClipRequest | null) => void
-  setPodcastMode: (v: boolean) => void
+  setFocusMode: (v: boolean) => void
   setAutoNextEpisode: (v: boolean) => void
   setAutoPause: (v: boolean) => void
   setHoverPause: (v: boolean) => void
@@ -152,8 +152,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   waveformLoading: false,
   subtitleOffset: 0,
   playClip: null,
-  podcastMode:
-    typeof localStorage !== 'undefined' && localStorage.getItem(PODCAST_MODE_KEY) === '1',
+  focusMode: typeof localStorage !== 'undefined' && localStorage.getItem(FOCUS_MODE_KEY) === '1',
   // 默认开启；localStorage 存 '0' 表示关闭
   autoNextEpisode:
     typeof localStorage === 'undefined' || localStorage.getItem(AUTO_NEXT_KEY) !== '0',
@@ -232,13 +231,13 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       return { subtitleOffset: next }
     }),
   setPlayClip: (playClip) => set({ playClip }),
-  setPodcastMode: (podcastMode) => {
+  setFocusMode: (focusMode) => {
     try {
-      localStorage.setItem(PODCAST_MODE_KEY, podcastMode ? '1' : '0')
+      localStorage.setItem(FOCUS_MODE_KEY, focusMode ? '1' : '0')
     } catch {
       // 忽略持久化失败（如隐私模式）
     }
-    set({ podcastMode })
+    set({ focusMode })
   },
   setAutoNextEpisode: (autoNextEpisode) => {
     try {

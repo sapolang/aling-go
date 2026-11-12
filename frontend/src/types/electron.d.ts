@@ -212,6 +212,8 @@ export interface ElectronAPI {
   getCachedSubtitles: (filePath: string) => Promise<any[] | null>
   getVideoThumbnail: (filePath: string) => Promise<string | null>
   getWaveformData: (filePath: string) => Promise<number[]>
+  // 把内置播放器不支持的容器转成可播格式，返回转换后的本地路径
+  transcodeForPlayback: (filePath: string) => Promise<string>
 
   getPlatform: () => string
   getMediaPort: () => Promise<number>

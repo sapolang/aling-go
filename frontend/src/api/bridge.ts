@@ -74,6 +74,7 @@ import {
   GetWaveformData,
   GetMediaPort,
   GetBilibiliStream,
+  TranscodeForPlayback,
 } from '../../bindings/aling-go/internal/content/mediaservice'
 
 import {
@@ -207,6 +208,7 @@ export function initBridge(): void {
 
     getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
     getWaveformData: (filePath: string) => GetWaveformData(filePath),
+    transcodeForPlayback: (filePath: string) => TranscodeForPlayback(filePath),
     getPlatform: () => GetPlatform(),
     getVersion: () => GetVersion(),
     getMediaPort: () => GetMediaPort(),

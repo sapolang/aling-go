@@ -71,6 +71,27 @@ import './Player.css'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+// 纯音频扩展名：决定用音频 deck 还是视频舞台渲染
+const AUDIO_EXTS = [
+  'mp3',
+  'wav',
+  'm4a',
+  'm4b',
+  'ogg',
+  'oga',
+  'opus',
+  'flac',
+  'aac',
+  'wma',
+  'aiff',
+  'aif',
+  'caf',
+  'ape',
+  'wv',
+  'mka',
+  'amr',
+]
+
 // 长按时允许连续触发的动作；切换类动作忽略系统按键重复，避免反复开关
 const REPEATABLE_SHORTCUTS = new Set<string>([
   'seekBack',
@@ -204,6 +225,16 @@ export default function PlayerPage() {
   const [mediaPort, setMediaPort] = useState(0)
   // 原生媒体实际进入 playing 的文件，用于让声纹与真实出声状态一致
   const [activeMediaPath, setActiveMediaPath] = useState<string | null>(null)
+  // 格式兜底：内置播放器解不了的容器转成可播文件后，只替换媒体源，filePath 仍是原文件。
+  // 带上来源文件，切走再切回时不用额外重置状态
+  const [fallback, setFallback] = useState<{ file: string; path: string } | null>(null)
+  const [convertingFile, setConvertingFile] = useState<string | null>(null)
+  const fallbackPath = fallback && fallback.file === store.filePath ? fallback.path : null
+  const converting = convertingFile !== null && convertingFile === store.filePath
+  // 同一个文件只尝试转码一次，避免转码结果也播不了时反复重试
+  const fallbackTriedRef = useRef<string | null>(null)
+  // 转码期间丢失的播放位置，转码完成后从这里续播
+  const fallbackResumeRef = useRef<{ file: string; time: number } | null>(null)
 
   // YouTube 源：iframe 通过 /yt-embed 中转页播放，时间轴由 postMessage 回写 store
   const youtubeId = store.sourceKind === 'youtube' ? (store.filePath || '').replace(/^yt:/, '') : ''
@@ -352,7 +383,7 @@ export default function PlayerPage() {
   const isAudio =
     store.mediaKind !== null
       ? store.mediaKind === 'audio'
-      : isRemoteAudio || ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext || '')
+      : isRemoteAudio || AUDIO_EXTS.includes(ext || '')
 
   // 按显示模式派生字幕：过滤中/英文行，过滤后无内容的条目在列表中隐藏
   const displaySubtitles = useMemo(
@@ -489,6 +520,17 @@ export default function PlayerPage() {
     const el = mediaRef.current
     if (!el) return
     store.setDuration(el.duration)
+    // 转码完成后接着原来的位置播，不再走「续播上次位置」的判定
+    const resume = fallbackResumeRef.current
+    if (resume && resume.file === store.filePath && fallbackPath) {
+      fallbackResumeRef.current = null
+      el.currentTime = resume.time
+      store.setPlayed(resume.time)
+      if (usePlayerStore.getState().playing) {
+        el.play().catch(() => {})
+      }
+      return
+    }
     const fp = store.filePath
     if (!fp) return
     // 收藏片段跳转：定位到片段起点并循环，优先于续播位置
@@ -546,6 +588,32 @@ export default function PlayerPage() {
     }
     const onError = () => {
       setActiveMediaPath(null)
+      const st = usePlayerStore.getState()
+      const failedPath = st.filePath
+      const el = mediaRef.current
+      const isLocalFile =
+        !!failedPath && st.sourceKind === 'html5' && !/^https?:\/\//i.test(failedPath)
+      // code 4 = MEDIA_ERR_SRC_NOT_SUPPORTED，说明是容器/编码解不了，试一次转码兜底
+      if (isLocalFile && el?.error?.code === 4 && fallbackTriedRef.current !== failedPath) {
+        fallbackTriedRef.current = failedPath
+        fallbackResumeRef.current = { file: failedPath, time: el?.currentTime ?? 0 }
+        setPlayError(null)
+        setConvertingFile(failedPath)
+        window.api
+          .transcodeForPlayback(failedPath)
+          .then((out: string) => {
+            if (usePlayerStore.getState().filePath !== failedPath) return
+            setFallback({ file: failedPath, path: out })
+            showPlayerHud('已转换为可播格式')
+          })
+          .catch((e: unknown) => {
+            if (usePlayerStore.getState().filePath !== failedPath) return
+            fallbackResumeRef.current = null
+            setPlayError(e instanceof Error ? e.message : String(e))
+          })
+          .finally(() => setConvertingFile(null))
+        return
+      }
       setPlayError('媒体加载失败')
     }
     el.addEventListener('timeupdate', onTime)
@@ -967,9 +1035,9 @@ export default function PlayerPage() {
             })
             .catch(() => showToast('全屏切换失败', 'warning'))
           break
-        case 'podcastMode':
-          st.setPodcastMode(!st.podcastMode)
-          showPlayerHud(st.podcastMode ? '已退出播客模式' : '已进入播客模式')
+        case 'focusMode':
+          st.setFocusMode(!st.focusMode)
+          showPlayerHud(st.focusMode ? '已退出专注模式' : '已进入专注模式')
           break
         case 'autoNextEpisode':
           st.setAutoNextEpisode(!st.autoNextEpisode)
@@ -1304,7 +1372,7 @@ export default function PlayerPage() {
             ? store.filePath
             : `http://127.0.0.1:${mediaPort}/podcast-stream?id=${store.mediaEpisodeID}`
           : mediaPort
-            ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(store.filePath)}`
+            ? `http://127.0.0.1:${mediaPort}/media/${encodeURIComponent(fallbackPath || store.filePath)}`
             : ''
     : ''
 
@@ -1462,10 +1530,10 @@ export default function PlayerPage() {
             </PPIconButton>
             <PPIconButton
               label="专注模式（V）"
-              active={store.podcastMode}
+              active={store.focusMode}
               onClick={() => {
-                store.setPodcastMode(!store.podcastMode)
-                showPlayerHud(store.podcastMode ? '已退出专注模式' : '已进入专注模式')
+                store.setFocusMode(!store.focusMode)
+                showPlayerHud(store.focusMode ? '已退出专注模式' : '已进入专注模式')
               }}
             >
               <Headphones className="h-4 w-4" />
@@ -1528,7 +1596,7 @@ export default function PlayerPage() {
 
   // --- Player view ---
   const renderPlayer = () => {
-    const showDeck = isAudio || store.podcastMode
+    const showDeck = isAudio || store.focusMode
     const title = store.mediaTitle || (store.filePath ? basename(store.filePath) : '')
     const deckPlaying =
       store.playing && (isYouTube || (!!store.filePath && activeMediaPath === store.filePath))
@@ -1578,6 +1646,7 @@ export default function PlayerPage() {
                 </span>
               </div>
             )}
+            {!showDeck && converting && <div className="pp-play-error">正在转换为可播格式…</div>}
             {!showDeck && playError && <div className="pp-play-error">播放失败：{playError}</div>}
             {!showDeck && <PlayerHud />}
             {!showDeck && store.filePath && (
@@ -1612,6 +1681,10 @@ export default function PlayerPage() {
                   </span>
                 </div>
                 <h2 className="pp-deck-title">{title}</h2>
+                {converting && <div className="pp-deck-notice">正在转换为可播格式…</div>}
+                {playError && (
+                  <div className="pp-deck-notice pp-deck-notice--error">播放失败：{playError}</div>
+                )}
                 <div
                   className={`pp-deck-sentence ${
                     !activeSub && store.subtitles.length === 0 ? 'pp-deck-sentence--empty' : ''
@@ -1675,7 +1748,7 @@ export default function PlayerPage() {
               <div
                 className={`pp-wave ${
                   showDeck
-                    ? store.podcastMode
+                    ? store.focusMode
                       ? 'pp-wave--focus'
                       : 'pp-wave--audio'
                     : 'pp-wave--video'

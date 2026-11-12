@@ -28,7 +28,7 @@ export type ShortcutActionId =
   | 'favoriteSentence'
   | 'aiSentence'
   | 'speakSentence'
-  | 'podcastMode'
+  | 'focusMode'
   | 'autoNextEpisode'
   | 'hoverPause'
   | 'navigateNextWordSentence'
@@ -190,7 +190,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     group: 'learning',
     defaultBinding: binding('KeyS', true),
   },
-  { id: 'podcastMode', label: '播客模式', group: 'learning', defaultBinding: binding('KeyV') },
+  { id: 'focusMode', label: '专注模式', group: 'learning', defaultBinding: binding('KeyV') },
   {
     id: 'autoNextEpisode',
     label: '自动下一集',

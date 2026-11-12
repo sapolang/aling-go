@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -626,24 +625,3 @@ func ExtractBilibiliBVID(rawURL string) string {
 	}
 	return ""
 }
-
-// BuildYouTubeEmbedURL 根据 videoId 生成 embed 播放器 URL
-// 带 enablejsapi=1 以便 iframe 内的播放器被外层 JS 控制
-func BuildYouTubeEmbedURL(videoID string) string {
-	return fmt.Sprintf(
-		"https://www.youtube.com/embed/%s?enablejsapi=1&rel=0&modestbranding=1",
-		videoID,
-	)
-}
-
-// BuildBilibiliEmbedURL 根据 BV 号生成 embed 播放器 URL
-// B站 embed 需要 aid，简单做法是直接用 BV 号播放页 + 加 &page=1
-func BuildBilibiliEmbedURL(bvid string) string {
-	return fmt.Sprintf(
-		"//player.bilibili.com/player.html?bvid=%s&page=1&high_quality=1&danmaku=0",
-		bvid,
-	)
-}
-
-// --- strconv 引入，避免 go vet 警告 ---
-var _ = strconv.Itoa

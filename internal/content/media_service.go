@@ -29,13 +29,44 @@ var mimeTypes = map[string]string{
 	".mp3":  "audio/mpeg",
 	".wav":  "audio/wav",
 	".m4a":  "audio/mp4",
+	".m4b":  "audio/mp4",
 	".m4v":  "video/mp4",
 	".mkv":  "video/x-matroska",
 	".mov":  "video/quicktime",
 	".webm": "video/webm",
 	".flac": "audio/flac",
 	".ogg":  "audio/ogg",
+	".oga":  "audio/ogg",
+	".opus": "audio/ogg",
 	".aac":  "audio/aac",
+	".aiff": "audio/aiff",
+	".aif":  "audio/aiff",
+	".caf":  "audio/x-caf",
+	".wma":  "audio/x-ms-wma",
+	".ape":  "audio/x-ape",
+	".wv":   "audio/x-wavpack",
+	".mka":  "audio/x-matroska",
+	".amr":  "audio/amr",
+	".ogv":  "video/ogg",
+	".avi":  "video/x-msvideo",
+	".wmv":  "video/x-ms-wmv",
+	".flv":  "video/x-flv",
+	".ts":   "video/mp2t",
+	".m2ts": "video/mp2t",
+	".mts":  "video/mp2t",
+	".mpg":  "video/mpeg",
+	".mpeg": "video/mpeg",
+	".3gp":  "video/3gpp",
+	".rmvb": "application/vnd.rn-realmedia-vbr",
+	".rm":   "application/vnd.rn-realmedia",
+}
+
+// transcodeAudioExts 标记纯音频容器：转码兜底时只取音轨，避免把长视频整体重编码
+var transcodeAudioExts = map[string]bool{
+	".mp3": true, ".m4a": true, ".m4b": true, ".aac": true, ".wav": true,
+	".flac": true, ".ogg": true, ".oga": true, ".opus": true, ".aiff": true,
+	".aif": true, ".caf": true, ".wma": true, ".ape": true, ".wv": true,
+	".mka": true, ".amr": true,
 }
 
 type MediaService struct {
@@ -50,6 +81,9 @@ type MediaService struct {
 	biliMu       sync.RWMutex
 	biliStreamID string
 	biliUpstream string
+	// 转码兜底：ffmpeg 能力探测结果，只探一次
+	capsMu sync.Mutex
+	caps   ffmpegCaps
 }
 
 func NewMediaService(app *application.App, dataDir string) *MediaService {
@@ -504,4 +538,139 @@ func readWavPCM16(path string) ([]int16, error) {
 			}
 		}
 	}
+}
+
+// --- 格式兜底 ---
+
+// ffmpegCaps 记录当前 ffmpeg 能做的转换，探测一次后复用
+type ffmpegCaps struct {
+	probed bool
+	video  string // 可用的 H.264 编码器，空表示不能转视频
+	audio  string // 可用的 AAC/MP3 编码器，空表示不能压缩音频
+	mp4    bool   // 是否有 mp4 封装器
+	pcm    bool   // 是否能输出 PCM（wav）
+}
+
+// probeCaps 通过 -encoders / -muxers 判断能力：内置精简 ffmpeg 只有 PCM 编码器和 wav 封装器
+func (s *MediaService) probeCaps(ffmpeg string) ffmpegCaps {
+	s.capsMu.Lock()
+	defer s.capsMu.Unlock()
+	if s.caps.probed {
+		return s.caps
+	}
+	caps := ffmpegCaps{probed: true}
+	if out, err := exec.Command(ffmpeg, "-hide_banner", "-encoders").CombinedOutput(); err == nil {
+		text := string(out)
+		switch {
+		case strings.Contains(text, "h264_videotoolbox"):
+			caps.video = "h264_videotoolbox"
+		case strings.Contains(text, "libx264"):
+			caps.video = "libx264"
+		}
+		switch {
+		case strings.Contains(text, " aac "):
+			caps.audio = "aac"
+		case strings.Contains(text, "libmp3lame"):
+			caps.audio = "libmp3lame"
+		}
+		caps.pcm = strings.Contains(text, "pcm_s16le")
+	}
+	if out, err := exec.Command(ffmpeg, "-hide_banner", "-muxers").CombinedOutput(); err == nil {
+		text := string(out)
+		caps.mp4 = strings.Contains(text, " mp4 ") || strings.Contains(text, " mov ")
+	}
+	s.caps = caps
+	return caps
+}
+
+// TranscodeForPlayback 把系统内置播放器不支持的容器转成可播格式，返回转换后的本地路径。
+// 结果按「路径 + 大小 + 修改时间」缓存在 dataDir/transcoded，同一个文件只转一次。
+func (s *MediaService) TranscodeForPlayback(filePath string) (string, error) {
+	stat, err := os.Stat(filePath)
+	if err != nil || stat.IsDir() {
+		return "", fmt.Errorf("文件不存在或不可读")
+	}
+
+	ffmpeg := findFFmpeg(s.dataDir, s.app.Logger)
+	if ffmpeg == "" {
+		return "", fmt.Errorf("缺少 ffmpeg，无法转换该格式")
+	}
+	caps := s.probeCaps(ffmpeg)
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	audioOnly := transcodeAudioExts[ext]
+
+	// 选输出容器：音频优先压缩成 m4a，没有编码器时退回体积更大的 wav
+	var outExt string
+	var args []string
+	if audioOnly {
+		switch {
+		case caps.audio == "aac" && caps.mp4:
+			outExt = ".m4a"
+			args = []string{"-vn", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"}
+		case caps.pcm:
+			// 没有 AAC 编码器时用 wav 兜底，体积大但一定能播
+			outExt = ".wav"
+			args = []string{"-vn", "-ac", "1", "-ar", "32000", "-c:a", "pcm_s16le"}
+		default:
+			return "", fmt.Errorf("内置 ffmpeg 缺少音频编码器，无法转换该格式")
+		}
+	} else {
+		if caps.video == "" || !caps.mp4 {
+			return "", fmt.Errorf(
+				"内置 ffmpeg 不支持视频转码（缺少 H.264 编码器）。请先转换成 MP4 再导入，或安装完整版 ffmpeg 后重试",
+			)
+		}
+		outExt = ".mp4"
+		args = []string{"-map", "0:v?", "-map", "0:a?"}
+		if caps.audio != "" {
+			args = append(args, "-c:v", caps.video, "-preset", "veryfast", "-crf", "23",
+				"-pix_fmt", "yuv420p",
+				// H.264 要求宽高为偶数，奇数尺寸会被编码器拒绝
+				"-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+				"-c:a", caps.audio, "-b:a", "160k", "-movflags", "+faststart")
+		} else {
+			args = append(args, "-c:v", caps.video, "-preset", "veryfast", "-crf", "23",
+				"-pix_fmt", "yuv420p", "-an",
+				"-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-movflags", "+faststart")
+		}
+	}
+
+	cacheDir := filepath.Join(s.dataDir, "transcoded")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("创建转码缓存目录失败: %w", err)
+	}
+	key := md5Hash(fmt.Sprintf("%s|%d|%d|%s", filePath, stat.Size(), stat.ModTime().Unix(), outExt))
+	outPath := filepath.Join(cacheDir, key+outExt)
+	if fi, statErr := os.Stat(outPath); statErr == nil && fi.Size() > 0 {
+		return outPath, nil
+	}
+
+	// 先写临时文件，成功后改名，避免半成品被当成缓存命中
+	tmpPath := filepath.Join(cacheDir, key+".part"+outExt)
+	fullArgs := append([]string{"-y", "-i", filePath}, args...)
+	fullArgs = append(fullArgs, tmpPath)
+	out, runErr := exec.Command(ffmpeg, fullArgs...).CombinedOutput()
+	if runErr != nil {
+		_ = os.Remove(tmpPath)
+		msg := strings.TrimSpace(string(out))
+		// ffmpeg 的报错多行，取最后一行作为摘要
+		if i := strings.LastIndex(msg, "\n"); i >= 0 {
+			msg = msg[i+1:]
+		}
+		if msg == "" {
+			msg = runErr.Error()
+		}
+		return "", fmt.Errorf("转码失败: %s", msg)
+	}
+	if fi, statErr := os.Stat(tmpPath); statErr != nil || fi.Size() == 0 {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("转码失败: 输出文件为空")
+	}
+	if err := os.Rename(tmpPath, outPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("保存转码结果失败: %w", err)
+	}
+	s.app.Logger.Info("Transcoded for playback", "input", filePath, "output", outPath)
+	return outPath, nil
 }
