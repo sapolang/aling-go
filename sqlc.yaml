@@ -1,0 +1,41 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/core/schema.sql"
+    queries: "internal/study/sqlc/query.sql"
+    gen:
+      go:
+        package: "studydb"
+        out: "internal/study/studydb"
+        emit_interface: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        overrides:
+          # words 表的可空列在业务层始终写入非 NULL 值，强制映射为非指针类型，
+          # 避免每次读写都要做 sql.NullString/指针转换。
+          - column: "words.id"
+            go_type: "int"
+          - column: "words.definition"
+            go_type: "string"
+          - column: "words.phonetic"
+            go_type: "string"
+          - column: "words.example"
+            go_type: "string"
+          - column: "words.tags"
+            go_type: "string"
+          - column: "words.level"
+            go_type: "int"
+          - column: "words.next_review"
+            go_type: "string"
+          - column: "words.created_at"
+            go_type: "string"
+          - column: "words.updated_at"
+            go_type: "string"
+          - column: "words.repetitions"
+            go_type: "int"
+          - column: "words.efactor"
+            go_type: "float64"
+          - column: "words.interval"
+            go_type: "int"
+          - column: "tags.id"
+            go_type: "int"
