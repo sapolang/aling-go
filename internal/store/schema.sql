@@ -73,3 +73,30 @@ CREATE TABLE IF NOT EXISTS ai_translations (
 	created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_ai_translations_created ON ai_translations(created_at);
+CREATE TABLE IF NOT EXISTS feeds (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	url TEXT NOT NULL UNIQUE,
+	title TEXT DEFAULT '',
+	description TEXT DEFAULT '',
+	image TEXT DEFAULT '',
+	site_url TEXT DEFAULT '',
+	last_fetched_at TEXT DEFAULT '',
+	last_error TEXT DEFAULT '',
+	created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS feed_episodes (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	feed_id INTEGER NOT NULL,
+	guid TEXT NOT NULL,
+	title TEXT DEFAULT '',
+	description TEXT DEFAULT '',
+	audio_url TEXT DEFAULT '',
+	link TEXT DEFAULT '',
+	duration INTEGER DEFAULT 0,
+	published_at TEXT DEFAULT '',
+	local_path TEXT DEFAULT '',
+	image TEXT DEFAULT '',
+	created_at TEXT DEFAULT (datetime('now','localtime')),
+	UNIQUE(feed_id, guid)
+);
+CREATE INDEX IF NOT EXISTS idx_feed_episodes_feed ON feed_episodes(feed_id, published_at);

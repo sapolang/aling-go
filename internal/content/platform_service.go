@@ -14,8 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"aling-go/internal/core"
-
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -299,11 +297,11 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) Podcast
 		return PodcastTranscribeResult{Error: err.Error()}
 	}
 
-	var audioURL, localPath string
-	if err := core.DB.QueryRow(`SELECT audio_url, local_path FROM feed_episodes WHERE id = ?`, episodeID).
-		Scan(&audioURL, &localPath); err != nil {
+	info, err := q().GetEpisodeAudioAndLocalPath(context.Background(), episodeID)
+	if err != nil {
 		return fail(fmt.Errorf("节目不存在"))
 	}
+	audioURL, localPath := info.AudioUrl, info.LocalPath
 	if localPath != "" {
 		if _, err := os.Stat(localPath); err != nil {
 			localPath = ""
@@ -330,10 +328,7 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) Podcast
 	if err := s.checkWhisperReady(); err != nil {
 		return fail(err)
 	}
-	var (
-		cues []SubtitleCue
-		err  error
-	)
+	var cues []SubtitleCue
 	if localPath != "" {
 		cues, err = s.transcribeAudioFile(localPath)
 	} else {
@@ -364,15 +359,8 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) Podcast
 // GetSubtitles 根据 FeedEpisode 的 link 字段抓取平台字幕
 // 输入是 platformService 内部存储的 episode_link，自动识别平台
 func (s *PlatformService) GetSubtitles(episodeID int64) PlatformSubtitlesResult {
-	var (
-		feedID   int64
-		title    string
-		link     string
-		audioURL string
-	)
-	_ = core.DB.QueryRow(`
-		SELECT feed_id, title, link, audio_url FROM feed_episodes WHERE id = ?`, episodeID).
-		Scan(&feedID, &title, &link, &audioURL)
+	info, _ := q().GetEpisodeForSubtitles(context.Background(), episodeID)
+	title, link, audioURL := info.Title, info.Link, info.AudioUrl
 
 	// 播客源优先：如果有音频直链且音频字幕已缓存，直接返回缓存
 	if audioURL != "" {

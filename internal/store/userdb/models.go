@@ -33,6 +33,33 @@ type FavoriteTag struct {
 	CreatedAt *string
 }
 
+type Feed struct {
+	ID            int64
+	Url           string
+	Title         string
+	Description   string
+	Image         string
+	SiteUrl       string
+	LastFetchedAt string
+	LastError     string
+	CreatedAt     string
+}
+
+type FeedEpisode struct {
+	ID          int64
+	FeedID      int64
+	Guid        string
+	Title       string
+	Description string
+	AudioUrl    string
+	Link        string
+	Duration    int
+	PublishedAt string
+	LocalPath   string
+	Image       string
+	CreatedAt   string
+}
+
 type ReviewLog struct {
 	ID         int64
 	WordID     int64

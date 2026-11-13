@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	AddFavoriteClip(ctx context.Context, arg AddFavoriteClipParams) (int, error)
 	AddFavoriteTag(ctx context.Context, name string) (int, error)
+	AddFeed(ctx context.Context, arg AddFeedParams) (int64, error)
 	AddReviewLog(ctx context.Context, arg AddReviewLogParams) error
 	AddTag(ctx context.Context, arg AddTagParams) (int, error)
 	AddTypingRecord(ctx context.Context, arg AddTypingRecordParams) error
@@ -18,6 +19,7 @@ type Querier interface {
 	AddWordsBatch(ctx context.Context, arg AddWordsBatchParams) (int64, error)
 	ClearTags(ctx context.Context) error
 	ClearWords(ctx context.Context) error
+	CountFeedByURL(ctx context.Context, url string) (int64, error)
 	CountMasteredWords(ctx context.Context) (int64, error)
 	CountReviewWords(ctx context.Context, nextReview string) (int64, error)
 	CountReviews(ctx context.Context) (int64, error)
@@ -26,12 +28,19 @@ type Querier interface {
 	DailyReviewCounts(ctx context.Context) ([]DailyReviewCountsRow, error)
 	DeleteFavoriteClip(ctx context.Context, id int) error
 	DeleteFavoriteTag(ctx context.Context, id int) error
+	DeleteFeed(ctx context.Context, id int64) (int64, error)
+	DeleteFeedEpisodes(ctx context.Context, feedID int64) error
 	DeleteTag(ctx context.Context, id int) error
 	DeleteWord(ctx context.Context, id int) error
 	DeleteWords(ctx context.Context, ids []int) error
 	DetachClipsFromTag(ctx context.Context, tagID int) error
 	GetAICache(ctx context.Context, hash string) (string, error)
+	GetEpisodeAudioAndLocalPath(ctx context.Context, id int64) (GetEpisodeAudioAndLocalPathRow, error)
+	GetEpisodeAudioURL(ctx context.Context, id int64) (string, error)
+	GetEpisodeDownloadInfo(ctx context.Context, id int64) (GetEpisodeDownloadInfoRow, error)
+	GetEpisodeForSubtitles(ctx context.Context, id int64) (GetEpisodeForSubtitlesRow, error)
 	GetFavoriteClipReviewCount(ctx context.Context, id int) (int, error)
+	GetFeedURL(ctx context.Context, id int64) (string, error)
 	GetTypingProgress(ctx context.Context, arg GetTypingProgressParams) (TypingProgress, error)
 	GradeDistribution(ctx context.Context) ([]GradeDistributionRow, error)
 	ImportTag(ctx context.Context, arg ImportTagParams) error
@@ -41,6 +50,9 @@ type Querier interface {
 	ListFavoriteClips(ctx context.Context) ([]ListFavoriteClipsRow, error)
 	ListFavoriteClipsByTag(ctx context.Context, tagID int) ([]ListFavoriteClipsByTagRow, error)
 	ListFavoriteTags(ctx context.Context) ([]ListFavoriteTagsRow, error)
+	ListFeedEpisodes(ctx context.Context, arg ListFeedEpisodesParams) ([]ListFeedEpisodesRow, error)
+	ListFeedIDs(ctx context.Context) ([]int64, error)
+	ListFeeds(ctx context.Context) ([]ListFeedsRow, error)
 	ListReviewDates(ctx context.Context) ([]string, error)
 	ListReviewWords(ctx context.Context, nextReview string) ([]Word, error)
 	ListTags(ctx context.Context) ([]Tag, error)
@@ -50,9 +62,13 @@ type Querier interface {
 	ReviewFavoriteClip(ctx context.Context, arg ReviewFavoriteClipParams) error
 	SaveTypingProgress(ctx context.Context, arg SaveTypingProgressParams) error
 	SearchWords(ctx context.Context, arg SearchWordsParams) ([]Word, error)
+	SetEpisodeLocalPath(ctx context.Context, arg SetEpisodeLocalPathParams) error
+	SetFeedError(ctx context.Context, arg SetFeedErrorParams) error
 	TypingDailyStats(ctx context.Context) ([]TypingDailyStatsRow, error)
 	UpdateFavoriteClipTag(ctx context.Context, arg UpdateFavoriteClipTagParams) error
+	UpdateFeedMeta(ctx context.Context, arg UpdateFeedMetaParams) error
 	UpdateWord(ctx context.Context, arg UpdateWordParams) error
+	UpsertFeedEpisode(ctx context.Context, arg UpsertFeedEpisodeParams) error
 }
 
 var _ Querier = (*Queries)(nil)
