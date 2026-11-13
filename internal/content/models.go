@@ -13,11 +13,6 @@ type WhisperStatus struct {
 	Model   string `json:"model"`
 }
 
-type RecentFile struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
-}
-
 // RecentEntry 是最近打开列表的一项，供前端直接渲染。
 type RecentEntry struct {
 	Path         string  `json:"path"`

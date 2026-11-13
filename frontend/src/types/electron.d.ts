@@ -216,7 +216,7 @@ export interface ElectronAPI {
   recentList: () => Promise<RecentEntry[]>
   recentAdd: (filePath: string) => Promise<RecentEntry[]>
   cacheSubtitles: (filePath: string, subtitles: SubtitleItem[]) => Promise<void>
-  getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[]>
+  getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[] | null>
   getVideoThumbnail: (filePath: string) => Promise<string | null>
   getWaveformData: (filePath: string) => Promise<number[]>
   // 把内置播放器不支持的容器转成可播格式，返回转换后的本地路径

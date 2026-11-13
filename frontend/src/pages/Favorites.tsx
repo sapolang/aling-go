@@ -25,6 +25,7 @@ import {
   BookPlus,
 } from 'lucide-react'
 import { confirmDialog, showToast } from '@/components/feedback'
+import type { SubtitleItem } from '@/types/electron'
 
 interface FavoriteClip {
   id: number
@@ -321,7 +322,7 @@ export default function FavoritesPage() {
         endTime: clip.endTime,
       })
       store.setFilePath(clip.filePath)
-      window.api.getCachedSubtitles(clip.filePath).then((subs: any) => {
+      window.api.getCachedSubtitles(clip.filePath).then((subs: SubtitleItem[] | null) => {
         if (subs) usePlayerStore.getState().setSubtitles(subs)
       })
       window.api.recentAdd(clip.filePath)
