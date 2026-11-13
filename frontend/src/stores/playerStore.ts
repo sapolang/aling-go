@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { sortByStartTime } from '@/lib/subtitles'
 
 const FOCUS_MODE_KEY = 'aling.focusMode'
 const AUTO_NEXT_KEY = 'aling.autoNextEpisode'
@@ -192,7 +193,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setPlayed: (played) => set({ played }),
   setDuration: (duration) => set({ duration }),
   setPlaybackRate: (playbackRate) => set({ playbackRate }),
-  setSubtitles: (subtitles) => set({ subtitles, currentSubtitleIndex: -1 }),
+  // 字幕入库统一按开始时间排序，供播放进度二分定位与跳句逻辑使用
+  setSubtitles: (subtitles) =>
+    set({ subtitles: sortByStartTime(subtitles), currentSubtitleIndex: -1 }),
   setSubtitlePath: (subtitlePath) => set({ subtitlePath }),
   setCurrentSubtitleIndex: (currentSubtitleIndex) => set({ currentSubtitleIndex }),
   setLoop: (loopStart, loopEnd) => set({ loopStart, loopEnd }),

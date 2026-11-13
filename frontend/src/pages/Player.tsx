@@ -1,12 +1,4 @@
-import {
-  useState,
-  useRef,
-  useEffect,
-  useMemo,
-  useCallback,
-  type CSSProperties,
-  type ReactNode,
-} from 'react'
+import { useState, useRef, useEffect, useMemo, type CSSProperties, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -34,6 +26,8 @@ import Waveform from '@/components/Waveform'
 import { useYouTubeEngine } from '@/hooks/useYouTubeEngine'
 import WordLookupModal from '@/components/WordLookupModal'
 import WordHoverCard from '@/components/WordHoverCard'
+import SubtitleList, { type SubtitleListHandle } from '@/components/SubtitleList'
+import { findCueIndexAt, formatClockTime as formatTime } from '@/lib/subtitles'
 import {
   Play,
   Pause,
@@ -206,7 +200,7 @@ export default function PlayerPage() {
     ROUTE_LABELS[backTarget.split('/').slice(0, 2).join('/')] ||
     '上一页'
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const subtitleListRef = useRef<SubtitleListHandle>(null)
   const store = usePlayerStore()
   const themeDark = useThemeStore((s) => s.dark)
   const shortcutBindings = useShortcutStore((s) => s.bindings)
@@ -480,7 +474,7 @@ export default function PlayerPage() {
     store.setPlaying(!el.paused)
     // 字幕匹配使用偏移后的时间：offset>0 表示字幕整体延后
     const t = el.currentTime - store.subtitleOffset
-    const idx = store.subtitles.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
+    const idx = findCueIndexAt(store.subtitles, t)
     if (idx !== -1) store.setCurrentSubtitleIndex(idx)
 
     // 播完本句自动暂停：本帧越过上一句句尾时停在边界处（循环模式优先级更高）
@@ -672,7 +666,6 @@ export default function PlayerPage() {
 
   // --- Reset scroll to top when file changes ---
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0
     prevSubIdxRef.current = -1
     lastTickTimeRef.current = 0
     hoverPauseRef.current = false
@@ -680,42 +673,10 @@ export default function PlayerPage() {
     setAiTarget(null)
   }, [store.filePath, store.subtitles])
 
-  // --- 当前字幕切换时自动滚动到容器中间（用户手动浏览时暂停跟随） ---
-  const lastSubIdx = useRef(-2)
-  // 只滚动字幕容器本身，避免在窄窗口下带动整页滚动
-  const scrollCueIntoCenter = useCallback((child: HTMLElement) => {
-    const container = scrollRef.current
-    if (!container) return
-    const cRect = container.getBoundingClientRect()
-    const eRect = child.getBoundingClientRect()
-    const top =
-      container.scrollTop +
-      (eRect.top - cRect.top) -
-      (container.clientHeight - child.clientHeight) / 2
-    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-  }, [])
-  useEffect(() => {
-    if (!autoFollow) return
-    const el = scrollRef.current
-    if (!el || displaySubtitles.length === 0) return
-    const t = store.played - store.subtitleOffset
-    const idx = displaySubtitles.findIndex((s) => t >= s.startTime - 0.08 && t < s.endTime)
-    if (idx <= 0 || idx === lastSubIdx.current) return
-    lastSubIdx.current = idx
-    const child = el.children[idx] as HTMLElement
-    if (child) scrollCueIntoCenter(child)
-  }, [store.played, store.subtitleOffset, displaySubtitles, autoFollow, scrollCueIntoCenter])
-
   // 回到当前句并恢复自动跟随
   const resumeFollow = () => {
-    lastSubIdx.current = -2
     setAutoFollow(true)
-    const el = scrollRef.current
-    if (!el || displaySubtitles.length === 0) return
-    const t = store.played - store.subtitleOffset
-    const idx = displaySubtitles.findIndex((s) => t >= s.startTime - 0.08 && t < s.endTime)
-    const child = idx >= 0 ? (el.children[idx] as HTMLElement) : null
-    if (child) scrollCueIntoCenter(child)
+    subtitleListRef.current?.scrollToCurrent()
   }
 
   // --- Close sub menu on outside click ---
@@ -834,7 +795,7 @@ export default function PlayerPage() {
       const subs = st.subtitles
       const off = st.subtitleOffset
       const t = readTime() - off
-      const curIdx = subs.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
+      const curIdx = findCueIndexAt(subs, t)
       const lastBefore = (time: number) => {
         let idx = -1
         for (let i = 0; i < subs.length; i++) {
@@ -1315,6 +1276,21 @@ export default function PlayerPage() {
     window.api.favoriteTagsList().then(setFavTags)
   }
 
+  // 字幕列表拖选：只维护拖选状态，实际循环区间在松开时结算
+  const handleCueDragStart = (idx: number) => {
+    hoverPauseRef.current = false
+    dragRef.current = { active: true, anchor: idx, current: idx }
+    setDragRange({ start: idx, end: idx })
+    cancelHover()
+  }
+
+  const handleCueDragHover = (idx: number) => {
+    if (!dragRef.current.active) return
+    dragRef.current.current = idx
+    const anchor = dragRef.current.anchor
+    setDragRange({ start: Math.min(anchor, idx), end: Math.max(anchor, idx) })
+  }
+
   const saveFavorite = async () => {
     if (!favTarget || !store.filePath) return
     let tagId = favTagId
@@ -1332,13 +1308,6 @@ export default function PlayerPage() {
       word: favWord.trim(),
     })
     setFavTarget(null)
-  }
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60)
-    return `${m}:${Math.floor(s % 60)
-      .toString()
-      .padStart(2, '0')}`
   }
 
   // A/B 循环设点三态切换：未设点 → 设 A 点 → 设 B 点开始循环 → 清除
@@ -1380,7 +1349,8 @@ export default function PlayerPage() {
   // 当前句：统一从播放时间派生，视频字幕、音频 deck 和翻译都复用
   const activeSub = useMemo(() => {
     const t = store.played - store.subtitleOffset
-    return store.subtitles.find((s) => t >= s.startTime - 0.08 && t <= s.endTime) ?? null
+    const idx = findCueIndexAt(store.subtitles, t)
+    return idx >= 0 ? store.subtitles[idx] : null
   }, [store.played, store.subtitleOffset, store.subtitles])
 
   const progressPct = store.duration > 0 ? Math.min(100, (store.played / store.duration) * 100) : 0
@@ -1414,7 +1384,7 @@ export default function PlayerPage() {
     if (subs.length === 0) return
     const off = store.subtitleOffset
     const t = (el ? el.currentTime : store.played) - off
-    const cur = subs.findIndex((s) => t >= s.startTime - 0.08 && t <= s.endTime)
+    const cur = findCueIndexAt(subs, t)
     let target = -1
     if (dir === 1) {
       target = cur >= 0 ? cur + 1 : subs.findIndex((s) => s.startTime + off > t + 0.3)
@@ -1956,101 +1926,25 @@ export default function PlayerPage() {
               </div>
             </div>
           </div>
-          {displaySubtitles.length > 1 && (
-            <div className="pp-transcript-hint">按住时间戳上下拖动，可选多句循环</div>
-          )}
-          <div
-            ref={scrollRef}
-            className="pp-transcript-body"
-            onWheel={(e) => {
-              if (autoFollow && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
-                setAutoFollow(false)
-              }
-            }}
-            onTouchMove={() => {
-              if (autoFollow) setAutoFollow(false)
-            }}
-          >
-            {store.subtitles.length === 0 ? (
-              <div className="pp-transcript-empty">
-                <Captions className="h-8 w-8" />
-                <p>还没有字幕。可以导入 SRT，或让 Whisper 转录当前素材。</p>
-                <div className="pp-transcript-empty-actions">
-                  <button className="pp-mini-btn" onClick={handleLoadSrt}>
-                    <Subtitles /> 导入字幕
-                  </button>
-                  <button
-                    className="pp-mini-btn is-accent"
-                    onClick={() => store.filePath && startTranscription(store.filePath)}
-                  >
-                    <Loader2 /> 转录字幕
-                  </button>
-                </div>
-              </div>
-            ) : (
-              displaySubtitles.map((sub, idx) => {
-                const pa = store.played - store.subtitleOffset
-                const isActive = pa >= sub.startTime - 0.08 && pa < sub.endTime
-                const isPast = pa > sub.endTime
-                const range = dragRange ?? loopRange
-                const inRange = range !== null && idx >= range.start && idx <= range.end
-                return (
-                  <div
-                    key={sub.id}
-                    onMouseEnter={() => {
-                      if (!dragRef.current.active) return
-                      dragRef.current.current = idx
-                      const a = dragRef.current.anchor
-                      setDragRange({ start: Math.min(a, idx), end: Math.max(a, idx) })
-                    }}
-                    className={`pp-cue ${inRange ? 'is-range' : ''} ${isActive ? 'is-active' : ''} ${isPast ? 'is-past' : ''}`}
-                    style={{ fontSize: `${1.125 * store.subtitleFontScale}rem` }}
-                    onClick={() => store.requestSeek(sub.startTime + store.subtitleOffset)}
-                  >
-                    <span
-                      className="pp-cue-time"
-                      title="按住上下拖动，可选多句循环"
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        e.preventDefault()
-                        hoverPauseRef.current = false
-                        dragRef.current = { active: true, anchor: idx, current: idx }
-                        setDragRange({ start: idx, end: idx })
-                        cancelHover()
-                      }}
-                    >
-                      {formatTime(sub.startTime)}
-                    </span>
-                    {renderWords(sub.displayText, sub.text, `cue-${sub.id}`)}
-                    {isActive && (
-                      <span className="pp-cue-actions">
-                        <button
-                          className="pp-cue-action"
-                          title="朗读本句"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            speak(sub.displayText)
-                          }}
-                        >
-                          <Speaker className="h-3 w-3" />
-                        </button>
-                        <button
-                          className="pp-cue-action"
-                          title="收藏当前句（F）"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openFavorite(sub, hover?.sentence === sub.text ? hover.word : '')
-                          }}
-                        >
-                          <Star className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
+          <SubtitleList
+            ref={subtitleListRef}
+            subtitles={store.subtitles}
+            cues={displaySubtitles}
+            played={store.played}
+            offset={store.subtitleOffset}
+            fontScale={store.subtitleFontScale}
+            autoFollow={autoFollow}
+            range={dragRange ?? loopRange}
+            onAutoFollowChange={setAutoFollow}
+            onSeek={(time) => store.requestSeek(time)}
+            onSpeak={speak}
+            onFavorite={(cue) => openFavorite(cue, hover?.sentence === cue.text ? hover.word : '')}
+            onDragStart={handleCueDragStart}
+            onDragHover={handleCueDragHover}
+            onImportSrt={handleLoadSrt}
+            onTranscribe={() => store.filePath && startTranscription(store.filePath)}
+            renderText={(cue) => renderWords(cue.displayText, cue.text, `cue-${cue.id}`)}
+          />
         </aside>
       </div>
     )
