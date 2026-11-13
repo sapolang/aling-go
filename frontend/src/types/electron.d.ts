@@ -27,6 +27,13 @@ export interface SubtitleItem {
   text: string
 }
 
+export interface RecentEntry {
+  path: string
+  name: string
+  type: string
+  lastPosition?: number
+}
+
 export interface WhisperProgress {
   progress: number
   status: string
@@ -206,10 +213,10 @@ export interface ElectronAPI {
   onDownloadProgress: (callback: (pct: number) => void) => () => void
   getDownloadProgress: () => Promise<string>
 
-  recentList: () => Promise<{ path: string; name: string; subtitles?: any[] }[]>
-  recentAdd: (filePath: string) => Promise<{ path: string; name: string; subtitles?: any[] }[]>
-  cacheSubtitles: (filePath: string, subtitles: any[]) => Promise<void>
-  getCachedSubtitles: (filePath: string) => Promise<any[] | null>
+  recentList: () => Promise<RecentEntry[]>
+  recentAdd: (filePath: string) => Promise<RecentEntry[]>
+  cacheSubtitles: (filePath: string, subtitles: SubtitleItem[]) => Promise<void>
+  getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[]>
   getVideoThumbnail: (filePath: string) => Promise<string | null>
   getWaveformData: (filePath: string) => Promise<number[]>
   // 把内置播放器不支持的容器转成可播格式，返回转换后的本地路径

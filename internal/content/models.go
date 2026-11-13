@@ -18,6 +18,14 @@ type RecentFile struct {
 	Name string `json:"name"`
 }
 
+// RecentEntry 是最近打开列表的一项，供前端直接渲染。
+type RecentEntry struct {
+	Path         string  `json:"path"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	LastPosition float64 `json:"lastPosition,omitempty"`
+}
+
 type LibraryImportResult struct {
 	Files    []LibraryFile `json:"files"`
 	Imported int           `json:"imported"`
