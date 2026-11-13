@@ -2,26 +2,22 @@ package study
 
 import (
 	"database/sql"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"aling-go/internal/core"
+	"aling-go/internal/store"
 )
 
 // setupTestDB 在临时目录创建用户库并注入 core.DB，验证 sqlc 试点模块的读写行为。
 func setupTestDB(t *testing.T) {
 	t.Helper()
-	schema, err := os.ReadFile("../core/schema.sql")
-	if err != nil {
-		t.Fatalf("read schema: %v", err)
-	}
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "userData.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if _, err := db.Exec(string(schema)); err != nil {
+	if _, err := db.Exec(store.Schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
 	old := core.DB

@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"aling-go/internal/core"
-	"aling-go/internal/study/studydb"
+	"aling-go/internal/store/userdb"
 )
 
 // queries 返回基于当前用户库句柄的类型安全查询集合。
 // sqlc 生成代码只依赖 DBTX 接口，因此可以直接复用 core.DB。
-func queries() *studydb.Queries {
-	return studydb.New(core.DB)
+func queries() *userdb.Queries {
+	return userdb.New(core.DB)
 }
 
 // --- Words CRUD ---
@@ -28,7 +28,7 @@ func dbWordsList() []Word {
 }
 
 func dbWordsAdd(w Word) int {
-	id, err := queries().AddWord(context.Background(), studydb.AddWordParams{
+	id, err := queries().AddWord(context.Background(), userdb.AddWordParams{
 		Word:        w.Word,
 		Definition:  w.Definition,
 		Phonetic:    w.Phonetic,
@@ -47,7 +47,7 @@ func dbWordsAdd(w Word) int {
 }
 
 func dbWordsUpdate(id int, w Word) {
-	if err := queries().UpdateWord(context.Background(), studydb.UpdateWordParams{
+	if err := queries().UpdateWord(context.Background(), userdb.UpdateWordParams{
 		Word:        w.Word,
 		Definition:  w.Definition,
 		Phonetic:    w.Phonetic,
@@ -96,7 +96,7 @@ func dbWordsGetReviewCount() int {
 
 func dbWordsSearch(query string) []Word {
 	like := "%" + query + "%"
-	rows, err := queries().SearchWords(context.Background(), studydb.SearchWordsParams{
+	rows, err := queries().SearchWords(context.Background(), userdb.SearchWordsParams{
 		Word:       like,
 		Definition: like,
 	})
@@ -121,7 +121,7 @@ func dbTagsList() []Tag {
 }
 
 func dbTagsAdd(name, color string) int {
-	id, err := queries().AddTag(context.Background(), studydb.AddTagParams{Name: name, Color: color})
+	id, err := queries().AddTag(context.Background(), userdb.AddTagParams{Name: name, Color: color})
 	if err != nil {
 		return 0
 	}
@@ -155,7 +155,7 @@ func dbImport(jsonStr string) ImportResult {
 	}
 	result := ImportResult{}
 	for _, t := range data.Tags {
-		err := queries().ImportTag(context.Background(), studydb.ImportTagParams{Name: t.Name, Color: t.Color})
+		err := queries().ImportTag(context.Background(), userdb.ImportTagParams{Name: t.Name, Color: t.Color})
 		if err == nil {
 			result.Imported++
 		} else {
@@ -163,7 +163,7 @@ func dbImport(jsonStr string) ImportResult {
 		}
 	}
 	for _, w := range data.Words {
-		err := queries().ImportWord(context.Background(), studydb.ImportWordParams{
+		err := queries().ImportWord(context.Background(), userdb.ImportWordParams{
 			Word:        w.Word,
 			Definition:  w.Definition,
 			Phonetic:    w.Phonetic,
@@ -196,7 +196,7 @@ func dbClear() {
 // --- Review logs ---
 
 func dbReviewLogAdd(wordID, quality int) {
-	if err := queries().AddReviewLog(context.Background(), studydb.AddReviewLogParams{
+	if err := queries().AddReviewLog(context.Background(), userdb.AddReviewLogParams{
 		WordID:  int64(wordID),
 		Quality: int64(quality),
 	}); err != nil {
@@ -274,7 +274,7 @@ func dbLearningStats() LearningStats {
 func dbAddWordsBatch(words []Word) int {
 	count := 0
 	for _, w := range words {
-		n, err := queries().AddWordsBatch(context.Background(), studydb.AddWordsBatchParams{
+		n, err := queries().AddWordsBatch(context.Background(), userdb.AddWordsBatchParams{
 			Word:       w.Word,
 			Definition: w.Definition,
 			Phonetic:   w.Phonetic,
@@ -289,7 +289,7 @@ func dbAddWordsBatch(words []Word) int {
 
 // --- Helpers ---
 
-func toWords(rows []studydb.Word) []Word {
+func toWords(rows []userdb.Word) []Word {
 	words := make([]Word, 0, len(rows))
 	for _, w := range rows {
 		words = append(words, Word{

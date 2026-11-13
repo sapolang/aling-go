@@ -2,19 +2,14 @@ package core
 
 import (
 	"database/sql"
-	_ "embed"
 	"os"
 	"path/filepath"
 
 	"aling-go/internal/dict"
+	"aling-go/internal/store"
 
 	_ "modernc.org/sqlite"
 )
-
-// schemaSQL 是用户库的建表语句，同时作为 sqlc 的 schema 来源，避免两处维护。
-//
-//go:embed schema.sql
-var schemaSQL string
 
 // DB 是可写的用户库（生词、标签、SRS、收藏、AI 缓存等），
 // ArticleDB 是只读的文章库。各业务包通过这两个句柄访问数据库。
@@ -62,6 +57,6 @@ func initDB(dataDir string) error {
 }
 
 func createTables() error {
-	_, err := DB.Exec(schemaSQL)
+	_, err := DB.Exec(store.Schema)
 	return err
 }
