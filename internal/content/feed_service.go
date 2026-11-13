@@ -1,12 +1,10 @@
 package content
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +20,8 @@ import (
 
 	"aling-go/internal/core"
 
+	"github.com/mmcdole/gofeed"
+	ext "github.com/mmcdole/gofeed/extensions"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -261,125 +261,36 @@ func (s *FeedService) HTTPClient() *http.Client {
 	return s.httpClient()
 }
 
-// --- RSS 解析 ---
+// --- 订阅源解析 ---
 
-type rssDocument struct {
-	Channel struct {
-		Title       string `xml:"title"`
-		Description string `xml:"description"`
-		Link        string `xml:"link"`
-		Image       struct {
-			URL string `xml:"url"`
-		} `xml:"image"`
-		ItunesImage struct {
-			Href string `xml:"href,attr"`
-		} `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd image"`
-		Items []rssItem `xml:"item"`
-	} `xml:"channel"`
-}
-
-type rssItem struct {
-	Title          string      `xml:"title"`
-	Description    string      `xml:"description"`
-	Link           string      `xml:"link"`
-	GUID           string      `xml:"guid"`
-	PubDate        string      `xml:"pubDate"`
-	Enclosure      rssEnclose  `xml:"enclosure"`
-	ItunesDuration string      `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd duration"`
-	ItunesImage    rssAttrHref `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd image"`
-	MediaThumbnail rssAttrURL  `xml:"http://search.yahoo.com/mrss/ thumbnail"`
-}
-
-type rssEnclose struct {
-	URL string `xml:"url,attr"`
-}
-
-type rssAttrHref struct {
-	Href string `xml:"href,attr"`
-}
-
-type rssAttrURL struct {
-	URL string `xml:"url,attr"`
-}
-
-// atomFeed 对应 Atom 1.0 格式（YouTube 等使用）
-type atomFeed struct {
-	Title    string      `xml:"title"`
-	Subtitle string      `xml:"subtitle"`
-	Logo     string      `xml:"logo"`
-	Links    []atomLink  `xml:"link"`
-	Entries  []atomEntry `xml:"entry"`
-}
-
-type atomLink struct {
-	Rel  string `xml:"rel,attr"`
-	Href string `xml:"href,attr"`
-}
-
-type atomEntry struct {
-	Title     string         `xml:"title"`
-	ID        string         `xml:"id"`
-	Links     []atomLink     `xml:"link"`
-	Published string         `xml:"published"`
-	Updated   string         `xml:"updated"`
-	Content   string         `xml:"content"`
-	Group     atomMediaGroup `xml:"http://search.yahoo.com/mrss/ group"`
-}
-
-type atomMediaGroup struct {
-	Description string           `xml:"description"`
-	Thumbnail   atomThumbnail    `xml:"thumbnail"`
-	Content     atomMediaContent `xml:"content"`
-}
-
-type atomThumbnail struct {
-	URL string `xml:"url,attr"`
-}
-
-type atomMediaContent struct {
-	URL  string `xml:"url,attr"`
-	Type string `xml:"type,attr"`
-}
-
-// parseRSS 解析 RSS 2.0 或 Atom 1.0 文档，返回订阅元信息与节目列表
+// parseRSS 用 gofeed 解析 RSS 2.0 / Atom 1.0，再映射成统一的 FeedEpisode。
+// B 站等平台专属接口不经过这里。
 func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedEpisode, err error) {
-	dataTrimmed := bytes.TrimSpace(data)
-	// 根据根元素区分 RSS 2.0 和 Atom
-	if bytes.HasPrefix(dataTrimmed, []byte("<feed")) ||
-		bytes.Contains(dataTrimmed[:min(len(dataTrimmed), 200)], []byte("xmlns=\"http://www.w3.org/2005/Atom\"")) {
-		return parseAtom(data)
+	feed, perr := gofeed.NewParser().ParseString(string(data))
+	if perr != nil {
+		return "", "", "", "", nil, fmt.Errorf("解析订阅源失败: %w", perr)
 	}
-	return parseRSS2(data)
-}
-
-// parseRSS2 解析 RSS 2.0 文档
-func parseRSS2(data []byte) (title, desc, image, siteURL string, episodes []FeedEpisode, err error) {
-	var doc rssDocument
-	if uerr := xml.Unmarshal(data, &doc); uerr != nil {
-		return "", "", "", "", nil, fmt.Errorf("解析订阅源失败: %w", uerr)
-	}
-	ch := doc.Channel
-	if ch.Title == "" && len(ch.Items) == 0 {
-		return "", "", "", "", nil, fmt.Errorf("不是有效的 RSS 订阅源")
+	if strings.TrimSpace(feed.Title) == "" && len(feed.Items) == 0 {
+		return "", "", "", "", nil, fmt.Errorf("不是有效的订阅源")
 	}
 
-	title = strings.TrimSpace(ch.Title)
-	desc = stripHTML(ch.Description)
-	siteURL = strings.TrimSpace(ch.Link)
-	image = strings.TrimSpace(ch.Image.URL)
-	if image == "" {
-		image = strings.TrimSpace(ch.ItunesImage.Href)
+	title = strings.TrimSpace(feed.Title)
+	desc = stripHTML(feed.Description)
+	if desc == "" && feed.ITunesExt != nil {
+		desc = stripHTML(feed.ITunesExt.Summary)
 	}
-	// 统一升级为 https，避免 WKWebView 混合内容策略阻止 http 图片加载
-	if strings.HasPrefix(image, "http://") {
-		image = "https://" + strings.TrimPrefix(image, "http://")
-	}
+	siteURL = strings.TrimSpace(feed.Link)
+	image = feedImageURL(feed)
 
-	for _, it := range ch.Items {
-		audioURL := strings.TrimSpace(it.Enclosure.URL)
+	for _, it := range feed.Items {
+		if it == nil {
+			continue
+		}
+		group := mediaGroup(it)
 		link := strings.TrimSpace(it.Link)
-		// 播客源有 enclosure（音频直链），YouTube/B站 没有但有 link（视频页面），
-		// 两种都要保留，后续根据 audioURL 是否为空决定走"下载"还是"在线精听"
+		// 播客源有 enclosure（音频直链），YouTube/B站 只有 link（视频页面），
+		// 两种都要保留，后续根据 audioURL 是否为空决定走「下载」还是「在线精听」
+		audioURL := episodeAudioURL(it, group)
 		if audioURL == "" && link == "" {
 			continue
 		}
@@ -391,99 +302,151 @@ func parseRSS2(data []byte) (title, desc, image, siteURL string, episodes []Feed
 				guid = link
 			}
 		}
-		img := strings.TrimSpace(it.MediaThumbnail.URL)
-		if img == "" {
-			img = strings.TrimSpace(it.ItunesImage.Href)
-		}
-		// item 没有独立封面时，用频道封面兜底
-		if img == "" {
-			img = image
-		}
 		episodes = append(episodes, FeedEpisode{
 			Title:       strings.TrimSpace(it.Title),
-			Description: stripHTML(it.Description),
+			Description: stripHTML(itemDescription(it, group)),
 			AudioURL:    audioURL,
 			Link:        link,
-			Duration:    parseDuration(it.ItunesDuration),
-			PublishedAt: normalizePubDate(it.PubDate),
-			Image:       img,
+			Duration:    itemDuration(it),
+			PublishedAt: itemPublishedAt(it),
+			Image:       itemImageURL(it, group, image),
 			GUID:        guid,
 		})
 	}
 	return title, desc, image, siteURL, episodes, nil
 }
 
-// parseAtom 解析 Atom 1.0 文档（YouTube feeds 等）
-func parseAtom(data []byte) (title, desc, image, siteURL string, episodes []FeedEpisode, err error) {
-	var feed atomFeed
-	if uerr := xml.Unmarshal(data, &feed); uerr != nil {
-		return "", "", "", "", nil, fmt.Errorf("解析订阅源失败: %w", uerr)
+// feedImageURL 取频道封面：标准 image 优先，其次 itunes:image，Atom 源用首条节目封面兜底
+func feedImageURL(feed *gofeed.Feed) string {
+	image := ""
+	if feed.Image != nil {
+		image = strings.TrimSpace(feed.Image.URL)
 	}
-	if feed.Title == "" && len(feed.Entries) == 0 {
-		return "", "", "", "", nil, fmt.Errorf("不是有效的 Atom 订阅源")
+	if image == "" && feed.ITunesExt != nil {
+		image = strings.TrimSpace(feed.ITunesExt.Image)
 	}
+	if image == "" && len(feed.Items) > 0 && feed.Items[0] != nil {
+		image = mediaAttr(mediaGroup(feed.Items[0]), "thumbnail", "url")
+	}
+	// 统一升级为 https，避免 WKWebView 混合内容策略阻止 http 图片加载
+	if strings.HasPrefix(image, "http://") {
+		image = "https://" + strings.TrimPrefix(image, "http://")
+	}
+	return image
+}
 
-	title = strings.TrimSpace(feed.Title)
-	desc = stripHTML(feed.Subtitle)
-	image = strings.TrimSpace(feed.Logo)
-	// YouTube 的 Atom 源没有 <logo>，用首个视频的封面兜底
-	if image == "" && len(feed.Entries) > 0 {
-		image = strings.TrimSpace(feed.Entries[0].Group.Thumbnail.URL)
+// mediaGroup 取 media:group 节点（YouTube 的 Atom 源用它承载标题、简介、封面与播放地址）
+func mediaGroup(it *gofeed.Item) *ext.Extension {
+	groups := it.Extensions["media"]["group"]
+	if len(groups) == 0 {
+		return nil
 	}
-	for _, l := range feed.Links {
-		if l.Rel == "alternate" || l.Rel == "" {
-			siteURL = strings.TrimSpace(l.Href)
-			break
-		}
-	}
+	return &groups[0]
+}
 
-	for _, e := range feed.Entries {
-		link := ""
-		for _, l := range e.Links {
-			if l.Rel == "alternate" || l.Rel == "" {
-				link = strings.TrimSpace(l.Href)
-				break
-			}
-		}
-		audioURL := strings.TrimSpace(e.Group.Content.URL)
-		// YouTube 的 media:content 是视频播放页地址，直接下载只会拿到 HTML
-		if isVideoMediaURL(audioURL, e.Group.Content.Type) {
-			audioURL = ""
-		}
-		if audioURL == "" && link == "" {
+// mediaAttr 读取 media:group 子元素的属性值，如 media:thumbnail 的 url
+func mediaAttr(group *ext.Extension, name, attr string) string {
+	if group == nil {
+		return ""
+	}
+	nodes := group.Children[name]
+	if len(nodes) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(nodes[0].Attrs[attr])
+}
+
+// mediaText 读取 media:group 子元素的文本，如 media:description
+func mediaText(group *ext.Extension, name string) string {
+	if group == nil {
+		return ""
+	}
+	nodes := group.Children[name]
+	if len(nodes) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(nodes[0].Value)
+}
+
+// extensionAttr 读取条目上扁平扩展节点的属性，如 RSS 的 media:thumbnail
+func extensionAttr(it *gofeed.Item, ns, name, attr string) string {
+	nodes := it.Extensions[ns][name]
+	if len(nodes) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(nodes[0].Attrs[attr])
+}
+
+// episodeAudioURL 取音频直链：优先 enclosure，Atom 源退回 media:content
+func episodeAudioURL(it *gofeed.Item, group *ext.Extension) string {
+	for _, enc := range it.Enclosures {
+		if enc == nil {
 			continue
 		}
-		guid := strings.TrimSpace(e.ID)
-		if guid == "" {
-			if audioURL != "" {
-				guid = audioURL
-			} else {
-				guid = link
-			}
+		if u := strings.TrimSpace(enc.URL); u != "" {
+			return u
 		}
-		pubDate := e.Published
-		if pubDate == "" {
-			pubDate = e.Updated
-		}
-		description := e.Group.Description
-		if description == "" {
-			description = e.Content
-		}
-		img := strings.TrimSpace(e.Group.Thumbnail.URL)
-		if img == "" {
-			img = image
-		}
-		episodes = append(episodes, FeedEpisode{
-			Title:       strings.TrimSpace(e.Title),
-			Description: stripHTML(description),
-			AudioURL:    audioURL,
-			Link:        link,
-			PublishedAt: normalizePubDate(pubDate),
-			Image:       img,
-			GUID:        guid,
-		})
 	}
-	return title, desc, image, siteURL, episodes, nil
+	// YouTube 的 media:content 是视频播放页地址，直接下载只会拿到 HTML
+	u := mediaAttr(group, "content", "url")
+	if isVideoMediaURL(u, mediaAttr(group, "content", "type")) {
+		return ""
+	}
+	return u
+}
+
+// itemDescription 按 media:group → description → content 的顺序取简介
+func itemDescription(it *gofeed.Item, group *ext.Extension) string {
+	if d := mediaText(group, "description"); d != "" {
+		return d
+	}
+	if d := strings.TrimSpace(it.Description); d != "" {
+		return d
+	}
+	return it.Content
+}
+
+// itemDuration 取 itunes:duration，兼容 "3600"、"12:34"、"01:02:03"
+func itemDuration(it *gofeed.Item) int {
+	if it.ITunesExt == nil {
+		return 0
+	}
+	return parseDuration(it.ITunesExt.Duration)
+}
+
+// itemPublishedAt 统一成 RFC3339 便于排序，解析失败返回空串
+func itemPublishedAt(it *gofeed.Item) string {
+	if it.PublishedParsed != nil {
+		return it.PublishedParsed.Format(time.RFC3339)
+	}
+	if it.UpdatedParsed != nil {
+		return it.UpdatedParsed.Format(time.RFC3339)
+	}
+	if t := normalizePubDate(it.Published); t != "" {
+		return t
+	}
+	return normalizePubDate(it.Updated)
+}
+
+// itemImageURL 取节目封面：条目自带封面优先，最后用频道封面兜底
+func itemImageURL(it *gofeed.Item, group *ext.Extension, feedImage string) string {
+	candidates := []string{
+		mediaAttr(group, "thumbnail", "url"),
+		extensionAttr(it, "media", "thumbnail", "url"),
+	}
+	if it.Image != nil {
+		candidates = append(candidates, strings.TrimSpace(it.Image.URL))
+	}
+	if it.ITunesExt != nil {
+		candidates = append(candidates, strings.TrimSpace(it.ITunesExt.Image))
+	}
+	candidates = append(candidates, feedImage)
+	for _, c := range candidates {
+		if c != "" {
+			return c
+		}
+	}
+	return ""
 }
 
 // stripHTML 粗暴去掉标签与多余空白，用于简介展示
