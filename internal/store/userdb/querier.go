@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	AddFavoriteClip(ctx context.Context, arg AddFavoriteClipParams) (int, error)
+	AddFavoriteTag(ctx context.Context, name string) (int, error)
 	AddReviewLog(ctx context.Context, arg AddReviewLogParams) error
 	AddTag(ctx context.Context, arg AddTagParams) (int, error)
 	AddWord(ctx context.Context, arg AddWordParams) (int, error)
@@ -21,16 +23,25 @@ type Querier interface {
 	CountTodayReviews(ctx context.Context) (int64, error)
 	CountWords(ctx context.Context) (int64, error)
 	DailyReviewCounts(ctx context.Context) ([]DailyReviewCountsRow, error)
+	DeleteFavoriteClip(ctx context.Context, id int) error
+	DeleteFavoriteTag(ctx context.Context, id int) error
 	DeleteTag(ctx context.Context, id int) error
 	DeleteWord(ctx context.Context, id int) error
 	DeleteWords(ctx context.Context, ids []int) error
+	DetachClipsFromTag(ctx context.Context, tagID int) error
+	GetFavoriteClipReviewCount(ctx context.Context, id int) (int, error)
 	ImportTag(ctx context.Context, arg ImportTagParams) error
 	ImportWord(ctx context.Context, arg ImportWordParams) error
+	ListFavoriteClips(ctx context.Context) ([]ListFavoriteClipsRow, error)
+	ListFavoriteClipsByTag(ctx context.Context, tagID int) ([]ListFavoriteClipsByTagRow, error)
+	ListFavoriteTags(ctx context.Context) ([]ListFavoriteTagsRow, error)
 	ListReviewDates(ctx context.Context) ([]string, error)
 	ListReviewWords(ctx context.Context, nextReview string) ([]Word, error)
 	ListTags(ctx context.Context) ([]Tag, error)
 	ListWords(ctx context.Context) ([]Word, error)
+	ReviewFavoriteClip(ctx context.Context, arg ReviewFavoriteClipParams) error
 	SearchWords(ctx context.Context, arg SearchWordsParams) ([]Word, error)
+	UpdateFavoriteClipTag(ctx context.Context, arg UpdateFavoriteClipTagParams) error
 	UpdateWord(ctx context.Context, arg UpdateWordParams) error
 }
 

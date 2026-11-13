@@ -14,21 +14,21 @@ type AiTranslation struct {
 }
 
 type FavoriteClip struct {
-	ID             int64
+	ID             int
 	FilePath       string
 	StartTime      float64
 	EndTime        float64
-	Text           *string
-	TagID          *int64
-	Word           *string
-	ReviewCount    *int64
-	LastReviewedAt *string
-	NextReview     *string
-	CreatedAt      *string
+	Text           string
+	TagID          int
+	Word           string
+	ReviewCount    int
+	LastReviewedAt string
+	NextReview     string
+	CreatedAt      string
 }
 
 type FavoriteTag struct {
-	ID        int64
+	ID        int
 	Name      string
 	CreatedAt *string
 }
