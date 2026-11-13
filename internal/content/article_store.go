@@ -1,8 +1,16 @@
 package content
 
 import (
+	"context"
+
 	"aling-go/internal/core"
+	"aling-go/internal/store/userdb"
 )
+
+// q 返回基于当前用户库句柄的类型安全查询集合。
+func q() *userdb.Queries {
+	return userdb.New(core.DB)
+}
 
 func dbGetCategories() []ArticleCategory {
 	rows, err := core.ArticleDB.Query("SELECT id, en_name, name, description, cover, length FROM categories ORDER BY id")
@@ -59,24 +67,33 @@ func dbGetArticle(id int) *ArticleItem {
 }
 
 func dbGetTypingProgress(articleID int, mode string) *TypingProgress {
-	var p TypingProgress
-	err := core.DB.QueryRow(
-		`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at
-		 FROM typing_progress WHERE article_id=? AND mode=?`,
-		articleID, mode,
-	).Scan(&p.ArticleID, &p.Mode, &p.Position, &p.Completed, &p.BestAccuracy, &p.BestWPM, &p.UpdatedAt)
+	row, err := q().GetTypingProgress(context.Background(), userdb.GetTypingProgressParams{
+		ArticleID: articleID,
+		Mode:      mode,
+	})
 	if err != nil {
 		return nil
 	}
-	return &p
+	return &TypingProgress{
+		ArticleID:    row.ArticleID,
+		Mode:         row.Mode,
+		Position:     row.Position,
+		Completed:    row.Completed != 0,
+		BestAccuracy: row.BestAccuracy,
+		BestWPM:      row.BestWpm,
+		UpdatedAt:    row.UpdatedAt,
+	}
 }
 
 func dbSaveTypingProgress(p TypingProgress) {
-	_, _ = core.DB.Exec(
-		`INSERT OR REPLACE INTO typing_progress (article_id, mode, position, completed, best_accuracy, best_wpm, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
-		p.ArticleID, p.Mode, p.Position, boolToInt(p.Completed), p.BestAccuracy, p.BestWPM,
-	)
+	_ = q().SaveTypingProgress(context.Background(), userdb.SaveTypingProgressParams{
+		ArticleID:    p.ArticleID,
+		Mode:         p.Mode,
+		Position:     p.Position,
+		Completed:    boolToInt(p.Completed),
+		BestAccuracy: p.BestAccuracy,
+		BestWpm:      p.BestWPM,
+	})
 }
 
 func boolToInt(b bool) int {
@@ -87,46 +104,53 @@ func boolToInt(b bool) int {
 }
 
 func dbGetTypingRecords(articleID int) []TypingRecord {
-	rows, err := core.DB.Query(
-		`SELECT id, article_id, mode, accuracy, wpm, duration, mistakes, created_at
-		 FROM typing_records WHERE article_id=? ORDER BY created_at DESC`,
-		articleID,
-	)
+	rows, err := q().ListTypingRecords(context.Background(), articleID)
 	if err != nil {
 		return []TypingRecord{}
 	}
-	defer rows.Close()
-	records := make([]TypingRecord, 0)
-	for rows.Next() {
-		var r TypingRecord
-		if err := rows.Scan(&r.ID, &r.ArticleID, &r.Mode, &r.Accuracy, &r.WPM, &r.Duration, &r.Mistakes, &r.CreatedAt); err != nil {
-			continue
-		}
-		records = append(records, r)
+	records := make([]TypingRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, TypingRecord{
+			ID:        row.ID,
+			ArticleID: row.ArticleID,
+			Mode:      row.Mode,
+			Accuracy:  row.Accuracy,
+			WPM:       row.Wpm,
+			Duration:  row.Duration,
+			Mistakes:  row.Mistakes,
+			CreatedAt: row.CreatedAt,
+		})
 	}
 	return records
 }
 
 func dbSaveTypingRecord(r TypingRecord) {
-	_, _ = core.DB.Exec(
-		`INSERT INTO typing_records (article_id, mode, accuracy, wpm, duration, mistakes) VALUES (?, ?, ?, ?, ?, ?)`,
-		r.ArticleID, r.Mode, r.Accuracy, r.WPM, r.Duration, r.Mistakes,
-	)
+	_ = q().AddTypingRecord(context.Background(), userdb.AddTypingRecordParams{
+		ArticleID: r.ArticleID,
+		Mode:      r.Mode,
+		Accuracy:  r.Accuracy,
+		Wpm:       r.WPM,
+		Duration:  r.Duration,
+		Mistakes:  r.Mistakes,
+	})
 }
 
 func dbGetAllTypingProgress() []TypingProgress {
-	rows, err := core.DB.Query(`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at FROM typing_progress`)
+	rows, err := q().ListAllTypingProgress(context.Background())
 	if err != nil {
 		return []TypingProgress{}
 	}
-	defer rows.Close()
-	results := make([]TypingProgress, 0)
-	for rows.Next() {
-		var p TypingProgress
-		if err := rows.Scan(&p.ArticleID, &p.Mode, &p.Position, &p.Completed, &p.BestAccuracy, &p.BestWPM, &p.UpdatedAt); err != nil {
-			continue
-		}
-		results = append(results, p)
+	results := make([]TypingProgress, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, TypingProgress{
+			ArticleID:    row.ArticleID,
+			Mode:         row.Mode,
+			Position:     row.Position,
+			Completed:    row.Completed != 0,
+			BestAccuracy: row.BestAccuracy,
+			BestWPM:      row.BestWpm,
+			UpdatedAt:    row.UpdatedAt,
+		})
 	}
 	return results
 }

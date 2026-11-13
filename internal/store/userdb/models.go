@@ -10,7 +10,7 @@ type AiTranslation struct {
 	Model     string
 	Source    string
 	Target    string
-	CreatedAt *string
+	CreatedAt string
 }
 
 type FavoriteClip struct {
@@ -47,24 +47,24 @@ type Tag struct {
 }
 
 type TypingProgress struct {
-	ArticleID    int64
+	ArticleID    int
 	Mode         string
-	Position     *int64
-	Completed    *int64
-	BestAccuracy *float64
-	BestWpm      *float64
-	UpdatedAt    *string
+	Position     int
+	Completed    int
+	BestAccuracy float64
+	BestWpm      float64
+	UpdatedAt    string
 }
 
 type TypingRecord struct {
-	ID        int64
-	ArticleID int64
+	ID        int
+	ArticleID int
 	Mode      string
-	Accuracy  *float64
-	Wpm       *float64
-	Duration  *int64
-	Mistakes  *string
-	CreatedAt *string
+	Accuracy  float64
+	Wpm       float64
+	Duration  int
+	Mistakes  string
+	CreatedAt string
 }
 
 type Word struct {

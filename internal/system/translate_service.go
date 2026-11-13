@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"aling-go/internal/core"
+	"aling-go/internal/store/userdb"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -222,9 +223,13 @@ func aiCacheKey(kind, model, text, extra string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// aiQueries 返回基于当前用户库句柄的类型安全查询集合。
+func aiQueries() *userdb.Queries {
+	return userdb.New(core.DB)
+}
+
 func aiCacheGet(key string) (string, bool) {
-	var target string
-	err := core.DB.QueryRow("SELECT target FROM ai_translations WHERE hash = ?", key).Scan(&target)
+	target, err := aiQueries().GetAICache(context.Background(), key)
 	if err != nil || target == "" {
 		return "", false
 	}
@@ -232,10 +237,13 @@ func aiCacheGet(key string) (string, bool) {
 }
 
 func aiCachePut(key, kind, model, source, target string) {
-	_, _ = core.DB.Exec(
-		"INSERT OR REPLACE INTO ai_translations (hash, kind, model, source, target) VALUES (?, ?, ?, ?, ?)",
-		key, kind, model, source, target,
-	)
+	_ = aiQueries().PutAICache(context.Background(), userdb.PutAICacheParams{
+		Hash:   key,
+		Kind:   kind,
+		Model:  model,
+		Source: source,
+		Target: target,
+	})
 }
 
 // --- 翻译 ---

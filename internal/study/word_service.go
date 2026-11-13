@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"aling-go/internal/core"
-
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -108,17 +106,13 @@ func (s *WordService) GetExtendedStats() ExtendedStats {
 // queryGradeDistribution 按评分聚合 review_logs，返回各评分的复习次数。
 func queryGradeDistribution() []GradeCount {
 	result := make([]GradeCount, 0)
-	rows, err := core.DB.Query("SELECT quality, COUNT(*) FROM review_logs GROUP BY quality ORDER BY quality")
+	rows, err := queries().GradeDistribution(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "extendedStats grades: %v\n", err)
 		return result
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var g GradeCount
-		if rows.Scan(&g.Grade, &g.Count) == nil {
-			result = append(result, g)
-		}
+	for _, row := range rows {
+		result = append(result, GradeCount{Grade: int(row.Grade), Count: int(row.Count)})
 	}
 	return result
 }
@@ -126,17 +120,13 @@ func queryGradeDistribution() []GradeCount {
 // queryLevelDistribution 按等级聚合 words 表，返回各等级的生词数量。
 func queryLevelDistribution() []LevelCount {
 	result := make([]LevelCount, 0)
-	rows, err := core.DB.Query("SELECT level, COUNT(*) FROM words GROUP BY level ORDER BY level")
+	rows, err := queries().LevelDistribution(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "extendedStats levels: %v\n", err)
 		return result
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var l LevelCount
-		if rows.Scan(&l.Level, &l.Count) == nil {
-			result = append(result, l)
-		}
+	for _, row := range rows {
+		result = append(result, LevelCount{Level: row.Level, Count: int(row.Count)})
 	}
 	return result
 }
@@ -144,21 +134,19 @@ func queryLevelDistribution() []LevelCount {
 // queryTypingDailyStats 按天聚合最近 30 天打字记录（次数/平均正确率/平均 WPM/总时长）。
 func queryTypingDailyStats() []TypingDayStat {
 	result := make([]TypingDayStat, 0)
-	rows, err := core.DB.Query(`SELECT substr(created_at, 1, 10) AS d,
-		COUNT(*), COALESCE(AVG(accuracy), 0), COALESCE(AVG(wpm), 0), COALESCE(SUM(duration), 0)
-		FROM typing_records
-		WHERE substr(created_at, 1, 10) >= date('now','localtime','-29 days')
-		GROUP BY d ORDER BY d`)
+	rows, err := queries().TypingDailyStats(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "extendedStats typing: %v\n", err)
 		return result
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var t TypingDayStat
-		if rows.Scan(&t.Date, &t.Count, &t.AvgAccuracy, &t.AvgWPM, &t.TotalDuration) == nil {
-			result = append(result, t)
-		}
+	for _, row := range rows {
+		result = append(result, TypingDayStat{
+			Date:          row.D,
+			Count:         int(row.Count),
+			AvgAccuracy:   row.AvgAccuracy,
+			AvgWPM:        row.AvgWpm,
+			TotalDuration: int(row.TotalDuration),
+		})
 	}
 	return result
 }
