@@ -72,10 +72,10 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   },
 
   saveTypingProgress: async (p) => {
-    await window.api.saveTypingProgress(JSON.stringify(p))
+    await window.api.saveTypingProgress(p)
   },
 
   saveTypingRecord: async (r) => {
-    await window.api.saveTypingRecord(JSON.stringify(r))
+    await window.api.saveTypingRecord(r)
   },
 }))

@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { confirmDialog, showToast } from '@/components/feedback'
+import type { WhisperDownloadProgress } from '@/types/electron'
 import { useThemeStore } from '@/stores/themeStore'
 import type { ThemeMode } from '@/stores/themeStore'
 import {
@@ -266,12 +267,11 @@ export default function SettingsPage() {
     window.api.getBackupStatus().then(setBackupStatus)
 
     let resumeCleanup: (() => void) | null = null
-    window.api.getDownloadProgress().then((d: string) => {
+    window.api.getDownloadProgress().then((d: WhisperDownloadProgress | null) => {
       if (d) {
-        const { model, progress } = JSON.parse(d)
-        setSelectedModel(model)
+        setSelectedModel(d.model)
         setDownloading(true)
-        setDownloadProgress(progress)
+        setDownloadProgress(d.progress)
         resumeCleanup = window.api.onDownloadProgress((pct: number) => setDownloadProgress(pct))
       }
     })

@@ -58,6 +58,18 @@ func bundleResources() string {
 	return ""
 }
 
+type WhisperModelInfo struct {
+	Name       string `json:"name"`
+	File       string `json:"file"`
+	Size       string `json:"size"`
+	Downloaded bool   `json:"downloaded"`
+}
+
+type WhisperDownloadProgress struct {
+	Model    string `json:"model"`
+	Progress int    `json:"progress"`
+}
+
 type WhisperService struct {
 	app         *application.App
 	dataDir     string
@@ -89,7 +101,7 @@ func (s *WhisperService) ServiceShutdown() error { return nil }
 
 // --- Transcribe ---
 
-func (s *WhisperService) Transcribe(filePath string) string {
+func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 	s.app.Logger.Debug("Transcribe start", "filePath", filePath)
 	wavPath := extractAudio(s.dataDir, s.app.Logger, filePath)
 	s.app.Logger.Debug("Transcribe wavPath", "wavPath", wavPath)
@@ -101,7 +113,7 @@ func (s *WhisperService) Transcribe(filePath string) string {
 	sidecar := s.findWhisperSidecar()
 	if sidecar == "" {
 		s.app.Logger.Info("Transcription failed: whisper sidecar not found. Run 'make sidecar' to build it.")
-		return "[]"
+		return []SubtitleItem{}
 	}
 
 	modelPath := s.modelPath()
@@ -118,12 +130,12 @@ func (s *WhisperService) Transcribe(filePath string) string {
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		s.app.Logger.Info("Transcription failed: cannot read whisper stderr", "error", err)
-		return "[]"
+		return []SubtitleItem{}
 	}
 
 	if err := cmd.Start(); err != nil {
 		s.app.Logger.Info("Transcription failed: cannot start whisper process", "error", err)
-		return "[]"
+		return []SubtitleItem{}
 	}
 
 	stderrLines := []string{}
@@ -160,7 +172,7 @@ func (s *WhisperService) Transcribe(filePath string) string {
 		} else {
 			s.app.Logger.Info("Transcription failed: whisper process exited with error", "exitErr", waitErr, "modelPath", modelPath, "sidecar", sidecar)
 		}
-		return "[]"
+		return []SubtitleItem{}
 	}
 
 	var whisperOutput struct {
@@ -174,7 +186,7 @@ func (s *WhisperService) Transcribe(filePath string) string {
 	}
 	if err := json.Unmarshal(data, &whisperOutput); err != nil {
 		s.app.Logger.Debug("Transcribe unmarshal error", "error", err)
-		return "[]"
+		return []SubtitleItem{}
 	}
 
 	result := make([]SubtitleItem, 0, len(whisperOutput.Transcription))
@@ -187,8 +199,7 @@ func (s *WhisperService) Transcribe(filePath string) string {
 		})
 	}
 
-	b, _ := json.Marshal(result)
-	return string(b)
+	return result
 }
 
 // --- Whisper status / model ---
@@ -237,21 +248,19 @@ func (s *WhisperService) loadWhisperLang() {
 	}
 }
 
-func (s *WhisperService) ListWhisperModels() string {
-	type entry struct {
-		Name       string `json:"name"`
-		File       string `json:"file"`
-		Size       string `json:"size"`
-		Downloaded bool   `json:"downloaded"`
-	}
+func (s *WhisperService) ListWhisperModels() []WhisperModelInfo {
 	modelDir := filepath.Join(s.dataDir, "whisper-models")
-	var list []entry
+	list := make([]WhisperModelInfo, 0, len(whisperModels))
 	for _, m := range whisperModels {
 		_, err := os.Stat(filepath.Join(modelDir, m.File))
-		list = append(list, entry{m.Name, m.File, m.Size, err == nil})
+		list = append(list, WhisperModelInfo{
+			Name:       m.Name,
+			File:       m.File,
+			Size:       m.Size,
+			Downloaded: err == nil,
+		})
 	}
-	b, _ := json.Marshal(list)
-	return string(b)
+	return list
 }
 
 // --- Model download ---
@@ -400,13 +409,13 @@ func (s *WhisperService) verifyModelSHA256(path string) error {
 	return nil
 }
 
-func (s *WhisperService) GetDownloadProgress() string {
+func (s *WhisperService) GetDownloadProgress() *WhisperDownloadProgress {
 	s.dlMu.Lock()
 	defer s.dlMu.Unlock()
 	if s.dlProgress < 0 {
-		return ""
+		return nil
 	}
-	return fmt.Sprintf(`{"model":"%s","progress":%d}`, s.dlModel, s.dlProgress)
+	return &WhisperDownloadProgress{Model: s.dlModel, Progress: s.dlProgress}
 }
 
 // --- Helpers ---

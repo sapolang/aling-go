@@ -6,7 +6,6 @@ package content
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"os"
@@ -241,10 +240,7 @@ func (s *PlatformService) transcodeToWav(input, output string) error {
 }
 
 func (s *PlatformService) transcribeAudioFile(path string) ([]SubtitleCue, error) {
-	var items []SubtitleItem
-	if err := json.Unmarshal([]byte(s.whisper.Transcribe(path)), &items); err != nil {
-		return nil, fmt.Errorf("解析转录结果失败: %w", err)
-	}
+	items := s.whisper.Transcribe(path)
 	cues := make([]SubtitleCue, 0, len(items))
 	for _, it := range items {
 		if it.Text == "" {

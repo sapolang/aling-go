@@ -168,15 +168,11 @@ export function initBridge(): void {
     learningStats: () => GetLearningStats().then((s: string) => JSON.parse(s)),
     extendedStats: () => GetExtendedStats().then((s: string) => JSON.parse(s)),
 
-    whisperTranscribe: (filePath: string) =>
-      Transcribe(filePath).then((s: string) => {
-        const parsed = JSON.parse(s)
-        return Array.isArray(parsed) ? parsed : []
-      }),
+    whisperTranscribe: (filePath: string) => Transcribe(filePath),
     whisperStatus: () => WhisperStatus(),
     downloadWhisperModel: (modelName: string) => DownloadWhisperModel(modelName),
     setWhisperModel: (name: string) => SetWhisperModel(name),
-    listWhisperModels: () => ListWhisperModels().then((s: string) => JSON.parse(s)),
+    listWhisperModels: () => ListWhisperModels(),
     getWhisperLang: () => GetWhisperLang(),
     setWhisperLang: (lang: string) => SetWhisperLang(lang),
     onWhisperProgress: (cb: (data: any) => void) => {
@@ -259,28 +255,12 @@ export function initBridge(): void {
 
     getCategories: () => GetCategories(),
     getArticles: (categoryEnName: string) => GetArticles(categoryEnName),
-    getArticle: (id: number) =>
-      GetArticle(id).then((s: string) => {
-        if (!s) return null
-        return JSON.parse(s)
-      }),
-    getTypingProgress: (articleId: number, mode: string) =>
-      GetTypingProgress(articleId, mode).then((s: string) => {
-        if (!s) return null
-        return JSON.parse(s)
-      }),
-    saveTypingProgress: (progressJson: string) => SaveTypingProgress(progressJson),
-    getTypingRecords: (articleId: number) =>
-      GetTypingRecords(articleId).then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
-    saveTypingRecord: (recordJson: string) => SaveTypingRecord(recordJson),
-    getAllTypingProgress: () =>
-      GetAllTypingProgress().then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
+    getArticle: (id: number) => GetArticle(id),
+    getTypingProgress: (articleId: number, mode: string) => GetTypingProgress(articleId, mode),
+    saveTypingProgress: (progress: any) => SaveTypingProgress(progress),
+    getTypingRecords: (articleId: number) => GetTypingRecords(articleId),
+    saveTypingRecord: (record: any) => SaveTypingRecord(record),
+    getAllTypingProgress: () => GetAllTypingProgress(),
     addWordsBatch: (wordsJson: string) => AddWordsBatch(wordsJson),
 
     favoriteList: (tagId: number) =>

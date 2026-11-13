@@ -27,6 +27,18 @@ export interface SubtitleItem {
   text: string
 }
 
+export interface WhisperModelInfo {
+  name: string
+  file: string
+  size: string
+  downloaded: boolean
+}
+
+export interface WhisperDownloadProgress {
+  model: string
+  progress: number
+}
+
 export interface RecentEntry {
   path: string
   name: string
@@ -204,14 +216,12 @@ export interface ElectronAPI {
   whisperStatus: () => Promise<WhisperStatus>
   downloadWhisperModel: (mirrorURL: string, modelName: string) => Promise<void>
   setWhisperModel: (name: string) => void
-  listWhisperModels: () => Promise<
-    { name: string; file: string; size: string; downloaded: boolean }[]
-  >
+  listWhisperModels: () => Promise<WhisperModelInfo[]>
   getWhisperLang: () => Promise<string>
   setWhisperLang: (lang: string) => void
   onWhisperProgress: (callback: (data: WhisperProgress) => void) => () => void
   onDownloadProgress: (callback: (pct: number) => void) => () => void
-  getDownloadProgress: () => Promise<string>
+  getDownloadProgress: () => Promise<WhisperDownloadProgress | null>
 
   recentList: () => Promise<RecentEntry[]>
   recentAdd: (filePath: string) => Promise<RecentEntry[]>
@@ -249,9 +259,9 @@ export interface ElectronAPI {
   getArticles: (categoryEnName: string) => Promise<ArticleItem[]>
   getArticle: (id: number) => Promise<ArticleItem | null>
   getTypingProgress: (articleId: number, mode: string) => Promise<TypingProgress | null>
-  saveTypingProgress: (progressJson: string) => Promise<void>
+  saveTypingProgress: (progress: Omit<TypingProgress, 'updatedAt'>) => Promise<void>
   getTypingRecords: (articleId: number) => Promise<TypingRecord[]>
-  saveTypingRecord: (recordJson: string) => Promise<void>
+  saveTypingRecord: (record: Omit<TypingRecord, 'id' | 'createdAt'>) => Promise<void>
   getAllTypingProgress: () => Promise<TypingProgress[]>
   addWordsBatch: (wordsJson: string) => Promise<number>
 
