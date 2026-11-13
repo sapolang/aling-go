@@ -263,13 +263,12 @@ export function initBridge(): void {
     favoriteTagAdd: (name: string) => FavoriteTagAdd(name),
     favoriteTagDelete: (id: number) => FavoriteTagDelete(id),
 
-    aiGetConfig: () => GetAIConfig().then((s: string) => JSON.parse(s)),
-    aiSetConfig: (cfg: any) => SetAIConfig(JSON.stringify(cfg)),
-    aiTest: () => TestAIConnection().then((s: string) => JSON.parse(s)),
+    aiGetConfig: () => GetAIConfig(),
+    aiSetConfig: (cfg: any) => SetAIConfig(cfg),
+    aiTest: () => TestAIConnection(),
     aiTranslateStream: (text: string, context: string, reqId: string) =>
-      TranslateStream(text, context, reqId).then((s: string) => JSON.parse(s)),
-    aiExplain: (text: string, context: string) =>
-      Explain(text, context).then((s: string) => JSON.parse(s)),
+      TranslateStream(text, context, reqId),
+    aiExplain: (text: string, context: string) => Explain(text, context),
     aiOnChunk: (cb: (data: { reqId: string; delta: string }) => void) => {
       Events.On('ai:translate:chunk', (e: any) => cb(e.data))
       return () => Events.Off('ai:translate:chunk')
@@ -279,12 +278,12 @@ export function initBridge(): void {
       return () => Events.Off('ai:translate:done')
     },
 
-    backupNow: () => BackupNow().then((s: string) => JSON.parse(s)),
-    getBackupStatus: () => GetBackupStatus().then((s: string) => JSON.parse(s)),
+    backupNow: () => BackupNow(),
+    getBackupStatus: () => GetBackupStatus(),
 
-    checkUpdate: () => CheckForUpdate().then((s: string) => JSON.parse(s)),
-    downloadUpdate: () => DownloadLatest().then((s: string) => JSON.parse(s)),
-    applyUpdate: () => ApplyUpdate().then((s: string) => JSON.parse(s)),
+    checkUpdate: () => CheckForUpdate(),
+    downloadUpdate: () => DownloadLatest(),
+    applyUpdate: () => ApplyUpdate(),
     updateOnProgress: (cb: (pct: number) => void) => {
       Events.On('wails:updater:download-progress', (e: any) => {
         const p = e?.data

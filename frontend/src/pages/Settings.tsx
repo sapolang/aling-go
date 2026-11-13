@@ -397,13 +397,13 @@ export default function SettingsPage() {
   const aiKeyInput = () => (aiKey.includes('***') ? '' : aiKey.trim())
 
   const handleAISave = async () => {
-    const err = await window.api.aiSetConfig({
+    const res = await window.api.aiSetConfig({
       baseUrl: aiBaseURL,
       model: aiModel,
       apiKey: aiKeyInput(),
     })
-    if (err) {
-      showToast(err, 'error')
+    if (!res.ok) {
+      showToast(res.error, 'error')
       return
     }
     const cfg: any = await window.api.aiGetConfig()
@@ -414,14 +414,14 @@ export default function SettingsPage() {
   const handleAITest = async () => {
     setAiTesting(true)
     setAiTestMsg(null)
-    const err = await window.api.aiSetConfig({
+    const res = await window.api.aiSetConfig({
       baseUrl: aiBaseURL,
       model: aiModel,
       apiKey: aiKeyInput(),
     })
-    if (err) {
+    if (!res.ok) {
       setAiTesting(false)
-      setAiTestMsg({ ok: false, message: err })
+      setAiTestMsg({ ok: false, message: res.error })
       return
     }
     const cfg: any = await window.api.aiGetConfig()

@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -72,34 +71,34 @@ func NewUpdateService(app *application.App, version string) *UpdateService {
 }
 
 // CheckForUpdate 查询 GitHub 最新正式版本；失败时把错误放在返回值里，避免前端收到 rejected promise。
-func (s *UpdateService) CheckForUpdate() string {
+func (s *UpdateService) CheckForUpdate() UpdateInfo {
 	info, err := s.check()
 	if err != nil {
-		return marshalJSON(UpdateInfo{CurrentVersion: s.version, Error: err.Error()})
+		return UpdateInfo{CurrentVersion: s.version, Error: err.Error()}
 	}
-	return marshalJSON(info)
+	return *info
 }
 
 // DownloadLatest 下载并校验当前平台的更新包，等待用户重启应用完成安装。
-func (s *UpdateService) DownloadLatest() string {
+func (s *UpdateService) DownloadLatest() UpdateResult {
 	if s.initErr != nil {
-		return marshalJSON(UpdateResult{Error: s.initErr.Error()})
+		return UpdateResult{Error: s.initErr.Error()}
 	}
 	if err := s.app.Updater.DownloadAndInstall(context.Background()); err != nil {
-		return marshalJSON(UpdateResult{Error: err.Error()})
+		return UpdateResult{Error: err.Error()}
 	}
-	return marshalJSON(UpdateResult{OK: true})
+	return UpdateResult{OK: true}
 }
 
 // ApplyUpdate 启动 helper 替换 .app bundle 并重启应用；调用后当前进程会退出。
-func (s *UpdateService) ApplyUpdate() string {
+func (s *UpdateService) ApplyUpdate() UpdateResult {
 	if s.initErr != nil {
-		return marshalJSON(UpdateResult{Error: s.initErr.Error()})
+		return UpdateResult{Error: s.initErr.Error()}
 	}
 	if err := s.app.Updater.Restart(context.Background()); err != nil {
-		return marshalJSON(UpdateResult{Error: err.Error()})
+		return UpdateResult{Error: err.Error()}
 	}
-	return marshalJSON(UpdateResult{OK: true})
+	return UpdateResult{OK: true}
 }
 
 func (s *UpdateService) check() (*UpdateInfo, error) {
@@ -132,14 +131,6 @@ func (s *UpdateService) check() (*UpdateInfo, error) {
 	info.AssetName = rel.Artifact.Filename
 	info.AssetSize = rel.Artifact.Size
 	return info, nil
-}
-
-func marshalJSON(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
 }
 
 func isReleaseVersion(version string) bool {
