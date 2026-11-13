@@ -84,6 +84,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 -- name: AddWordsBatch :execrows
 INSERT OR IGNORE INTO words (word, definition, phonetic) VALUES (?, ?, ?);
 
+-- name: AddDictWord :execrows
+INSERT OR IGNORE INTO words (word, definition, phonetic, tags) VALUES (?, ?, ?, ?);
+
 -- name: ClearWords :exec
 DELETE FROM words;
 

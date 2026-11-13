@@ -10,6 +10,30 @@ import (
 	"strings"
 )
 
+const addDictWord = `-- name: AddDictWord :execrows
+INSERT OR IGNORE INTO words (word, definition, phonetic, tags) VALUES (?, ?, ?, ?)
+`
+
+type AddDictWordParams struct {
+	Word       string
+	Definition string
+	Phonetic   string
+	Tags       string
+}
+
+func (q *Queries) AddDictWord(ctx context.Context, arg AddDictWordParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, addDictWord,
+		arg.Word,
+		arg.Definition,
+		arg.Phonetic,
+		arg.Tags,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const addReviewLog = `-- name: AddReviewLog :exec
 INSERT INTO review_logs (word_id, quality) VALUES (?, ?)
 `

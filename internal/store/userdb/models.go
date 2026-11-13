@@ -13,6 +13,12 @@ type AiTranslation struct {
 	CreatedAt string
 }
 
+type DictProgress struct {
+	Tag          string
+	CurrentIndex int
+	UpdatedAt    string
+}
+
 type FavoriteClip struct {
 	ID             int
 	FilePath       string

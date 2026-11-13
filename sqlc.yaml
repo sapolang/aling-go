@@ -126,3 +126,7 @@ sql:
             go_type: "string"
           - column: "feed_episodes.created_at"
             go_type: "string"
+          - column: "dict_progress.current_index"
+            go_type: "int"
+          - column: "dict_progress.updated_at"
+            go_type: "string"

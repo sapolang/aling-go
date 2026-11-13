@@ -100,3 +100,8 @@ CREATE TABLE IF NOT EXISTS feed_episodes (
 	UNIQUE(feed_id, guid)
 );
 CREATE INDEX IF NOT EXISTS idx_feed_episodes_feed ON feed_episodes(feed_id, published_at);
+CREATE TABLE IF NOT EXISTS dict_progress (
+	tag TEXT PRIMARY KEY,
+	current_index INTEGER DEFAULT 0,
+	updated_at TEXT DEFAULT (datetime('now','localtime'))
+);

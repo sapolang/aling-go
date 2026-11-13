@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	AddDictWord(ctx context.Context, arg AddDictWordParams) (int64, error)
 	AddFavoriteClip(ctx context.Context, arg AddFavoriteClipParams) (int, error)
 	AddFavoriteTag(ctx context.Context, name string) (int, error)
 	AddFeed(ctx context.Context, arg AddFeedParams) (int64, error)
@@ -35,6 +36,7 @@ type Querier interface {
 	DeleteWords(ctx context.Context, ids []int) error
 	DetachClipsFromTag(ctx context.Context, tagID int) error
 	GetAICache(ctx context.Context, hash string) (string, error)
+	GetDictProgress(ctx context.Context, tag string) (int, error)
 	GetEpisodeAudioAndLocalPath(ctx context.Context, id int64) (GetEpisodeAudioAndLocalPathRow, error)
 	GetEpisodeAudioURL(ctx context.Context, id int64) (string, error)
 	GetEpisodeDownloadInfo(ctx context.Context, id int64) (GetEpisodeDownloadInfoRow, error)
@@ -60,6 +62,7 @@ type Querier interface {
 	ListWords(ctx context.Context) ([]Word, error)
 	PutAICache(ctx context.Context, arg PutAICacheParams) error
 	ReviewFavoriteClip(ctx context.Context, arg ReviewFavoriteClipParams) error
+	SaveDictProgress(ctx context.Context, arg SaveDictProgressParams) error
 	SaveTypingProgress(ctx context.Context, arg SaveTypingProgressParams) error
 	SearchWords(ctx context.Context, arg SearchWordsParams) ([]Word, error)
 	SetEpisodeLocalPath(ctx context.Context, arg SetEpisodeLocalPathParams) error
