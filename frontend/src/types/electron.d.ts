@@ -27,6 +27,18 @@ export interface SubtitleItem {
   text: string
 }
 
+export interface WhisperModelInfo {
+  name: string
+  file: string
+  size: string
+  downloaded: boolean
+}
+
+export interface WhisperDownloadProgress {
+  model: string
+  progress: number
+}
+
 export interface RecentEntry {
   path: string
   name: string
@@ -181,7 +193,7 @@ export interface ElectronAPI {
 
   dbWordsList: () => Promise<Word[]>
   dbWordsAdd: (word: Omit<Word, 'id' | 'created_at' | 'updated_at'>) => Promise<number>
-  dbWordsUpdate: (id: number, word: Partial<Word>) => Promise<void>
+  dbWordsUpdate: (id: number, word: Word) => Promise<void>
   dbWordsDelete: (id: number) => Promise<void>
   dbWordsDeleteBatch: (ids: number[]) => Promise<void>
   dbWordsGetReview: () => Promise<Word[]>
@@ -204,19 +216,17 @@ export interface ElectronAPI {
   whisperStatus: () => Promise<WhisperStatus>
   downloadWhisperModel: (mirrorURL: string, modelName: string) => Promise<void>
   setWhisperModel: (name: string) => void
-  listWhisperModels: () => Promise<
-    { name: string; file: string; size: string; downloaded: boolean }[]
-  >
+  listWhisperModels: () => Promise<WhisperModelInfo[]>
   getWhisperLang: () => Promise<string>
   setWhisperLang: (lang: string) => void
   onWhisperProgress: (callback: (data: WhisperProgress) => void) => () => void
   onDownloadProgress: (callback: (pct: number) => void) => () => void
-  getDownloadProgress: () => Promise<string>
+  getDownloadProgress: () => Promise<WhisperDownloadProgress | null>
 
   recentList: () => Promise<RecentEntry[]>
   recentAdd: (filePath: string) => Promise<RecentEntry[]>
   cacheSubtitles: (filePath: string, subtitles: SubtitleItem[]) => Promise<void>
-  getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[]>
+  getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[] | null>
   getVideoThumbnail: (filePath: string) => Promise<string | null>
   getWaveformData: (filePath: string) => Promise<number[]>
   // 把内置播放器不支持的容器转成可播格式，返回转换后的本地路径
@@ -249,18 +259,18 @@ export interface ElectronAPI {
   getArticles: (categoryEnName: string) => Promise<ArticleItem[]>
   getArticle: (id: number) => Promise<ArticleItem | null>
   getTypingProgress: (articleId: number, mode: string) => Promise<TypingProgress | null>
-  saveTypingProgress: (progressJson: string) => Promise<void>
+  saveTypingProgress: (progress: Omit<TypingProgress, 'updatedAt'>) => Promise<void>
   getTypingRecords: (articleId: number) => Promise<TypingRecord[]>
-  saveTypingRecord: (recordJson: string) => Promise<void>
+  saveTypingRecord: (record: Omit<TypingRecord, 'id' | 'createdAt'>) => Promise<void>
   getAllTypingProgress: () => Promise<TypingProgress[]>
-  addWordsBatch: (wordsJson: string) => Promise<number>
+  addWordsBatch: (words: Pick<Word, 'word' | 'definition' | 'phonetic'>[]) => Promise<number>
 
   // Podcast feeds
-  feedList: () => Promise<{ feeds: Feed[] }>
+  feedList: () => Promise<{ feeds: Feed[]; error?: string }>
   feedAdd: (url: string) => Promise<FeedActionResult>
   feedRemove: (id: number) => Promise<FeedActionResult>
   feedRefresh: (id: number) => Promise<FeedActionResult>
-  feedEpisodes: (id: number, limit: number) => Promise<{ episodes: FeedEpisode[] }>
+  feedEpisodes: (id: number, limit: number) => Promise<{ episodes: FeedEpisode[]; error?: string }>
   episodeDownload: (id: number) => Promise<{ ok: boolean; error: string; path: string }>
   feedGetProxy: () => Promise<string>
   feedSetProxy: (proxy: string) => Promise<FeedActionResult>

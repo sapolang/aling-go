@@ -2,7 +2,6 @@ package study
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -30,11 +29,11 @@ func (s *WordService) DbWordsList() []Word {
 	return dbWordsList()
 }
 
-func (s *WordService) DbWordsAdd(word string) int {
+func (s *WordService) DbWordsAdd(word Word) int {
 	return dbWordsAdd(word)
 }
 
-func (s *WordService) DbWordsUpdate(id int, data string) {
+func (s *WordService) DbWordsUpdate(id int, data Word) {
 	dbWordsUpdate(id, data)
 }
 
@@ -64,7 +63,7 @@ func (s *WordService) LogReview(wordID int, quality int) {
 	dbReviewLogAdd(wordID, quality)
 }
 
-func (s *WordService) GetLearningStats() string {
+func (s *WordService) GetLearningStats() LearningStats {
 	return dbLearningStats()
 }
 
@@ -98,18 +97,12 @@ type ExtendedStats struct {
 
 // GetExtendedStats 返回统计页的多维度扩展统计：
 // 复习评分分布、生词等级分布、最近 30 天打字练习趋势。
-func (s *WordService) GetExtendedStats() string {
-	stats := ExtendedStats{
+func (s *WordService) GetExtendedStats() ExtendedStats {
+	return ExtendedStats{
 		GradeDistribution: queryGradeDistribution(),
 		LevelDistribution: queryLevelDistribution(),
 		TypingDaily:       queryTypingDailyStats(),
 	}
-	data, err := json.Marshal(stats)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "extendedStats marshal: %v\n", err)
-		return "{}"
-	}
-	return string(data)
 }
 
 // queryGradeDistribution 按评分聚合 review_logs，返回各评分的复习次数。
@@ -200,6 +193,6 @@ func (s *WordService) DbClear() {
 
 // --- Batch ---
 
-func (s *WordService) AddWordsBatch(wordsJSON string) int {
-	return dbAddWordsBatch(wordsJSON)
+func (s *WordService) AddWordsBatch(words []Word) int {
+	return dbAddWordsBatch(words)
 }

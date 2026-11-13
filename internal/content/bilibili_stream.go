@@ -35,7 +35,7 @@ var biliQualityLabels = map[int]string{
 	16:  "360P",
 }
 
-type biliStreamResult struct {
+type BiliStreamResult struct {
 	OK           bool   `json:"ok"`
 	URL          string `json:"url"`
 	Quality      int    `json:"quality"`
@@ -73,13 +73,13 @@ func (s *MediaService) SetBilibiliAuth(cookie func() string, client func() *http
 }
 
 // GetBilibiliStream 用登录 Cookie 换取可直连的播放地址，返回给前端的是本地代理地址
-func (s *MediaService) GetBilibiliStream(bvid string) string {
+func (s *MediaService) GetBilibiliStream(bvid string) BiliStreamResult {
 	bvid = strings.TrimSpace(bvid)
 	if !bvidRe.MatchString(bvid) {
-		return biliStreamJSON(biliStreamResult{Error: "视频 ID 不合法"})
+		return BiliStreamResult{Error: "视频 ID 不合法"}
 	}
 	if s.biliCookieFn == nil || s.remoteClientFn == nil {
-		return biliStreamJSON(biliStreamResult{Error: "B 站取流未初始化"})
+		return BiliStreamResult{Error: "B 站取流未初始化"}
 	}
 
 	client := s.remoteClientFn()
@@ -87,42 +87,42 @@ func (s *MediaService) GetBilibiliStream(bvid string) string {
 
 	view, err := fetchBiliView(client, cookie, bvid)
 	if err != nil {
-		return biliStreamJSON(biliStreamResult{Error: err.Error()})
+		return BiliStreamResult{Error: err.Error()}
 	}
 	if view.Code != 0 {
-		return biliStreamJSON(biliStreamResult{Error: biliAPIError("视频信息", view.Code, view.Message)})
+		return BiliStreamResult{Error: biliAPIError("视频信息", view.Code, view.Message)}
 	}
 	if view.Data.CID == 0 {
-		return biliStreamJSON(biliStreamResult{Error: "该视频没有可播放的分 P"})
+		return BiliStreamResult{Error: "该视频没有可播放的分 P"}
 	}
 
 	play, err := fetchBiliPlayURL(client, cookie, bvid, view.Data.CID)
 	if err != nil {
-		return biliStreamJSON(biliStreamResult{Error: err.Error()})
+		return BiliStreamResult{Error: err.Error()}
 	}
 	if play.Code != 0 {
-		return biliStreamJSON(biliStreamResult{Error: biliAPIError("播放地址", play.Code, play.Message)})
+		return BiliStreamResult{Error: biliAPIError("播放地址", play.Code, play.Message)}
 	}
 	if len(play.Data.DURL) == 0 || play.Data.DURL[0].URL == "" {
-		return biliStreamJSON(biliStreamResult{Error: "该视频暂不支持直连播放（可能需要大会员或仅提供 DASH 分轨）"})
+		return BiliStreamResult{Error: "该视频暂不支持直连播放（可能需要大会员或仅提供 DASH 分轨）"}
 	}
 
 	proxyURL := s.biliProxyURL(play.Data.DURL[0].URL)
 	if proxyURL == "" {
-		return biliStreamJSON(biliStreamResult{Error: "播放地址未通过安全校验"})
+		return BiliStreamResult{Error: "播放地址未通过安全校验"}
 	}
 	label := biliQualityLabels[play.Data.Quality]
 	if label == "" {
 		label = fmt.Sprintf("%dP", play.Data.Quality)
 	}
-	return biliStreamJSON(biliStreamResult{
+	return BiliStreamResult{
 		OK:           true,
 		URL:          proxyURL,
 		Quality:      play.Data.Quality,
 		QualityLabel: label,
 		Duration:     view.Data.Duration,
 		Title:        view.Data.Title,
-	})
+	}
 }
 
 func fetchBiliView(client *http.Client, cookie, bvid string) (biliViewResponse, error) {
@@ -174,10 +174,7 @@ func biliAPIError(what string, code int, message string) string {
 	return fmt.Sprintf("%s接口返回错误码 %d: %s", what, code, message)
 }
 
-func biliStreamJSON(r biliStreamResult) string {
-	b, _ := json.Marshal(r)
-	return string(b)
-}
+// biliProxyURL 把 B站 播放地址包装成本地代理地址，前端负责带 Cookie 拉流
 
 func (s *MediaService) biliProxyURL(upstream string) string {
 	parsed, err := url.Parse(upstream)

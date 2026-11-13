@@ -54,16 +54,26 @@ type FeedEpisode struct {
 	GUID string `json:"-"`
 }
 
-type feedActionResult struct {
+type ActionResult struct {
 	OK      bool   `json:"ok"`
 	Error   string `json:"error"`
 	Message string `json:"message"`
 }
 
-type episodeDownloadResult struct {
+type EpisodeDownloadResult struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error"`
 	Path  string `json:"path"`
+}
+
+type FeedListResult struct {
+	Feeds []Feed `json:"feeds"`
+	Error string `json:"error"`
+}
+
+type FeedEpisodesResult struct {
+	Episodes []FeedEpisode `json:"episodes"`
+	Error    string        `json:"error"`
 }
 
 // FeedService 负责播客 RSS 订阅：拉取订阅源、解析节目列表、按需下载音频到本地。
@@ -183,12 +193,11 @@ func (s *FeedService) GetProxy() string {
 }
 
 // SetProxy 设置订阅拉取使用的代理（形如 http://127.0.0.1:7890），传空字符串表示直连
-func (s *FeedService) SetProxy(proxy string) string {
+func (s *FeedService) SetProxy(proxy string) ActionResult {
 	proxy = strings.TrimSpace(proxy)
 	if proxy != "" {
 		if u, err := url.Parse(proxy); err != nil || u.Scheme == "" {
-			b, _ := json.Marshal(feedActionResult{Error: "代理地址格式不正确，应形如 http://127.0.0.1:7890"})
-			return string(b)
+			return ActionResult{Error: "代理地址格式不正确，应形如 http://127.0.0.1:7890"}
 		}
 	}
 	s.mu.Lock()
@@ -197,11 +206,9 @@ func (s *FeedService) SetProxy(proxy string) string {
 	s.mu.Unlock()
 
 	if err := saveFeedConfig(s.dataDir, feedConfig{Proxy: proxy, BilibiliCookie: cookie}); err != nil {
-		b, _ := json.Marshal(feedActionResult{Error: "保存配置失败: " + err.Error()})
-		return string(b)
+		return ActionResult{Error: "保存配置失败: " + err.Error()}
 	}
-	out, _ := json.Marshal(feedActionResult{OK: true})
-	return string(out)
+	return ActionResult{OK: true}
 }
 
 // GetBilibiliCookie 返回用户配置的 B站 Cookie，未配置时为空
@@ -213,11 +220,10 @@ func (s *FeedService) GetBilibiliCookie() string {
 
 // SetBilibiliCookie 设置拉取 B站订阅源时携带的 Cookie，传空字符串表示清除。
 // 带上登录态 Cookie（SESSDATA）可以显著降低 B站风控命中率。
-func (s *FeedService) SetBilibiliCookie(cookie string) string {
+func (s *FeedService) SetBilibiliCookie(cookie string) ActionResult {
 	cookie = normalizeCookie(cookie)
 	if cookie != "" && !strings.Contains(cookie, "=") {
-		b, _ := json.Marshal(feedActionResult{Error: "Cookie 格式不正确，应形如 SESSDATA=xxx"})
-		return string(b)
+		return ActionResult{Error: "Cookie 格式不正确，应形如 SESSDATA=xxx"}
 	}
 	s.mu.Lock()
 	s.biliUserCookie = cookie
@@ -225,11 +231,9 @@ func (s *FeedService) SetBilibiliCookie(cookie string) string {
 	s.mu.Unlock()
 
 	if err := saveFeedConfig(s.dataDir, feedConfig{Proxy: proxy, BilibiliCookie: cookie}); err != nil {
-		b, _ := json.Marshal(feedActionResult{Error: "保存配置失败: " + err.Error()})
-		return string(b)
+		return ActionResult{Error: "保存配置失败: " + err.Error()}
 	}
-	out, _ := json.Marshal(feedActionResult{OK: true})
-	return string(out)
+	return ActionResult{OK: true}
 }
 
 // normalizeCookie 去掉用户粘贴时可能带上的 "Cookie:" 前缀与多余换行
@@ -525,14 +529,13 @@ func normalizePubDate(raw string) string {
 
 // --- 订阅 CRUD ---
 
-func (s *FeedService) FeedList() string {
+func (s *FeedService) FeedList() FeedListResult {
 	rows, err := core.DB.Query(`
 		SELECT f.id, f.url, f.title, f.description, f.image, f.site_url, f.last_fetched_at, f.last_error,
 		       (SELECT COUNT(*) FROM feed_episodes e WHERE e.feed_id = f.id)
 		FROM feeds f ORDER BY f.created_at DESC`)
 	if err != nil {
-		b, _ := json.Marshal(map[string]any{"feeds": []Feed{}, "error": err.Error()})
-		return string(b)
+		return FeedListResult{Feeds: []Feed{}, Error: err.Error()}
 	}
 	defer rows.Close()
 
@@ -544,29 +547,28 @@ func (s *FeedService) FeedList() string {
 		}
 		feeds = append(feeds, f)
 	}
-	b, _ := json.Marshal(map[string]any{"feeds": feeds})
-	return string(b)
+	return FeedListResult{Feeds: feeds}
 }
 
 // FeedAdd 订阅一个 RSS 地址，立即拉取一次并落库
-func (s *FeedService) FeedAdd(feedURL string) string {
+func (s *FeedService) FeedAdd(feedURL string) ActionResult {
 	feedURL = strings.TrimSpace(feedURL)
 	if feedURL == "" {
-		return feedResultJSON(feedActionResult{Error: "请填写订阅地址"})
+		return ActionResult{Error: "请填写订阅地址"}
 	}
 	if u, err := url.Parse(feedURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return feedResultJSON(feedActionResult{Error: "订阅地址需以 http:// 或 https:// 开头"})
+		return ActionResult{Error: "订阅地址需以 http:// 或 https:// 开头"}
 	}
 
 	var exists int
 	_ = core.DB.QueryRow(`SELECT COUNT(*) FROM feeds WHERE url = ?`, feedURL).Scan(&exists)
 	if exists > 0 {
-		return feedResultJSON(feedActionResult{Error: "该订阅源已存在"})
+		return ActionResult{Error: "该订阅源已存在"}
 	}
 
 	meta, err := s.fetchFeed(feedURL)
 	if err != nil {
-		return feedResultJSON(feedActionResult{Error: err.Error()})
+		return ActionResult{Error: err.Error()}
 	}
 
 	res, err := core.DB.Exec(`
@@ -574,32 +576,32 @@ func (s *FeedService) FeedAdd(feedURL string) string {
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		feedURL, meta.title, meta.desc, meta.image, meta.siteURL, time.Now().Format(time.RFC3339))
 	if err != nil {
-		return feedResultJSON(feedActionResult{Error: "保存订阅失败: " + err.Error()})
+		return ActionResult{Error: "保存订阅失败: " + err.Error()}
 	}
 	feedID, _ := res.LastInsertId()
 	s.saveEpisodes(feedID, meta.episodes)
 
-	return feedResultJSON(feedActionResult{
+	return ActionResult{
 		OK:      true,
 		Message: fmt.Sprintf("已订阅《%s》，共 %d 期节目", meta.title, len(meta.episodes)),
-	})
+	}
 }
 
 // FeedRefresh 重新拉取指定订阅，id <= 0 时刷新全部
-func (s *FeedService) FeedRefresh(feedID int64) string {
+func (s *FeedService) FeedRefresh(feedID int64) ActionResult {
 	if feedID <= 0 {
 		return s.refreshAll()
 	}
 	if err := s.refreshOne(feedID); err != nil {
-		return feedResultJSON(feedActionResult{Error: err.Error()})
+		return ActionResult{Error: err.Error()}
 	}
-	return feedResultJSON(feedActionResult{OK: true, Message: "已更新"})
+	return ActionResult{OK: true, Message: "已更新"}
 }
 
-func (s *FeedService) refreshAll() string {
+func (s *FeedService) refreshAll() ActionResult {
 	rows, err := core.DB.Query(`SELECT id FROM feeds`)
 	if err != nil {
-		return feedResultJSON(feedActionResult{Error: err.Error()})
+		return ActionResult{Error: err.Error()}
 	}
 	var ids []int64
 	for rows.Next() {
@@ -617,9 +619,9 @@ func (s *FeedService) refreshAll() string {
 		}
 	}
 	if failed > 0 {
-		return feedResultJSON(feedActionResult{OK: true, Message: fmt.Sprintf("更新完成，%d 个订阅源失败", failed)})
+		return ActionResult{OK: true, Message: fmt.Sprintf("更新完成，%d 个订阅源失败", failed)}
 	}
-	return feedResultJSON(feedActionResult{OK: true, Message: fmt.Sprintf("已更新 %d 个订阅源", len(ids))})
+	return ActionResult{OK: true, Message: fmt.Sprintf("已更新 %d 个订阅源", len(ids))}
 }
 
 func (s *FeedService) refreshOne(feedID int64) error {
@@ -641,20 +643,20 @@ func (s *FeedService) refreshOne(feedID int64) error {
 }
 
 // FeedRemove 取消订阅并删除该订阅下的节目记录（不删除已下载的音频文件）
-func (s *FeedService) FeedRemove(feedID int64) string {
+func (s *FeedService) FeedRemove(feedID int64) ActionResult {
 	_, _ = core.DB.Exec(`DELETE FROM feed_episodes WHERE feed_id = ?`, feedID)
 	res, err := core.DB.Exec(`DELETE FROM feeds WHERE id = ?`, feedID)
 	if err != nil {
-		return feedResultJSON(feedActionResult{Error: err.Error()})
+		return ActionResult{Error: err.Error()}
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return feedResultJSON(feedActionResult{Error: "订阅源不存在"})
+		return ActionResult{Error: "订阅源不存在"}
 	}
-	return feedResultJSON(feedActionResult{OK: true, Message: "已取消订阅"})
+	return ActionResult{OK: true, Message: "已取消订阅"}
 }
 
 // FeedEpisodes 返回订阅源下的节目列表，limit <= 0 时默认 100 条
-func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
+func (s *FeedService) FeedEpisodes(feedID int64, limit int) FeedEpisodesResult {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
@@ -664,8 +666,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 		ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
 		LIMIT ?`, feedID, limit)
 	if err != nil {
-		b, _ := json.Marshal(map[string]any{"episodes": []FeedEpisode{}, "error": err.Error()})
-		return string(b)
+		return FeedEpisodesResult{Episodes: []FeedEpisode{}, Error: err.Error()}
 	}
 	defer rows.Close()
 
@@ -683,8 +684,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) string {
 		}
 		episodes = append(episodes, e)
 	}
-	b, _ := json.Marshal(map[string]any{"episodes": episodes})
-	return string(b)
+	return FeedEpisodesResult{Episodes: episodes}
 }
 
 type feedMeta struct {
@@ -755,7 +755,7 @@ func (s *FeedService) saveEpisodes(feedID int64, episodes []FeedEpisode) {
 // --- 下载 ---
 
 // EpisodeDownload 下载指定节目音频到本地，并登记进媒体库
-func (s *FeedService) EpisodeDownload(episodeID int64) string {
+func (s *FeedService) EpisodeDownload(episodeID int64) EpisodeDownloadResult {
 	var (
 		feedID    int64
 		title     string
@@ -766,25 +766,25 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 		SELECT feed_id, title, audio_url, local_path FROM feed_episodes WHERE id = ?`, episodeID).
 		Scan(&feedID, &title, &audioURL, &localPath)
 	if err != nil {
-		return episodeResultJSON(episodeDownloadResult{Error: "节目不存在"})
+		return EpisodeDownloadResult{Error: "节目不存在"}
 	}
 	if localPath != "" {
 		if _, statErr := os.Stat(localPath); statErr == nil {
-			return episodeResultJSON(episodeDownloadResult{OK: true, Path: localPath})
+			return EpisodeDownloadResult{OK: true, Path: localPath}
 		}
 	}
 	if audioURL == "" {
-		return episodeResultJSON(episodeDownloadResult{Error: "该节目没有可下载的音频地址"})
+		return EpisodeDownloadResult{Error: "该节目没有可下载的音频地址"}
 	}
 
 	dir := filepath.Join(s.dataDir, "podcasts", strconv.FormatInt(feedID, 10))
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return episodeResultJSON(episodeDownloadResult{Error: "创建下载目录失败: " + err.Error()})
+		return EpisodeDownloadResult{Error: "创建下载目录失败: " + err.Error()}
 	}
 
 	req, err := http.NewRequest(http.MethodGet, audioURL, nil)
 	if err != nil {
-		return episodeResultJSON(episodeDownloadResult{Error: "音频地址无效"})
+		return EpisodeDownloadResult{Error: "音频地址无效"}
 	}
 	req.Header.Set("User-Agent", "Aling/1.0 (Podcast Subscriber)")
 
@@ -804,17 +804,17 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 		}
 	}
 	if err != nil {
-		return episodeResultJSON(episodeDownloadResult{Error: "下载失败，请检查网络或配置代理: " + err.Error()})
+		return EpisodeDownloadResult{Error: "下载失败，请检查网络或配置代理: " + err.Error()}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return episodeResultJSON(episodeDownloadResult{Error: downloadStatusError(resp.StatusCode, resp.Status)})
+		return EpisodeDownloadResult{Error: downloadStatusError(resp.StatusCode, resp.Status)}
 	}
 	// 有些视频源返回 200 但内容其实是网页，直接落盘会得到一个打不开的假音频
 	if isWebPageContentType(resp.Header.Get("Content-Type")) {
-		return episodeResultJSON(episodeDownloadResult{
+		return EpisodeDownloadResult{
 			Error: "该节目没有可直接下载的音频文件（服务器返回的是网页），请在浏览器中打开或使用在线精听",
-		})
+		}
 	}
 
 	ext := audioExtFromURL(audioURL, resp.Header.Get("Content-Type"))
@@ -827,7 +827,7 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 	tmp := dest + ".part"
 	out, err := os.Create(tmp)
 	if err != nil {
-		return episodeResultJSON(episodeDownloadResult{Error: "创建文件失败: " + err.Error()})
+		return EpisodeDownloadResult{Error: "创建文件失败: " + err.Error()}
 	}
 
 	total := resp.ContentLength
@@ -840,7 +840,7 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				_ = out.Close()
 				_ = os.Remove(tmp)
-				return episodeResultJSON(episodeDownloadResult{Error: "写入失败: " + werr.Error()})
+				return EpisodeDownloadResult{Error: "写入失败: " + werr.Error()}
 			}
 			written += int64(n)
 			if total > 0 {
@@ -860,16 +860,16 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 		if rerr != nil {
 			_ = out.Close()
 			_ = os.Remove(tmp)
-			return episodeResultJSON(episodeDownloadResult{Error: "下载中断: " + rerr.Error()})
+			return EpisodeDownloadResult{Error: "下载中断: " + rerr.Error()}
 		}
 	}
 	if err := out.Close(); err != nil {
 		_ = os.Remove(tmp)
-		return episodeResultJSON(episodeDownloadResult{Error: "保存文件失败: " + err.Error()})
+		return EpisodeDownloadResult{Error: "保存文件失败: " + err.Error()}
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		_ = os.Remove(tmp)
-		return episodeResultJSON(episodeDownloadResult{Error: "保存文件失败: " + err.Error()})
+		return EpisodeDownloadResult{Error: "保存文件失败: " + err.Error()}
 	}
 
 	_, _ = core.DB.Exec(`UPDATE feed_episodes SET local_path = ? WHERE id = ?`, dest, episodeID)
@@ -878,7 +878,7 @@ func (s *FeedService) EpisodeDownload(episodeID int64) string {
 	}
 	s.app.Event.Emit("feed:download-progress", map[string]any{"episodeId": episodeID, "pct": 100})
 
-	return episodeResultJSON(episodeDownloadResult{OK: true, Path: dest})
+	return EpisodeDownloadResult{OK: true, Path: dest}
 }
 
 // isVideoMediaURL 判断 media:content 指向的是视频播放页而非音频直链。
@@ -957,16 +957,6 @@ func sanitizeFileName(name string) string {
 		cleaned = string(runes[:80])
 	}
 	return cleaned
-}
-
-func feedResultJSON(r feedActionResult) string {
-	b, _ := json.Marshal(r)
-	return string(b)
-}
-
-func episodeResultJSON(r episodeDownloadResult) string {
-	b, _ := json.Marshal(r)
-	return string(b)
 }
 
 // downloadStatusError 根据 HTTP 状态码生成更友好的错误提示，
@@ -1399,19 +1389,14 @@ func normalizeBilibiliPic(pic string) string {
 
 // --- B站扫码登录 ---
 
-// biliQRLoginResult 是扫码登录接口返回给前端的结果
-type biliQRLoginResult struct {
+// BiliQRLoginResult 是扫码登录接口返回给前端的结果
+type BiliQRLoginResult struct {
 	OK      bool   `json:"ok"`
 	URL     string `json:"url,omitempty"`
 	Key     string `json:"key,omitempty"`
 	Status  string `json:"status,omitempty"`
 	Message string `json:"message,omitempty"`
 	Error   string `json:"error,omitempty"`
-}
-
-func marshalBiliQR(v biliQRLoginResult) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }
 
 // bilibiliPassportRequest 请求 B站 passport 接口，复用订阅代理与当前 Cookie
@@ -1425,14 +1410,14 @@ func (s *FeedService) bilibiliPassportRequest(target string) (*http.Response, er
 }
 
 // StartBilibiliQRLogin 生成 B站 扫码登录的二维码内容
-func (s *FeedService) StartBilibiliQRLogin() string {
+func (s *FeedService) StartBilibiliQRLogin() BiliQRLoginResult {
 	resp, err := s.bilibiliPassportRequest("https://passport.bilibili.com/x/passport-login/web/qrcode/generate")
 	if err != nil {
-		return marshalBiliQR(biliQRLoginResult{Error: "生成二维码失败，请检查网络或代理: " + err.Error()})
+		return BiliQRLoginResult{Error: "生成二维码失败，请检查网络或代理: " + err.Error()}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return marshalBiliQR(biliQRLoginResult{Error: fmt.Sprintf("生成二维码失败：B站返回 HTTP %d", resp.StatusCode)})
+		return BiliQRLoginResult{Error: fmt.Sprintf("生成二维码失败：B站返回 HTTP %d", resp.StatusCode)}
 	}
 	var out struct {
 		Code    int    `json:"code"`
@@ -1443,32 +1428,32 @@ func (s *FeedService) StartBilibiliQRLogin() string {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return marshalBiliQR(biliQRLoginResult{Error: "生成二维码失败：B站返回内容异常"})
+		return BiliQRLoginResult{Error: "生成二维码失败：B站返回内容异常"}
 	}
 	if out.Code != 0 || out.Data.QRCodeKey == "" {
 		msg := out.Message
 		if msg == "" {
 			msg = "未知错误"
 		}
-		return marshalBiliQR(biliQRLoginResult{Error: "生成二维码失败：" + msg})
+		return BiliQRLoginResult{Error: "生成二维码失败：" + msg}
 	}
-	return marshalBiliQR(biliQRLoginResult{OK: true, URL: out.Data.URL, Key: out.Data.QRCodeKey})
+	return BiliQRLoginResult{OK: true, URL: out.Data.URL, Key: out.Data.QRCodeKey}
 }
 
 // PollBilibiliQRLogin 轮询扫码状态，登录成功后自动保存 Cookie
-func (s *FeedService) PollBilibiliQRLogin(key string) string {
+func (s *FeedService) PollBilibiliQRLogin(key string) BiliQRLoginResult {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return marshalBiliQR(biliQRLoginResult{Error: "二维码已失效，请刷新"})
+		return BiliQRLoginResult{Error: "二维码已失效，请刷新"}
 	}
 	resp, err := s.bilibiliPassportRequest("https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=" +
 		url.QueryEscape(key) + "&source=main-mini")
 	if err != nil {
-		return marshalBiliQR(biliQRLoginResult{Error: "查询扫码状态失败，请检查网络或代理: " + err.Error()})
+		return BiliQRLoginResult{Error: "查询扫码状态失败，请检查网络或代理: " + err.Error()}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return marshalBiliQR(biliQRLoginResult{Error: fmt.Sprintf("查询扫码状态失败：B站返回 HTTP %d", resp.StatusCode)})
+		return BiliQRLoginResult{Error: fmt.Sprintf("查询扫码状态失败：B站返回 HTTP %d", resp.StatusCode)}
 	}
 
 	var out struct {
@@ -1478,29 +1463,28 @@ func (s *FeedService) PollBilibiliQRLogin(key string) string {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return marshalBiliQR(biliQRLoginResult{Error: "查询扫码状态失败：B站返回内容异常"})
+		return BiliQRLoginResult{Error: "查询扫码状态失败：B站返回内容异常"}
 	}
 
 	switch out.Data.Code {
 	case 0:
 		cookie := bilibiliLoginCookie(resp.Cookies())
 		if cookie == "" {
-			return marshalBiliQR(biliQRLoginResult{Status: "failed", Error: "登录成功但未获取到 Cookie，请重试"})
+			return BiliQRLoginResult{Status: "failed", Error: "登录成功但未获取到 Cookie，请重试"}
 		}
-		var res feedActionResult
-		_ = json.Unmarshal([]byte(s.SetBilibiliCookie(cookie)), &res)
+		res := s.SetBilibiliCookie(cookie)
 		if !res.OK {
-			return marshalBiliQR(biliQRLoginResult{Status: "failed", Error: "保存 Cookie 失败: " + res.Error})
+			return BiliQRLoginResult{Status: "failed", Error: "保存 Cookie 失败: " + res.Error}
 		}
-		return marshalBiliQR(biliQRLoginResult{OK: true, Status: "success", Message: "登录成功"})
+		return BiliQRLoginResult{OK: true, Status: "success", Message: "登录成功"}
 	case 86101:
-		return marshalBiliQR(biliQRLoginResult{OK: true, Status: "waiting", Message: "等待扫码"})
+		return BiliQRLoginResult{OK: true, Status: "waiting", Message: "等待扫码"}
 	case 86090:
-		return marshalBiliQR(biliQRLoginResult{OK: true, Status: "scanned", Message: "已扫码，请在手机上确认"})
+		return BiliQRLoginResult{OK: true, Status: "scanned", Message: "已扫码，请在手机上确认"}
 	case 86038:
-		return marshalBiliQR(biliQRLoginResult{OK: true, Status: "expired", Message: "二维码已过期，请刷新"})
+		return BiliQRLoginResult{OK: true, Status: "expired", Message: "二维码已过期，请刷新"}
 	default:
-		return marshalBiliQR(biliQRLoginResult{OK: true, Status: "failed", Error: fmt.Sprintf("登录失败（%d）", out.Data.Code)})
+		return BiliQRLoginResult{OK: true, Status: "failed", Error: fmt.Sprintf("登录失败（%d）", out.Data.Code)}
 	}
 }
 

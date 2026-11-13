@@ -63,6 +63,13 @@ type AITestResult struct {
 	Message string `json:"message"`
 }
 
+// ActionResult 是只有成功/失败语义的通用结果
+type ActionResult struct {
+	OK      bool   `json:"ok"`
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
 type AIStreamResult struct {
 	Cached bool   `json:"cached"`
 	Text   string `json:"text"`
@@ -70,9 +77,9 @@ type AIStreamResult struct {
 }
 
 type AIExplainResult struct {
-	OK    bool            `json:"ok"`
-	Error string          `json:"error"`
-	Data  json.RawMessage `json:"data"`
+	OK    bool           `json:"ok"`
+	Error string         `json:"error"`
+	Data  *AIExplainData `json:"data,omitempty"`
 }
 
 // AIExplainData 句子详解的结构化输出
@@ -130,20 +137,14 @@ func loadAIConfig(dataDir string) AIConfig {
 
 // --- 配置 ---
 
-func (s *AIService) GetAIConfig() string {
+func (s *AIService) GetAIConfig() AIConfigView {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	view := AIConfigView{BaseURL: s.cfg.BaseURL, Model: s.cfg.Model, HasKey: s.cfg.APIKey != "", APIKeyMask: maskAPIKey(s.cfg.APIKey)}
-	b, _ := json.Marshal(view)
-	return string(b)
+	return AIConfigView{BaseURL: s.cfg.BaseURL, Model: s.cfg.Model, HasKey: s.cfg.APIKey != "", APIKeyMask: maskAPIKey(s.cfg.APIKey)}
 }
 
-// SetAIConfig 保存配置，返回空字符串表示成功；apiKey 为空时保留原值
-func (s *AIService) SetAIConfig(cfgJSON string) string {
-	var in AIConfig
-	if err := json.Unmarshal([]byte(cfgJSON), &in); err != nil {
-		return "配置格式错误"
-	}
+// SetAIConfig 保存配置；apiKey 为空时保留原值
+func (s *AIService) SetAIConfig(in AIConfig) ActionResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if v := strings.TrimSpace(in.BaseURL); v != "" {
@@ -156,9 +157,9 @@ func (s *AIService) SetAIConfig(cfgJSON string) string {
 		s.cfg.APIKey = v
 	}
 	if err := s.saveConfig(); err != nil {
-		return err.Error()
+		return ActionResult{Error: err.Error()}
 	}
-	return ""
+	return ActionResult{OK: true}
 }
 
 func (s *AIService) saveConfig() error {
@@ -188,13 +189,12 @@ func (s *AIService) client() (*openai.Client, AIConfig, error) {
 }
 
 // TestAIConnection 用一次最小请求验证 baseURL / Key / 模型是否可用
-func (s *AIService) TestAIConnection() string {
+func (s *AIService) TestAIConnection() AITestResult {
 	res := AITestResult{}
 	client, cfg, err := s.client()
 	if err != nil {
 		res.Message = err.Error()
-		b, _ := json.Marshal(res)
-		return string(b)
+		return res
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -211,8 +211,7 @@ func (s *AIService) TestAIConnection() string {
 	} else {
 		res.Message = "服务返回空结果"
 	}
-	b, _ := json.Marshal(res)
-	return string(b)
+	return res
 }
 
 // --- 缓存 ---
@@ -249,23 +248,23 @@ const aiTranslateSystemPrompt = `你是英语学习助手。把用户提供的�
 
 // TranslateStream 翻译句子。命中缓存时直接返回译文；否则异步流式推送
 // ai:translate:chunk → ai:translate:done 事件，方法本身立即返回。
-func (s *AIService) TranslateStream(text, contextText, reqID string) string {
+func (s *AIService) TranslateStream(text, contextText, reqID string) AIStreamResult {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return aiResultJSON(AIStreamResult{Error: "文本为空"})
+		return AIStreamResult{Error: "文本为空"}
 	}
 	client, cfg, err := s.client()
 	if err != nil {
-		return aiResultJSON(AIStreamResult{Error: err.Error()})
+		return AIStreamResult{Error: err.Error()}
 	}
 
 	key := aiCacheKey(aiKindTranslate, cfg.Model, text, contextText)
 	if cached, ok := aiCacheGet(key); ok {
-		return aiResultJSON(AIStreamResult{Cached: true, Text: cached})
+		return AIStreamResult{Cached: true, Text: cached}
 	}
 
 	go s.streamTranslate(client, cfg, text, contextText, reqID, key)
-	return aiResultJSON(AIStreamResult{})
+	return AIStreamResult{}
 }
 
 func (s *AIService) streamTranslate(client *openai.Client, cfg AIConfig, text, contextText, reqID, key string) {
@@ -342,20 +341,24 @@ JSON 字段要求：
 }
 keywords 取 2-5 个对理解句意最关键的词或短语。所有字段都用中文说明。`
 
-// Explain 返回结构化详解 JSON：{ok, error, data}
-func (s *AIService) Explain(text, contextText string) string {
+// Explain 返回结构化详解结果
+func (s *AIService) Explain(text, contextText string) AIExplainResult {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return aiResultJSON(AIExplainResult{Error: "文本为空"})
+		return AIExplainResult{Error: "文本为空"}
 	}
 	client, cfg, err := s.client()
 	if err != nil {
-		return aiResultJSON(AIExplainResult{Error: err.Error()})
+		return AIExplainResult{Error: err.Error()}
 	}
 
 	key := aiCacheKey(aiKindExplain, cfg.Model, text, contextText)
 	if cached, ok := aiCacheGet(key); ok {
-		return aiResultJSON(AIExplainResult{OK: true, Data: json.RawMessage(cached)})
+		var data AIExplainData
+		if err := json.Unmarshal([]byte(cached), &data); err != nil {
+			return AIExplainResult{Error: "解析缓存结果失败：" + err.Error()}
+		}
+		return AIExplainResult{OK: true, Data: &data}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -378,19 +381,19 @@ func (s *AIService) Explain(text, contextText string) string {
 		},
 	})
 	if err != nil {
-		return aiResultJSON(AIExplainResult{Error: err.Error()})
+		return AIExplainResult{Error: err.Error()}
 	}
 	if len(resp.Choices) == 0 {
-		return aiResultJSON(AIExplainResult{Error: "模型返回空内容"})
+		return AIExplainResult{Error: "模型返回空内容"}
 	}
 
 	content := stripJSONFence(resp.Choices[0].Message.Content)
 	var data AIExplainData
 	if err := json.Unmarshal([]byte(content), &data); err != nil {
-		return aiResultJSON(AIExplainResult{Error: "解析模型输出失败：" + err.Error()})
+		return AIExplainResult{Error: "解析模型输出失败：" + err.Error()}
 	}
 	aiCachePut(key, aiKindExplain, cfg.Model, text, content)
-	return aiResultJSON(AIExplainResult{OK: true, Data: json.RawMessage(content)})
+	return AIExplainResult{OK: true, Data: &data}
 }
 
 // 模型偶尔会包一层 ```json ``` 代码块，去掉后再解析
@@ -403,12 +406,4 @@ func stripJSONFence(s string) string {
 	s = strings.TrimPrefix(s, "```")
 	s = strings.TrimSuffix(s, "```")
 	return strings.TrimSpace(s)
-}
-
-func aiResultJSON(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return `{"error":"结果序列化失败"}`
-	}
-	return string(b)
 }

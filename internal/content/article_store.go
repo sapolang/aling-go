@@ -1,8 +1,6 @@
 package content
 
 import (
-	"encoding/json"
-
 	"aling-go/internal/core"
 )
 
@@ -60,7 +58,7 @@ func dbGetArticle(id int) *ArticleItem {
 	return &a
 }
 
-func dbGetTypingProgress(articleID int, mode string) string {
+func dbGetTypingProgress(articleID int, mode string) *TypingProgress {
 	var p TypingProgress
 	err := core.DB.QueryRow(
 		`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at
@@ -68,17 +66,12 @@ func dbGetTypingProgress(articleID int, mode string) string {
 		articleID, mode,
 	).Scan(&p.ArticleID, &p.Mode, &p.Position, &p.Completed, &p.BestAccuracy, &p.BestWPM, &p.UpdatedAt)
 	if err != nil {
-		return ""
+		return nil
 	}
-	b, _ := json.Marshal(p)
-	return string(b)
+	return &p
 }
 
-func dbSaveTypingProgress(progressJSON string) {
-	var p TypingProgress
-	if err := json.Unmarshal([]byte(progressJSON), &p); err != nil {
-		return
-	}
+func dbSaveTypingProgress(p TypingProgress) {
 	_, _ = core.DB.Exec(
 		`INSERT OR REPLACE INTO typing_progress (article_id, mode, position, completed, best_accuracy, best_wpm, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
@@ -93,17 +86,17 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-func dbGetTypingRecords(articleID int) string {
+func dbGetTypingRecords(articleID int) []TypingRecord {
 	rows, err := core.DB.Query(
 		`SELECT id, article_id, mode, accuracy, wpm, duration, mistakes, created_at
 		 FROM typing_records WHERE article_id=? ORDER BY created_at DESC`,
 		articleID,
 	)
 	if err != nil {
-		return "[]"
+		return []TypingRecord{}
 	}
 	defer rows.Close()
-	var records []TypingRecord
+	records := make([]TypingRecord, 0)
 	for rows.Next() {
 		var r TypingRecord
 		if err := rows.Scan(&r.ID, &r.ArticleID, &r.Mode, &r.Accuracy, &r.WPM, &r.Duration, &r.Mistakes, &r.CreatedAt); err != nil {
@@ -111,28 +104,23 @@ func dbGetTypingRecords(articleID int) string {
 		}
 		records = append(records, r)
 	}
-	b, _ := json.Marshal(records)
-	return string(b)
+	return records
 }
 
-func dbSaveTypingRecord(recordJSON string) {
-	var r TypingRecord
-	if err := json.Unmarshal([]byte(recordJSON), &r); err != nil {
-		return
-	}
+func dbSaveTypingRecord(r TypingRecord) {
 	_, _ = core.DB.Exec(
 		`INSERT INTO typing_records (article_id, mode, accuracy, wpm, duration, mistakes) VALUES (?, ?, ?, ?, ?, ?)`,
 		r.ArticleID, r.Mode, r.Accuracy, r.WPM, r.Duration, r.Mistakes,
 	)
 }
 
-func dbGetAllTypingProgress() string {
+func dbGetAllTypingProgress() []TypingProgress {
 	rows, err := core.DB.Query(`SELECT article_id, mode, position, completed, best_accuracy, best_wpm, updated_at FROM typing_progress`)
 	if err != nil {
-		return "[]"
+		return []TypingProgress{}
 	}
 	defer rows.Close()
-	var results []TypingProgress
+	results := make([]TypingProgress, 0)
 	for rows.Next() {
 		var p TypingProgress
 		if err := rows.Scan(&p.ArticleID, &p.Mode, &p.Position, &p.Completed, &p.BestAccuracy, &p.BestWPM, &p.UpdatedAt); err != nil {
@@ -140,6 +128,5 @@ func dbGetAllTypingProgress() string {
 		}
 		results = append(results, p)
 	}
-	b, _ := json.Marshal(results)
-	return string(b)
+	return results
 }

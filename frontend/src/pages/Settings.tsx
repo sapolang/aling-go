@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { confirmDialog, showToast } from '@/components/feedback'
+import type { WhisperDownloadProgress } from '@/types/electron'
 import { useThemeStore } from '@/stores/themeStore'
 import type { ThemeMode } from '@/stores/themeStore'
 import {
@@ -266,12 +267,11 @@ export default function SettingsPage() {
     window.api.getBackupStatus().then(setBackupStatus)
 
     let resumeCleanup: (() => void) | null = null
-    window.api.getDownloadProgress().then((d: string) => {
+    window.api.getDownloadProgress().then((d: WhisperDownloadProgress | null) => {
       if (d) {
-        const { model, progress } = JSON.parse(d)
-        setSelectedModel(model)
+        setSelectedModel(d.model)
         setDownloading(true)
-        setDownloadProgress(progress)
+        setDownloadProgress(d.progress)
         resumeCleanup = window.api.onDownloadProgress((pct: number) => setDownloadProgress(pct))
       }
     })
@@ -397,13 +397,13 @@ export default function SettingsPage() {
   const aiKeyInput = () => (aiKey.includes('***') ? '' : aiKey.trim())
 
   const handleAISave = async () => {
-    const err = await window.api.aiSetConfig({
+    const res = await window.api.aiSetConfig({
       baseUrl: aiBaseURL,
       model: aiModel,
       apiKey: aiKeyInput(),
     })
-    if (err) {
-      showToast(err, 'error')
+    if (!res.ok) {
+      showToast(res.error, 'error')
       return
     }
     const cfg: any = await window.api.aiGetConfig()
@@ -414,14 +414,14 @@ export default function SettingsPage() {
   const handleAITest = async () => {
     setAiTesting(true)
     setAiTestMsg(null)
-    const err = await window.api.aiSetConfig({
+    const res = await window.api.aiSetConfig({
       baseUrl: aiBaseURL,
       model: aiModel,
       apiKey: aiKeyInput(),
     })
-    if (err) {
+    if (!res.ok) {
       setAiTesting(false)
-      setAiTestMsg({ ok: false, message: err })
+      setAiTestMsg({ ok: false, message: res.error })
       return
     }
     const cfg: any = await window.api.aiGetConfig()

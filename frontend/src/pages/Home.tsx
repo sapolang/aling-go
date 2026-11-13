@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { showToast, confirmDialog } from '@/components/feedback'
+import type { RecentEntry } from '@/types/electron'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
 import {
@@ -114,7 +115,7 @@ export default function HomePage() {
     path: string
     name: string
     type: string
-    lastPosition: number
+    lastPosition?: number
   } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{
     visible: boolean
@@ -135,7 +136,7 @@ export default function HomePage() {
   useEffect(() => {
     window.api
       .recentList()
-      .then((list: any[]) => {
+      .then((list: RecentEntry[]) => {
         const hit = (list || []).find((e) => (e.lastPosition || 0) > 10 && e.type !== 'pdf')
         setResumeEntry(hit || null)
       })
@@ -466,7 +467,7 @@ export default function HomePage() {
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">继续学习：{resumeEntry.name}</p>
             <p className="text-xs text-muted-foreground">
-              上次看到 {formatTime(resumeEntry.lastPosition)}
+              上次看到 {formatTime(resumeEntry.lastPosition || 0)}
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={handleResume}>

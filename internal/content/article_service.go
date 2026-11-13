@@ -2,7 +2,6 @@ package content
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -28,31 +27,26 @@ func (s *ArticleService) GetArticles(categoryEnName string) []ArticleItem {
 	return dbGetArticles(categoryEnName)
 }
 
-func (s *ArticleService) GetArticle(id int) string {
-	item := dbGetArticle(id)
-	if item == nil {
-		return ""
-	}
-	b, _ := json.Marshal(item)
-	return string(b)
+func (s *ArticleService) GetArticle(id int) *ArticleItem {
+	return dbGetArticle(id)
 }
 
-func (s *ArticleService) GetTypingProgress(articleID int, mode string) string {
+func (s *ArticleService) GetTypingProgress(articleID int, mode string) *TypingProgress {
 	return dbGetTypingProgress(articleID, mode)
 }
 
-func (s *ArticleService) SaveTypingProgress(progressJSON string) {
-	dbSaveTypingProgress(progressJSON)
+func (s *ArticleService) SaveTypingProgress(progress TypingProgress) {
+	dbSaveTypingProgress(progress)
 }
 
-func (s *ArticleService) GetTypingRecords(articleID int) string {
+func (s *ArticleService) GetTypingRecords(articleID int) []TypingRecord {
 	return dbGetTypingRecords(articleID)
 }
 
-func (s *ArticleService) SaveTypingRecord(recordJSON string) {
-	dbSaveTypingRecord(recordJSON)
+func (s *ArticleService) SaveTypingRecord(record TypingRecord) {
+	dbSaveTypingRecord(record)
 }
 
-func (s *ArticleService) GetAllTypingProgress() string {
+func (s *ArticleService) GetAllTypingProgress() []TypingProgress {
 	return dbGetAllTypingProgress()
 }

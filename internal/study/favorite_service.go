@@ -3,7 +3,6 @@ package study
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,8 +27,8 @@ func (s *FavoriteService) ServiceShutdown() error { return nil }
 
 // --- Clips ---
 
-// FavoriteList 返回收藏片段列表（JSON 字符串），tagID > 0 时按标签筛选
-func (s *FavoriteService) FavoriteList(tagID int) string {
+// FavoriteList 返回收藏片段列表，tagID > 0 时按标签筛选
+func (s *FavoriteService) FavoriteList(tagID int) []FavoriteClip {
 	query := `
 		SELECT c.id, c.file_path, c.start_time, c.end_time, c.text, c.tag_id,
 		       COALESCE(t.name, ''), c.word, c.review_count, c.last_reviewed_at, c.next_review, c.created_at
@@ -45,7 +44,7 @@ func (s *FavoriteService) FavoriteList(tagID int) string {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteList: %v\n", err)
-		return "[]"
+		return []FavoriteClip{}
 	}
 	defer rows.Close()
 
@@ -59,20 +58,11 @@ func (s *FavoriteService) FavoriteList(tagID int) string {
 		c.FileName = filepath.Base(c.FilePath)
 		clips = append(clips, c)
 	}
-	b, err := json.Marshal(clips)
-	if err != nil {
-		return "[]"
-	}
-	return string(b)
+	return clips
 }
 
 // FavoriteAdd 新增收藏片段，返回新记录 ID
-func (s *FavoriteService) FavoriteAdd(clipJSON string) int {
-	var c FavoriteClip
-	if err := json.Unmarshal([]byte(clipJSON), &c); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteAdd: unmarshal: %v\n", err)
-		return 0
-	}
+func (s *FavoriteService) FavoriteAdd(c FavoriteClip) int {
 	res, err := core.DB.Exec(
 		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id, word) VALUES (?,?,?,?,?,?)",
 		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID, c.Word,
@@ -128,11 +118,11 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 
 // --- Tags ---
 
-func (s *FavoriteService) FavoriteTagsList() string {
+func (s *FavoriteService) FavoriteTagsList() []FavoriteTag {
 	rows, err := core.DB.Query("SELECT id, name FROM favorite_tags ORDER BY name ASC")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagsList: %v\n", err)
-		return "[]"
+		return []FavoriteTag{}
 	}
 	defer rows.Close()
 
@@ -144,11 +134,7 @@ func (s *FavoriteService) FavoriteTagsList() string {
 		}
 		tags = append(tags, t)
 	}
-	b, err := json.Marshal(tags)
-	if err != nil {
-		return "[]"
-	}
-	return string(b)
+	return tags
 }
 
 func (s *FavoriteService) FavoriteTagAdd(name string) int {

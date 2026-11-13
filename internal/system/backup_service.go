@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,41 +45,37 @@ func (s *BackupService) backupsDir() string {
 	return filepath.Join(s.dataDir, "backups")
 }
 
-type backupFileInfo struct {
+type BackupFileInfo struct {
 	Name string `json:"name"`
 	Size int64  `json:"size"`
 }
 
-type backupStatus struct {
+type BackupStatus struct {
 	LastBackup string           `json:"lastBackup"` // RFC3339，无备份时为空
 	Dir        string           `json:"dir"`
-	Files      []backupFileInfo `json:"files"`
+	Files      []BackupFileInfo `json:"files"`
 }
 
-type backupResult struct {
+type BackupResult struct {
 	OK     bool          `json:"ok"`
 	Error  string        `json:"error,omitempty"`
-	Status *backupStatus `json:"status,omitempty"`
+	Status *BackupStatus `json:"status,omitempty"`
 }
 
 // BackupNow 立即执行一次备份：userData.db 用 VACUUM INTO 一致性拷贝，
 // library.json 直接文件拷贝，均输出到配置目录 backups/ 下，保留最近 7 份。
-func (s *BackupService) BackupNow() string {
+func (s *BackupService) BackupNow() BackupResult {
 	if _, err := s.runBackup(); err != nil {
 		fmt.Fprintf(os.Stderr, "BackupNow: %v\n", err)
-		b, _ := json.Marshal(backupResult{OK: false, Error: err.Error()})
-		return string(b)
+		return BackupResult{OK: false, Error: err.Error()}
 	}
 	status := s.getStatus()
-	b, _ := json.Marshal(backupResult{OK: true, Status: &status})
-	return string(b)
+	return BackupResult{OK: true, Status: &status}
 }
 
 // GetBackupStatus 返回最近备份时间、备份文件列表与备份目录路径。
-func (s *BackupService) GetBackupStatus() string {
-	status := s.getStatus()
-	b, _ := json.Marshal(status)
-	return string(b)
+func (s *BackupService) GetBackupStatus() BackupStatus {
+	return s.getStatus()
 }
 
 func (s *BackupService) runBackup() (string, error) {
@@ -148,9 +143,9 @@ func (s *BackupService) lastBackupTime() (time.Time, error) {
 	return time.ParseInLocation(backupTimeFormat, stamps[len(stamps)-1], time.Local)
 }
 
-func (s *BackupService) getStatus() backupStatus {
+func (s *BackupService) getStatus() BackupStatus {
 	dir := s.backupsDir()
-	status := backupStatus{Dir: dir, Files: []backupFileInfo{}}
+	status := BackupStatus{Dir: dir, Files: []BackupFileInfo{}}
 	if t, err := s.lastBackupTime(); err == nil && !t.IsZero() {
 		status.LastBackup = t.Format(time.RFC3339)
 	}
@@ -163,7 +158,7 @@ func (s *BackupService) getStatus() backupStatus {
 		if err != nil || e.IsDir() {
 			continue
 		}
-		status.Files = append(status.Files, backupFileInfo{Name: e.Name(), Size: info.Size()})
+		status.Files = append(status.Files, BackupFileInfo{Name: e.Name(), Size: info.Size()})
 	}
 	// 新的备份排在前面
 	sort.Slice(status.Files, func(i, j int) bool { return status.Files[i].Name > status.Files[j].Name })

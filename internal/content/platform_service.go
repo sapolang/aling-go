@@ -119,36 +119,48 @@ func DetectPlatform(rawURL string) (kind platformKind, id string) {
 	return platformUnknown, ""
 }
 
-// ConvertToRSS 把 YouTube/B站 频道链接转换成订阅源 RSS URL
-// 返回值 JSON: { ok, rssUrl, platform, error }
-func (s *PlatformService) ConvertToRSS(rawURL string) string {
-	kind, id := DetectPlatform(rawURL)
-	out := map[string]any{"ok": false}
+type RSSConvertResult struct {
+	OK       bool   `json:"ok"`
+	RSSURL   string `json:"rssUrl,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
 
+type PodcastTranscribeResult struct {
+	OK        bool           `json:"ok"`
+	Subtitles []SubtitleItem `json:"subtitles,omitempty"`
+	Cached    bool           `json:"cached"`
+	Error     string         `json:"error,omitempty"`
+}
+
+type PlatformSubtitlesResult struct {
+	OK       bool          `json:"ok"`
+	Platform string        `json:"platform,omitempty"`
+	VideoID  string        `json:"videoId,omitempty"`
+	Title    string        `json:"title,omitempty"`
+	Cues     []SubtitleCue `json:"cues,omitempty"`
+	Error    string        `json:"error,omitempty"`
+}
+
+// ConvertToRSS 把 YouTube/B站 频道链接转换成订阅源 RSS URL
+func (s *PlatformService) ConvertToRSS(rawURL string) RSSConvertResult {
+	kind, id := DetectPlatform(rawURL)
 	switch kind {
 	case platformYouTube:
 		rss, err := s.youTubeToRSS(rawURL, id)
 		if err != nil {
-			out["error"] = err.Error()
-		} else {
-			out["ok"] = true
-			out["rssUrl"] = rss
-			out["platform"] = "youtube"
+			return RSSConvertResult{Error: err.Error()}
 		}
+		return RSSConvertResult{OK: true, RSSURL: rss, Platform: "youtube"}
 	case platformBilibili:
 		rss, err := s.bilibiliToRSS(id)
 		if err != nil {
-			out["error"] = err.Error()
-		} else {
-			out["ok"] = true
-			out["rssUrl"] = rss
-			out["platform"] = "bilibili"
+			return RSSConvertResult{Error: err.Error()}
 		}
+		return RSSConvertResult{OK: true, RSSURL: rss, Platform: "bilibili"}
 	default:
-		out["error"] = "无法识别的链接，请粘贴 YouTube 频道主页或 B站 UP主空间链接"
+		return RSSConvertResult{Error: "无法识别的链接，请粘贴 YouTube 频道主页或 B站 UP主空间链接"}
 	}
-	b, _ := json.Marshal(out)
-	return string(b)
 }
 
 // youTubeToRSS 根据 YouTube 链接形态生成 RSS URL
@@ -259,19 +271,17 @@ func (s *PlatformService) GetRSSHubURL() string {
 }
 
 // SetRSSHubURL 设置 RSSHub 实例地址，留空使用默认公共实例
-func (s *PlatformService) SetRSSHubURL(u string) string {
+func (s *PlatformService) SetRSSHubURL(u string) ActionResult {
 	u = strings.TrimSpace(u)
 	if u != "" {
 		if pu, err := url.Parse(u); err != nil || (pu.Scheme != "http" && pu.Scheme != "https") {
-			b, _ := json.Marshal(map[string]any{"ok": false, "error": "RSSHub 地址需以 http:// 或 https:// 开头"})
-			return string(b)
+			return ActionResult{Error: "RSSHub 地址需以 http:// 或 https:// 开头"}
 		}
 	}
 	s.mu.Lock()
 	s.rssHubURL = u
 	s.mu.Unlock()
-	b, _ := json.Marshal(map[string]any{"ok": true})
-	return string(b)
+	return ActionResult{OK: true}
 }
 
 // --- 字幕抓取 ---
@@ -284,10 +294,9 @@ type SubtitleCue struct {
 
 // TranscribePodcast 转录 RSS 节目。已下载节目直接使用本地文件；在线节目临时下载音频，
 // 转录完成后删除临时文件。字幕按本地路径或音频 URL 缓存，force 用于显式重新转录。
-func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) string {
-	fail := func(err error) string {
-		b, _ := json.Marshal(map[string]any{"ok": false, "error": err.Error()})
-		return string(b)
+func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) PodcastTranscribeResult {
+	fail := func(err error) PodcastTranscribeResult {
+		return PodcastTranscribeResult{Error: err.Error()}
 	}
 
 	var audioURL, localPath string
@@ -313,8 +322,7 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) string 
 		if raw, err := os.ReadFile(cachePath); err == nil {
 			var cached []SubtitleItem
 			if json.Unmarshal(raw, &cached) == nil && len(cached) > 0 {
-				b, _ := json.Marshal(map[string]any{"ok": true, "subtitles": cached, "cached": true})
-				return string(b)
+				return PodcastTranscribeResult{OK: true, Subtitles: cached, Cached: true}
 			}
 		}
 	}
@@ -350,13 +358,12 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) string 
 		_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
 		_ = os.WriteFile(cachePath, raw, 0644)
 	}
-	b, _ := json.Marshal(map[string]any{"ok": true, "subtitles": items, "cached": false})
-	return string(b)
+	return PodcastTranscribeResult{OK: true, Subtitles: items, Cached: false}
 }
 
 // GetSubtitles 根据 FeedEpisode 的 link 字段抓取平台字幕
 // 输入是 platformService 内部存储的 episode_link，自动识别平台
-func (s *PlatformService) GetSubtitles(episodeID int64) string {
+func (s *PlatformService) GetSubtitles(episodeID int64) PlatformSubtitlesResult {
 	var (
 		feedID   int64
 		title    string
@@ -370,14 +377,11 @@ func (s *PlatformService) GetSubtitles(episodeID int64) string {
 	// 播客源优先：如果有音频直链且音频字幕已缓存，直接返回缓存
 	if audioURL != "" {
 		// 检查 whisper 缓存字幕
-		out := map[string]any{"ok": false, "error": "播客源请使用页面右上角的「转录字幕」按钮"}
-		b, _ := json.Marshal(out)
-		return string(b)
+		return PlatformSubtitlesResult{Error: "播客源请使用页面右上角的「转录字幕」按钮"}
 	}
 
 	if link == "" {
-		b, _ := json.Marshal(map[string]any{"ok": false, "error": "该节目没有关联的视频页面链接"})
-		return string(b)
+		return PlatformSubtitlesResult{Error: "该节目没有关联的视频页面链接"}
 	}
 
 	kind, id := DetectPlatform(link)
@@ -403,8 +407,7 @@ func (s *PlatformService) GetSubtitles(episodeID int64) string {
 			err = fmt.Errorf("不支持的平台链接")
 		}
 		if err != nil {
-			b, _ := json.Marshal(map[string]any{"ok": false, "error": err.Error(), "platform": kindLabel(kind)})
-			return string(b)
+			return PlatformSubtitlesResult{Error: err.Error(), Platform: kindLabel(kind)}
 		}
 
 		if raw, err := json.Marshal(cues); err == nil {
@@ -413,14 +416,13 @@ func (s *PlatformService) GetSubtitles(episodeID int64) string {
 		}
 	}
 
-	b, _ := json.Marshal(map[string]any{
-		"ok":       true,
-		"platform": kindLabel(kind),
-		"videoId":  id,
-		"title":    title,
-		"cues":     cues,
-	})
-	return string(b)
+	return PlatformSubtitlesResult{
+		OK:       true,
+		Platform: kindLabel(kind),
+		VideoID:  id,
+		Title:    title,
+		Cues:     cues,
+	}
 }
 
 func kindLabel(k platformKind) string {

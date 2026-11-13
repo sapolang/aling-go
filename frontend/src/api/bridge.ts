@@ -148,8 +148,8 @@ export function initBridge(): void {
     writeTextFile: (path: string, content: string) => WriteTextFile(path, content),
 
     dbWordsList: () => DbWordsList(),
-    dbWordsAdd: (word: any) => DbWordsAdd(JSON.stringify(word)),
-    dbWordsUpdate: (id: number, data: any) => DbWordsUpdate(id, JSON.stringify(data)),
+    dbWordsAdd: (word: any) => DbWordsAdd(word),
+    dbWordsUpdate: (id: number, data: any) => DbWordsUpdate(id, data),
     dbWordsDelete: (id: number) => DbWordsDelete(id),
     dbWordsDeleteBatch: (ids: number[]) => DbWordsDeleteBatch(ids),
     dbWordsGetReview: () => DbWordsGetReview(),
@@ -165,18 +165,14 @@ export function initBridge(): void {
     dbClear: () => DbClear(),
 
     logReview: (wordID: number, quality: number) => LogReview(wordID, quality),
-    learningStats: () => GetLearningStats().then((s: string) => JSON.parse(s)),
-    extendedStats: () => GetExtendedStats().then((s: string) => JSON.parse(s)),
+    learningStats: () => GetLearningStats(),
+    extendedStats: () => GetExtendedStats(),
 
-    whisperTranscribe: (filePath: string) =>
-      Transcribe(filePath).then((s: string) => {
-        const parsed = JSON.parse(s)
-        return Array.isArray(parsed) ? parsed : []
-      }),
+    whisperTranscribe: (filePath: string) => Transcribe(filePath),
     whisperStatus: () => WhisperStatus(),
     downloadWhisperModel: (modelName: string) => DownloadWhisperModel(modelName),
     setWhisperModel: (name: string) => SetWhisperModel(name),
-    listWhisperModels: () => ListWhisperModels().then((s: string) => JSON.parse(s)),
+    listWhisperModels: () => ListWhisperModels(),
     getWhisperLang: () => GetWhisperLang(),
     setWhisperLang: (lang: string) => SetWhisperLang(lang),
     onWhisperProgress: (cb: (data: any) => void) => {
@@ -204,45 +200,36 @@ export function initBridge(): void {
     getVersion: () => GetVersion(),
     getMediaPort: () => GetMediaPort(),
 
-    feedList: () => FeedList().then((s: string) => JSON.parse(s)),
-    feedAdd: (url: string) => FeedAdd(url).then((s: string) => JSON.parse(s)),
-    feedRemove: (id: number) => FeedRemove(id).then((s: string) => JSON.parse(s)),
-    feedRefresh: (id: number) => FeedRefresh(id).then((s: string) => JSON.parse(s)),
-    feedEpisodes: (id: number, limit: number) =>
-      FeedEpisodes(id, limit).then((s: string) => JSON.parse(s)),
-    episodeDownload: (id: number) => EpisodeDownload(id).then((s: string) => JSON.parse(s)),
+    feedList: () => FeedList(),
+    feedAdd: (url: string) => FeedAdd(url),
+    feedRemove: (id: number) => FeedRemove(id),
+    feedRefresh: (id: number) => FeedRefresh(id),
+    feedEpisodes: (id: number, limit: number) => FeedEpisodes(id, limit),
+    episodeDownload: (id: number) => EpisodeDownload(id),
     feedGetProxy: () => FeedGetProxy(),
-    feedSetProxy: (proxy: string) => FeedSetProxy(proxy).then((s: string) => JSON.parse(s)),
+    feedSetProxy: (proxy: string) => FeedSetProxy(proxy),
     feedGetBilibiliCookie: () => FeedGetBilibiliCookie(),
-    feedSetBilibiliCookie: (cookie: string) =>
-      FeedSetBilibiliCookie(cookie).then((s: string) => JSON.parse(s)),
-    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid).then((s: string) => JSON.parse(s)),
-    feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin().then((s: string) => JSON.parse(s)),
-    feedPollBilibiliQRLogin: (key: string) =>
-      FeedPollBilibiliQRLogin(key).then((s: string) => JSON.parse(s)),
+    feedSetBilibiliCookie: (cookie: string) => FeedSetBilibiliCookie(cookie),
+    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid),
+    feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin(),
+    feedPollBilibiliQRLogin: (key: string) => FeedPollBilibiliQRLogin(key),
     feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => {
       Events.On('feed:download-progress', (e: any) => cb(e.data))
       return () => Events.Off('feed:download-progress')
     },
-    platformConvertToRSS: (url: string) =>
-      PlatformConvertToRSS(url).then((s: string) => JSON.parse(s)),
+    platformConvertToRSS: (url: string) => PlatformConvertToRSS(url),
     platformGetRSSHubURL: () => GetRSSHubURL(),
-    platformSetRSSHubURL: (u: string) => SetRSSHubURL(u).then((s: string) => JSON.parse(s)),
-    platformGetSubtitles: (episodeId: number) =>
-      GetSubtitles(episodeId).then((s: string) => JSON.parse(s)),
+    platformSetRSSHubURL: (u: string) => SetRSSHubURL(u),
+    platformGetSubtitles: (episodeId: number) => GetSubtitles(episodeId),
     platformTranscribePodcast: (episodeId: number, force: boolean) =>
-      PlatformTranscribePodcast(episodeId, force).then((s: string) => JSON.parse(s)),
+      PlatformTranscribePodcast(episodeId, force),
 
     dbDictTags: () => DbDictTags(),
     dbDictWords: (tag: string) => DbDictWords(tag),
-    dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(JSON.stringify(words)),
+    dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(words),
     dbDictSaveProgress: (tag: string, index: number) => DbDictSaveProgress(tag, index),
     dbDictGetProgress: (tag: string) => DbDictGetProgress(tag),
-    dbDictLookup: (word: string) =>
-      DbDictLookup(word).then((s: string) => {
-        if (!s) return null
-        return JSON.parse(s)
-      }),
+    dbDictLookup: (word: string) => DbDictLookup(word),
     dbDictSearch: (query: string, limit?: number) => DbDictSearch(query, limit ?? 50),
 
     libraryList: () => LibraryList(),
@@ -259,54 +246,29 @@ export function initBridge(): void {
 
     getCategories: () => GetCategories(),
     getArticles: (categoryEnName: string) => GetArticles(categoryEnName),
-    getArticle: (id: number) =>
-      GetArticle(id).then((s: string) => {
-        if (!s) return null
-        return JSON.parse(s)
-      }),
-    getTypingProgress: (articleId: number, mode: string) =>
-      GetTypingProgress(articleId, mode).then((s: string) => {
-        if (!s) return null
-        return JSON.parse(s)
-      }),
-    saveTypingProgress: (progressJson: string) => SaveTypingProgress(progressJson),
-    getTypingRecords: (articleId: number) =>
-      GetTypingRecords(articleId).then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
-    saveTypingRecord: (recordJson: string) => SaveTypingRecord(recordJson),
-    getAllTypingProgress: () =>
-      GetAllTypingProgress().then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
-    addWordsBatch: (wordsJson: string) => AddWordsBatch(wordsJson),
+    getArticle: (id: number) => GetArticle(id),
+    getTypingProgress: (articleId: number, mode: string) => GetTypingProgress(articleId, mode),
+    saveTypingProgress: (progress: any) => SaveTypingProgress(progress),
+    getTypingRecords: (articleId: number) => GetTypingRecords(articleId),
+    saveTypingRecord: (record: any) => SaveTypingRecord(record),
+    getAllTypingProgress: () => GetAllTypingProgress(),
+    addWordsBatch: (words: any[]) => AddWordsBatch(words),
 
-    favoriteList: (tagId: number) =>
-      FavoriteList(tagId).then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
-    favoriteAdd: (clip: any) => FavoriteAdd(JSON.stringify(clip)),
+    favoriteList: (tagId: number) => FavoriteList(tagId),
+    favoriteAdd: (clip: any) => FavoriteAdd(clip),
     favoriteDelete: (id: number) => FavoriteDelete(id),
     favoriteUpdateTag: (id: number, tagId: number) => FavoriteUpdateTag(id, tagId),
     favoriteReview: (id: number, rating: number) => FavoriteReview(id, rating),
-    favoriteTagsList: () =>
-      FavoriteTagsList().then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
+    favoriteTagsList: () => FavoriteTagsList(),
     favoriteTagAdd: (name: string) => FavoriteTagAdd(name),
     favoriteTagDelete: (id: number) => FavoriteTagDelete(id),
 
-    aiGetConfig: () => GetAIConfig().then((s: string) => JSON.parse(s)),
-    aiSetConfig: (cfg: any) => SetAIConfig(JSON.stringify(cfg)),
-    aiTest: () => TestAIConnection().then((s: string) => JSON.parse(s)),
+    aiGetConfig: () => GetAIConfig(),
+    aiSetConfig: (cfg: any) => SetAIConfig(cfg),
+    aiTest: () => TestAIConnection(),
     aiTranslateStream: (text: string, context: string, reqId: string) =>
-      TranslateStream(text, context, reqId).then((s: string) => JSON.parse(s)),
-    aiExplain: (text: string, context: string) =>
-      Explain(text, context).then((s: string) => JSON.parse(s)),
+      TranslateStream(text, context, reqId),
+    aiExplain: (text: string, context: string) => Explain(text, context),
     aiOnChunk: (cb: (data: { reqId: string; delta: string }) => void) => {
       Events.On('ai:translate:chunk', (e: any) => cb(e.data))
       return () => Events.Off('ai:translate:chunk')
@@ -316,12 +278,12 @@ export function initBridge(): void {
       return () => Events.Off('ai:translate:done')
     },
 
-    backupNow: () => BackupNow().then((s: string) => JSON.parse(s)),
-    getBackupStatus: () => GetBackupStatus().then((s: string) => JSON.parse(s)),
+    backupNow: () => BackupNow(),
+    getBackupStatus: () => GetBackupStatus(),
 
-    checkUpdate: () => CheckForUpdate().then((s: string) => JSON.parse(s)),
-    downloadUpdate: () => DownloadLatest().then((s: string) => JSON.parse(s)),
-    applyUpdate: () => ApplyUpdate().then((s: string) => JSON.parse(s)),
+    checkUpdate: () => CheckForUpdate(),
+    downloadUpdate: () => DownloadLatest(),
+    applyUpdate: () => ApplyUpdate(),
     updateOnProgress: (cb: (pct: number) => void) => {
       Events.On('wails:updater:download-progress', (e: any) => {
         const p = e?.data

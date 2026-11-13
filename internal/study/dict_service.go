@@ -2,7 +2,6 @@ package study
 
 import (
 	"context"
-	"encoding/json"
 
 	"aling-go/internal/dict"
 
@@ -22,14 +21,9 @@ func (s *DictService) ServiceStartup(ctx context.Context, options application.Se
 }
 func (s *DictService) ServiceShutdown() error { return nil }
 
-// DbDictLookup 查询单个单词的词典释义，未命中返回空字符串
-func (s *DictService) DbDictLookup(word string) string {
-	w := dict.Lookup(word)
-	if w == nil {
-		return ""
-	}
-	b, _ := json.Marshal(w)
-	return string(b)
+// DbDictLookup 查询单个单词的词典释义，未命中返回 nil
+func (s *DictService) DbDictLookup(word string) *dict.DictWord {
+	return dict.Lookup(word)
 }
 
 func (s *DictService) DbDictTags() []dict.DictTag {
@@ -78,11 +72,7 @@ func (s *DictService) DbDictGetProgress(tag string) int {
 	return index
 }
 
-func (s *DictService) DbDictAddToWordList(jsonStr string) DictAddResult {
-	var words []dict.DictWord
-	if err := json.Unmarshal([]byte(jsonStr), &words); err != nil {
-		return DictAddResult{}
-	}
+func (s *DictService) DbDictAddToWordList(words []dict.DictWord) DictAddResult {
 	added, skipped, err := dict.AddWordsToList(words)
 	if err != nil {
 		s.app.Logger.Error("DbDictAddToWordList failed", "error", err)
