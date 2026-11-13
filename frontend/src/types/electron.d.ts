@@ -266,11 +266,11 @@ export interface ElectronAPI {
   addWordsBatch: (words: Pick<Word, 'word' | 'definition' | 'phonetic'>[]) => Promise<number>
 
   // Podcast feeds
-  feedList: () => Promise<{ feeds: Feed[] }>
+  feedList: () => Promise<{ feeds: Feed[]; error?: string }>
   feedAdd: (url: string) => Promise<FeedActionResult>
   feedRemove: (id: number) => Promise<FeedActionResult>
   feedRefresh: (id: number) => Promise<FeedActionResult>
-  feedEpisodes: (id: number, limit: number) => Promise<{ episodes: FeedEpisode[] }>
+  feedEpisodes: (id: number, limit: number) => Promise<{ episodes: FeedEpisode[]; error?: string }>
   episodeDownload: (id: number) => Promise<{ ok: boolean; error: string; path: string }>
   feedGetProxy: () => Promise<string>
   feedSetProxy: (proxy: string) => Promise<FeedActionResult>

@@ -200,22 +200,19 @@ export function initBridge(): void {
     getVersion: () => GetVersion(),
     getMediaPort: () => GetMediaPort(),
 
-    feedList: () => FeedList().then((s: string) => JSON.parse(s)),
-    feedAdd: (url: string) => FeedAdd(url).then((s: string) => JSON.parse(s)),
-    feedRemove: (id: number) => FeedRemove(id).then((s: string) => JSON.parse(s)),
-    feedRefresh: (id: number) => FeedRefresh(id).then((s: string) => JSON.parse(s)),
-    feedEpisodes: (id: number, limit: number) =>
-      FeedEpisodes(id, limit).then((s: string) => JSON.parse(s)),
-    episodeDownload: (id: number) => EpisodeDownload(id).then((s: string) => JSON.parse(s)),
+    feedList: () => FeedList(),
+    feedAdd: (url: string) => FeedAdd(url),
+    feedRemove: (id: number) => FeedRemove(id),
+    feedRefresh: (id: number) => FeedRefresh(id),
+    feedEpisodes: (id: number, limit: number) => FeedEpisodes(id, limit),
+    episodeDownload: (id: number) => EpisodeDownload(id),
     feedGetProxy: () => FeedGetProxy(),
-    feedSetProxy: (proxy: string) => FeedSetProxy(proxy).then((s: string) => JSON.parse(s)),
+    feedSetProxy: (proxy: string) => FeedSetProxy(proxy),
     feedGetBilibiliCookie: () => FeedGetBilibiliCookie(),
-    feedSetBilibiliCookie: (cookie: string) =>
-      FeedSetBilibiliCookie(cookie).then((s: string) => JSON.parse(s)),
+    feedSetBilibiliCookie: (cookie: string) => FeedSetBilibiliCookie(cookie),
     getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid).then((s: string) => JSON.parse(s)),
-    feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin().then((s: string) => JSON.parse(s)),
-    feedPollBilibiliQRLogin: (key: string) =>
-      FeedPollBilibiliQRLogin(key).then((s: string) => JSON.parse(s)),
+    feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin(),
+    feedPollBilibiliQRLogin: (key: string) => FeedPollBilibiliQRLogin(key),
     feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => {
       Events.On('feed:download-progress', (e: any) => cb(e.data))
       return () => Events.Off('feed:download-progress')
