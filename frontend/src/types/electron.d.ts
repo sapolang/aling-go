@@ -193,7 +193,7 @@ export interface ElectronAPI {
 
   dbWordsList: () => Promise<Word[]>
   dbWordsAdd: (word: Omit<Word, 'id' | 'created_at' | 'updated_at'>) => Promise<number>
-  dbWordsUpdate: (id: number, word: Partial<Word>) => Promise<void>
+  dbWordsUpdate: (id: number, word: Word) => Promise<void>
   dbWordsDelete: (id: number) => Promise<void>
   dbWordsDeleteBatch: (ids: number[]) => Promise<void>
   dbWordsGetReview: () => Promise<Word[]>
@@ -263,7 +263,7 @@ export interface ElectronAPI {
   getTypingRecords: (articleId: number) => Promise<TypingRecord[]>
   saveTypingRecord: (record: Omit<TypingRecord, 'id' | 'createdAt'>) => Promise<void>
   getAllTypingProgress: () => Promise<TypingProgress[]>
-  addWordsBatch: (wordsJson: string) => Promise<number>
+  addWordsBatch: (words: Pick<Word, 'word' | 'definition' | 'phonetic'>[]) => Promise<number>
 
   // Podcast feeds
   feedList: () => Promise<{ feeds: Feed[] }>

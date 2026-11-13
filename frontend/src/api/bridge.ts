@@ -148,8 +148,8 @@ export function initBridge(): void {
     writeTextFile: (path: string, content: string) => WriteTextFile(path, content),
 
     dbWordsList: () => DbWordsList(),
-    dbWordsAdd: (word: any) => DbWordsAdd(JSON.stringify(word)),
-    dbWordsUpdate: (id: number, data: any) => DbWordsUpdate(id, JSON.stringify(data)),
+    dbWordsAdd: (word: any) => DbWordsAdd(word),
+    dbWordsUpdate: (id: number, data: any) => DbWordsUpdate(id, data),
     dbWordsDelete: (id: number) => DbWordsDelete(id),
     dbWordsDeleteBatch: (ids: number[]) => DbWordsDeleteBatch(ids),
     dbWordsGetReview: () => DbWordsGetReview(),
@@ -165,8 +165,8 @@ export function initBridge(): void {
     dbClear: () => DbClear(),
 
     logReview: (wordID: number, quality: number) => LogReview(wordID, quality),
-    learningStats: () => GetLearningStats().then((s: string) => JSON.parse(s)),
-    extendedStats: () => GetExtendedStats().then((s: string) => JSON.parse(s)),
+    learningStats: () => GetLearningStats(),
+    extendedStats: () => GetExtendedStats(),
 
     whisperTranscribe: (filePath: string) => Transcribe(filePath),
     whisperStatus: () => WhisperStatus(),
@@ -231,14 +231,10 @@ export function initBridge(): void {
 
     dbDictTags: () => DbDictTags(),
     dbDictWords: (tag: string) => DbDictWords(tag),
-    dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(JSON.stringify(words)),
+    dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(words),
     dbDictSaveProgress: (tag: string, index: number) => DbDictSaveProgress(tag, index),
     dbDictGetProgress: (tag: string) => DbDictGetProgress(tag),
-    dbDictLookup: (word: string) =>
-      DbDictLookup(word).then((s: string) => {
-        if (!s) return null
-        return JSON.parse(s)
-      }),
+    dbDictLookup: (word: string) => DbDictLookup(word),
     dbDictSearch: (query: string, limit?: number) => DbDictSearch(query, limit ?? 50),
 
     libraryList: () => LibraryList(),
@@ -261,22 +257,14 @@ export function initBridge(): void {
     getTypingRecords: (articleId: number) => GetTypingRecords(articleId),
     saveTypingRecord: (record: any) => SaveTypingRecord(record),
     getAllTypingProgress: () => GetAllTypingProgress(),
-    addWordsBatch: (wordsJson: string) => AddWordsBatch(wordsJson),
+    addWordsBatch: (words: any[]) => AddWordsBatch(words),
 
-    favoriteList: (tagId: number) =>
-      FavoriteList(tagId).then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
-    favoriteAdd: (clip: any) => FavoriteAdd(JSON.stringify(clip)),
+    favoriteList: (tagId: number) => FavoriteList(tagId),
+    favoriteAdd: (clip: any) => FavoriteAdd(clip),
     favoriteDelete: (id: number) => FavoriteDelete(id),
     favoriteUpdateTag: (id: number, tagId: number) => FavoriteUpdateTag(id, tagId),
     favoriteReview: (id: number, rating: number) => FavoriteReview(id, rating),
-    favoriteTagsList: () =>
-      FavoriteTagsList().then((s: string) => {
-        if (!s) return []
-        return JSON.parse(s)
-      }),
+    favoriteTagsList: () => FavoriteTagsList(),
     favoriteTagAdd: (name: string) => FavoriteTagAdd(name),
     favoriteTagDelete: (id: number) => FavoriteTagDelete(id),
 

@@ -695,7 +695,7 @@ export default function ArticleTypingPage() {
       definition: '',
       phonetic: '',
     }))
-    const count = await window.api.addWordsBatch(JSON.stringify(wordsToAdd))
+    const count = await window.api.addWordsBatch(wordsToAdd)
     showToast(`已添加 ${count} 个生词`)
   }
 

@@ -21,11 +21,7 @@ func dbWordsList() []Word {
 	return scanWords(rows)
 }
 
-func dbWordsAdd(wordJSON string) int {
-	var w Word
-	if err := json.Unmarshal([]byte(wordJSON), &w); err != nil {
-		return 0
-	}
+func dbWordsAdd(w Word) int {
 	res, err := core.DB.Exec(
 		"INSERT INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
 		w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
@@ -37,16 +33,12 @@ func dbWordsAdd(wordJSON string) int {
 	return int(id)
 }
 
-func dbWordsUpdate(id int, dataJSON string) {
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(dataJSON), &data); err != nil {
-		return
-	}
+func dbWordsUpdate(id int, w Word) {
 	if _, err := core.DB.Exec(
 		"UPDATE words SET word=?, definition=?, phonetic=?, example=?, tags=?, level=?, next_review=?, repetitions=?, efactor=?, interval=?, updated_at=datetime('now','localtime') WHERE id=?",
-		data["word"], data["definition"], data["phonetic"], data["example"],
-		data["tags"], data["level"], data["next_review"],
-		data["repetitions"], data["efactor"], data["interval"], id,
+		w.Word, w.Definition, w.Phonetic, w.Example,
+		w.Tags, w.Level, w.NextReview,
+		w.Repetitions, w.EFactor, w.Interval, id,
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "dbWordsUpdate: %v\n", err)
 	}
@@ -180,7 +172,7 @@ func dbReviewLogAdd(wordID, quality int) {
 	}
 }
 
-func dbLearningStats() string {
+func dbLearningStats() LearningStats {
 	stats := LearningStats{Daily: make([]DailyReview, 0, 30)}
 	if err := core.DB.QueryRow("SELECT COUNT(*) FROM review_logs").Scan(&stats.TotalReviews); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats total: %v\n", err)
@@ -243,20 +235,11 @@ func dbLearningStats() string {
 		stats.Daily = append(stats.Daily, DailyReview{Date: date, Count: counts[date]})
 	}
 
-	data, err := json.Marshal(stats)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "learningStats marshal: %v\n", err)
-		return "{}"
-	}
-	return string(data)
+	return stats
 }
 
 // dbAddWordsBatch 供文章页等场景批量快速加入生词（只写词/释义/音标）。
-func dbAddWordsBatch(wordsJSON string) int {
-	var words []Word
-	if err := json.Unmarshal([]byte(wordsJSON), &words); err != nil {
-		return 0
-	}
+func dbAddWordsBatch(words []Word) int {
 	count := 0
 	for _, w := range words {
 		res, err := core.DB.Exec(
