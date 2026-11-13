@@ -210,21 +210,19 @@ export function initBridge(): void {
     feedSetProxy: (proxy: string) => FeedSetProxy(proxy),
     feedGetBilibiliCookie: () => FeedGetBilibiliCookie(),
     feedSetBilibiliCookie: (cookie: string) => FeedSetBilibiliCookie(cookie),
-    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid).then((s: string) => JSON.parse(s)),
+    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid),
     feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin(),
     feedPollBilibiliQRLogin: (key: string) => FeedPollBilibiliQRLogin(key),
     feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => {
       Events.On('feed:download-progress', (e: any) => cb(e.data))
       return () => Events.Off('feed:download-progress')
     },
-    platformConvertToRSS: (url: string) =>
-      PlatformConvertToRSS(url).then((s: string) => JSON.parse(s)),
+    platformConvertToRSS: (url: string) => PlatformConvertToRSS(url),
     platformGetRSSHubURL: () => GetRSSHubURL(),
-    platformSetRSSHubURL: (u: string) => SetRSSHubURL(u).then((s: string) => JSON.parse(s)),
-    platformGetSubtitles: (episodeId: number) =>
-      GetSubtitles(episodeId).then((s: string) => JSON.parse(s)),
+    platformSetRSSHubURL: (u: string) => SetRSSHubURL(u),
+    platformGetSubtitles: (episodeId: number) => GetSubtitles(episodeId),
     platformTranscribePodcast: (episodeId: number, force: boolean) =>
-      PlatformTranscribePodcast(episodeId, force).then((s: string) => JSON.parse(s)),
+      PlatformTranscribePodcast(episodeId, force),
 
     dbDictTags: () => DbDictTags(),
     dbDictWords: (tag: string) => DbDictWords(tag),
