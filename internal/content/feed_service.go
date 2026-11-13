@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"aling-go/internal/core"
+	"aling-go/internal/store/userdb"
 
 	"github.com/mmcdole/gofeed"
 	ext "github.com/mmcdole/gofeed/extensions"
@@ -108,48 +109,13 @@ func NewFeedService(app *application.App, dataDir string, library *LibraryServic
 }
 
 func (s *FeedService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
-	return s.ensureTables()
-}
-
-func (s *FeedService) ServiceShutdown() error { return nil }
-
-func (s *FeedService) ensureTables() error {
-	_, err := core.DB.Exec(`
-		CREATE TABLE IF NOT EXISTS feeds (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			url TEXT NOT NULL UNIQUE,
-			title TEXT DEFAULT '',
-			description TEXT DEFAULT '',
-			image TEXT DEFAULT '',
-			site_url TEXT DEFAULT '',
-			last_fetched_at TEXT DEFAULT '',
-			last_error TEXT DEFAULT '',
-			created_at TEXT DEFAULT (datetime('now','localtime'))
-		);
-		CREATE TABLE IF NOT EXISTS feed_episodes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			feed_id INTEGER NOT NULL,
-			guid TEXT NOT NULL,
-			title TEXT DEFAULT '',
-			description TEXT DEFAULT '',
-			audio_url TEXT DEFAULT '',
-			link TEXT DEFAULT '',
-			duration INTEGER DEFAULT 0,
-			published_at TEXT DEFAULT '',
-			local_path TEXT DEFAULT '',
-			created_at TEXT DEFAULT (datetime('now','localtime')),
-			UNIQUE(feed_id, guid)
-		);
-		CREATE INDEX IF NOT EXISTS idx_feed_episodes_feed ON feed_episodes(feed_id, published_at);
-	`)
-	if err != nil {
-		return err
-	}
-	// 增量迁移：老版本没有 link 列
+	// 建表由 core 统一执行 store.Schema 完成，这里只补齐老版本缺失的列。
 	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN link TEXT DEFAULT ''`)
 	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN image TEXT DEFAULT ''`)
 	return nil
 }
+
+func (s *FeedService) ServiceShutdown() error { return nil }
 
 // --- 网络配置 ---
 
@@ -530,22 +496,23 @@ func normalizePubDate(raw string) string {
 // --- 订阅 CRUD ---
 
 func (s *FeedService) FeedList() FeedListResult {
-	rows, err := core.DB.Query(`
-		SELECT f.id, f.url, f.title, f.description, f.image, f.site_url, f.last_fetched_at, f.last_error,
-		       (SELECT COUNT(*) FROM feed_episodes e WHERE e.feed_id = f.id)
-		FROM feeds f ORDER BY f.created_at DESC`)
+	rows, err := q().ListFeeds(context.Background())
 	if err != nil {
 		return FeedListResult{Feeds: []Feed{}, Error: err.Error()}
 	}
-	defer rows.Close()
-
-	feeds := []Feed{}
-	for rows.Next() {
-		var f Feed
-		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.Description, &f.Image, &f.SiteURL, &f.LastFetchedAt, &f.LastError, &f.EpisodeCount); err != nil {
-			continue
-		}
-		feeds = append(feeds, f)
+	feeds := make([]Feed, 0, len(rows))
+	for _, row := range rows {
+		feeds = append(feeds, Feed{
+			ID:            row.ID,
+			URL:           row.Url,
+			Title:         row.Title,
+			Description:   row.Description,
+			Image:         row.Image,
+			SiteURL:       row.SiteUrl,
+			LastFetchedAt: row.LastFetchedAt,
+			LastError:     row.LastError,
+			EpisodeCount:  int(row.EpisodeCount),
+		})
 	}
 	return FeedListResult{Feeds: feeds}
 }
@@ -560,8 +527,7 @@ func (s *FeedService) FeedAdd(feedURL string) ActionResult {
 		return ActionResult{Error: "订阅地址需以 http:// 或 https:// 开头"}
 	}
 
-	var exists int
-	_ = core.DB.QueryRow(`SELECT COUNT(*) FROM feeds WHERE url = ?`, feedURL).Scan(&exists)
+	exists, _ := q().CountFeedByURL(context.Background(), feedURL)
 	if exists > 0 {
 		return ActionResult{Error: "该订阅源已存在"}
 	}
@@ -571,14 +537,17 @@ func (s *FeedService) FeedAdd(feedURL string) ActionResult {
 		return ActionResult{Error: err.Error()}
 	}
 
-	res, err := core.DB.Exec(`
-		INSERT INTO feeds (url, title, description, image, site_url, last_fetched_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		feedURL, meta.title, meta.desc, meta.image, meta.siteURL, time.Now().Format(time.RFC3339))
+	feedID, err := q().AddFeed(context.Background(), userdb.AddFeedParams{
+		Url:           feedURL,
+		Title:         meta.title,
+		Description:   meta.desc,
+		Image:         meta.image,
+		SiteUrl:       meta.siteURL,
+		LastFetchedAt: time.Now().Format(time.RFC3339),
+	})
 	if err != nil {
 		return ActionResult{Error: "保存订阅失败: " + err.Error()}
 	}
-	feedID, _ := res.LastInsertId()
 	s.saveEpisodes(feedID, meta.episodes)
 
 	return ActionResult{
@@ -599,18 +568,10 @@ func (s *FeedService) FeedRefresh(feedID int64) ActionResult {
 }
 
 func (s *FeedService) refreshAll() ActionResult {
-	rows, err := core.DB.Query(`SELECT id FROM feeds`)
+	ids, err := q().ListFeedIDs(context.Background())
 	if err != nil {
 		return ActionResult{Error: err.Error()}
 	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
-		}
-	}
-	rows.Close()
 
 	var failed int
 	for _, id := range ids {
@@ -625,31 +586,37 @@ func (s *FeedService) refreshAll() ActionResult {
 }
 
 func (s *FeedService) refreshOne(feedID int64) error {
-	var feedURL string
-	if err := core.DB.QueryRow(`SELECT url FROM feeds WHERE id = ?`, feedID).Scan(&feedURL); err != nil {
+	ctx := context.Background()
+	feedURL, err := q().GetFeedURL(ctx, feedID)
+	if err != nil {
 		return fmt.Errorf("订阅源不存在")
 	}
 	meta, err := s.fetchFeed(feedURL)
 	if err != nil {
-		_, _ = core.DB.Exec(`UPDATE feeds SET last_error = ? WHERE id = ?`, err.Error(), feedID)
+		_ = q().SetFeedError(ctx, userdb.SetFeedErrorParams{LastError: err.Error(), ID: feedID})
 		return err
 	}
-	_, _ = core.DB.Exec(`
-		UPDATE feeds SET title = ?, description = ?, image = ?, site_url = ?, last_fetched_at = ?, last_error = ''
-		WHERE id = ?`,
-		meta.title, meta.desc, meta.image, meta.siteURL, time.Now().Format(time.RFC3339), feedID)
+	_ = q().UpdateFeedMeta(ctx, userdb.UpdateFeedMetaParams{
+		Title:         meta.title,
+		Description:   meta.desc,
+		Image:         meta.image,
+		SiteUrl:       meta.siteURL,
+		LastFetchedAt: time.Now().Format(time.RFC3339),
+		ID:            feedID,
+	})
 	s.saveEpisodes(feedID, meta.episodes)
 	return nil
 }
 
 // FeedRemove 取消订阅并删除该订阅下的节目记录（不删除已下载的音频文件）
 func (s *FeedService) FeedRemove(feedID int64) ActionResult {
-	_, _ = core.DB.Exec(`DELETE FROM feed_episodes WHERE feed_id = ?`, feedID)
-	res, err := core.DB.Exec(`DELETE FROM feeds WHERE id = ?`, feedID)
+	ctx := context.Background()
+	_ = q().DeleteFeedEpisodes(ctx, feedID)
+	n, err := q().DeleteFeed(ctx, feedID)
 	if err != nil {
 		return ActionResult{Error: err.Error()}
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if n == 0 {
 		return ActionResult{Error: "订阅源不存在"}
 	}
 	return ActionResult{OK: true, Message: "已取消订阅"}
@@ -660,21 +627,27 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) FeedEpisodesResult {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	rows, err := core.DB.Query(`
-		SELECT id, feed_id, title, description, audio_url, link, duration, published_at, local_path, image
-		FROM feed_episodes WHERE feed_id = ?
-		ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
-		LIMIT ?`, feedID, limit)
+	rows, err := q().ListFeedEpisodes(context.Background(), userdb.ListFeedEpisodesParams{
+		FeedID: feedID,
+		Limit:  int64(limit),
+	})
 	if err != nil {
 		return FeedEpisodesResult{Episodes: []FeedEpisode{}, Error: err.Error()}
 	}
-	defer rows.Close()
 
-	episodes := []FeedEpisode{}
-	for rows.Next() {
-		var e FeedEpisode
-		if err := rows.Scan(&e.ID, &e.FeedID, &e.Title, &e.Description, &e.AudioURL, &e.Link, &e.Duration, &e.PublishedAt, &e.LocalPath, &e.Image); err != nil {
-			continue
+	episodes := make([]FeedEpisode, 0, len(rows))
+	for _, row := range rows {
+		e := FeedEpisode{
+			ID:          row.ID,
+			FeedID:      row.FeedID,
+			Title:       row.Title,
+			Description: row.Description,
+			AudioURL:    row.AudioUrl,
+			Link:        row.Link,
+			Duration:    row.Duration,
+			PublishedAt: row.PublishedAt,
+			LocalPath:   row.LocalPath,
+			Image:       row.Image,
 		}
 		// 兼容历史数据：旧版本把 YouTube 播放页当成了音频地址，下载结果是网页；
 		// 没有音频直链的在线节目同样不应展示"已下载"
@@ -731,43 +704,40 @@ func (s *FeedService) fetchFeed(feedURL string) (*feedMeta, error) {
 
 // saveEpisodes 幂等写入节目列表：已存在则更新元信息，保留本地下载路径
 func (s *FeedService) saveEpisodes(feedID int64, episodes []FeedEpisode) {
-	stmt, err := core.DB.Prepare(`
-		INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, link, duration, published_at, image)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(feed_id, guid) DO UPDATE SET
-			title = excluded.title,
-			description = excluded.description,
-			audio_url = excluded.audio_url,
-			link = excluded.link,
-			duration = excluded.duration,
-			published_at = excluded.published_at,
-			image = excluded.image`)
+	ctx := context.Background()
+	tx, err := core.DB.Begin()
 	if err != nil {
 		return
 	}
-	defer stmt.Close()
-
+	qtx := userdb.New(tx)
 	for _, e := range episodes {
-		_, _ = stmt.Exec(feedID, e.GUID, e.Title, e.Description, e.AudioURL, e.Link, e.Duration, e.PublishedAt, e.Image)
+		if err := qtx.UpsertFeedEpisode(ctx, userdb.UpsertFeedEpisodeParams{
+			FeedID:      feedID,
+			Guid:        e.GUID,
+			Title:       e.Title,
+			Description: e.Description,
+			AudioUrl:    e.AudioURL,
+			Link:        e.Link,
+			Duration:    e.Duration,
+			PublishedAt: e.PublishedAt,
+			Image:       e.Image,
+		}); err != nil {
+			_ = tx.Rollback()
+			return
+		}
 	}
+	_ = tx.Commit()
 }
 
 // --- 下载 ---
 
 // EpisodeDownload 下载指定节目音频到本地，并登记进媒体库
 func (s *FeedService) EpisodeDownload(episodeID int64) EpisodeDownloadResult {
-	var (
-		feedID    int64
-		title     string
-		audioURL  string
-		localPath string
-	)
-	err := core.DB.QueryRow(`
-		SELECT feed_id, title, audio_url, local_path FROM feed_episodes WHERE id = ?`, episodeID).
-		Scan(&feedID, &title, &audioURL, &localPath)
+	info, err := q().GetEpisodeDownloadInfo(context.Background(), episodeID)
 	if err != nil {
 		return EpisodeDownloadResult{Error: "节目不存在"}
 	}
+	feedID, title, audioURL, localPath := info.FeedID, info.Title, info.AudioUrl, info.LocalPath
 	if localPath != "" {
 		if _, statErr := os.Stat(localPath); statErr == nil {
 			return EpisodeDownloadResult{OK: true, Path: localPath}
@@ -872,7 +842,10 @@ func (s *FeedService) EpisodeDownload(episodeID int64) EpisodeDownloadResult {
 		return EpisodeDownloadResult{Error: "保存文件失败: " + err.Error()}
 	}
 
-	_, _ = core.DB.Exec(`UPDATE feed_episodes SET local_path = ? WHERE id = ?`, dest, episodeID)
+	_ = q().SetEpisodeLocalPath(context.Background(), userdb.SetEpisodeLocalPathParams{
+		LocalPath: dest,
+		ID:        episodeID,
+	})
 	if s.library != nil {
 		s.library.ImportFiles([]string{dest}, "")
 	}

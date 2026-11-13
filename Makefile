@@ -1,4 +1,4 @@
-.PHONY: dev build dmg zip exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint typecheck test
+.PHONY: dev build dmg zip exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint typecheck test sqlc
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -101,6 +101,15 @@ test: typecheck
 tidy:
 	go mod tidy
 	cd frontend && npm install
+
+# 按 internal/store/schema.sql 与 internal/store/queries/ 重新生成类型安全的数据访问代码
+# 生成产物 internal/store/userdb/ 需要提交，构建时不依赖 sqlc
+sqlc:
+	@if ! command -v sqlc >/dev/null 2>&1; then \
+		echo "Installing sqlc..."; \
+		brew install sqlc; \
+	fi
+	sqlc generate
 
 frontend-install:
 	cd frontend && npm install

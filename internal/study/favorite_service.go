@@ -2,12 +2,12 @@ package study
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"aling-go/internal/core"
+	"aling-go/internal/store/userdb"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -29,61 +29,62 @@ func (s *FavoriteService) ServiceShutdown() error { return nil }
 
 // FavoriteList 返回收藏片段列表，tagID > 0 时按标签筛选
 func (s *FavoriteService) FavoriteList(tagID int) []FavoriteClip {
-	query := `
-		SELECT c.id, c.file_path, c.start_time, c.end_time, c.text, c.tag_id,
-		       COALESCE(t.name, ''), c.word, c.review_count, c.last_reviewed_at, c.next_review, c.created_at
-		FROM favorite_clips c
-		LEFT JOIN favorite_tags t ON t.id = c.tag_id
-	`
-	var rows *sql.Rows
-	var err error
+	ctx := context.Background()
+	var (
+		clips []FavoriteClip
+		err   error
+	)
 	if tagID > 0 {
-		rows, err = core.DB.Query(query+" WHERE c.tag_id = ? ORDER BY c.created_at DESC", tagID)
+		rows, qerr := queries().ListFavoriteClipsByTag(ctx, tagID)
+		err = qerr
+		clips = make([]FavoriteClip, 0, len(rows))
+		for _, row := range rows {
+			clips = append(clips, toFavoriteClipByTag(row))
+		}
 	} else {
-		rows, err = core.DB.Query(query + " ORDER BY c.created_at DESC")
+		rows, qerr := queries().ListFavoriteClips(ctx)
+		err = qerr
+		clips = make([]FavoriteClip, 0, len(rows))
+		for _, row := range rows {
+			clips = append(clips, toFavoriteClip(row))
+		}
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteList: %v\n", err)
 		return []FavoriteClip{}
-	}
-	defer rows.Close()
-
-	clips := make([]FavoriteClip, 0)
-	for rows.Next() {
-		var c FavoriteClip
-		if err := rows.Scan(&c.ID, &c.FilePath, &c.StartTime, &c.EndTime,
-			&c.Text, &c.TagID, &c.TagName, &c.Word, &c.ReviewCount, &c.LastReviewedAt, &c.NextReview, &c.CreatedAt); err != nil {
-			continue
-		}
-		c.FileName = filepath.Base(c.FilePath)
-		clips = append(clips, c)
 	}
 	return clips
 }
 
 // FavoriteAdd 新增收藏片段，返回新记录 ID
 func (s *FavoriteService) FavoriteAdd(c FavoriteClip) int {
-	res, err := core.DB.Exec(
-		"INSERT INTO favorite_clips (file_path, start_time, end_time, text, tag_id, word) VALUES (?,?,?,?,?,?)",
-		c.FilePath, c.StartTime, c.EndTime, c.Text, c.TagID, c.Word,
-	)
+	id, err := queries().AddFavoriteClip(context.Background(), userdb.AddFavoriteClipParams{
+		FilePath:  c.FilePath,
+		StartTime: c.StartTime,
+		EndTime:   c.EndTime,
+		Text:      c.Text,
+		TagID:     c.TagID,
+		Word:      c.Word,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteAdd: %v\n", err)
 		return 0
 	}
-	id, _ := res.LastInsertId()
-	return int(id)
+	return id
 }
 
 func (s *FavoriteService) FavoriteDelete(id int) {
-	if _, err := core.DB.Exec("DELETE FROM favorite_clips WHERE id=?", id); err != nil {
+	if err := queries().DeleteFavoriteClip(context.Background(), id); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteDelete: %v\n", err)
 	}
 }
 
 // FavoriteUpdateTag 修改片段所属标签（tagID=0 表示移除标签）
 func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
-	if _, err := core.DB.Exec("UPDATE favorite_clips SET tag_id=? WHERE id=?", tagID, id); err != nil {
+	if err := queries().UpdateFavoriteClipTag(context.Background(), userdb.UpdateFavoriteClipTagParams{
+		TagID: tagID,
+		ID:    id,
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteUpdateTag: %v\n", err)
 	}
 }
@@ -91,8 +92,9 @@ func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
 // FavoriteReview 记录一次片段复习并按三档自评安排下次复习
 // rating: 1=不认识（当天再复习）, 2=模糊（1 天后）, 3=认识（按复习次数递增）
 func (s *FavoriteService) FavoriteReview(id int, rating int) {
-	var reviewCount int
-	if err := core.DB.QueryRow("SELECT COALESCE(review_count, 0) FROM favorite_clips WHERE id=?", id).Scan(&reviewCount); err != nil {
+	ctx := context.Background()
+	reviewCount, err := queries().GetFavoriteClipReviewCount(ctx, id)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteReview: %v\n", err)
 		return
 	}
@@ -103,15 +105,15 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 	case 2:
 		days = 1
 	default:
-		days = 3 * (reviewCount + 1)
+		days = 3 * (int(reviewCount) + 1)
 		if days > 60 {
 			days = 60
 		}
 	}
-	if _, err := core.DB.Exec(
-		"UPDATE favorite_clips SET review_count = COALESCE(review_count, 0) + 1, last_reviewed_at = datetime('now','localtime'), next_review = date('now','localtime', ?) WHERE id=?",
-		fmt.Sprintf("+%d days", days), id,
-	); err != nil {
+	if err := queries().ReviewFavoriteClip(ctx, userdb.ReviewFavoriteClipParams{
+		DaysModifier: fmt.Sprintf("+%d days", days),
+		ID:           id,
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteReview update: %v\n", err)
 	}
 }
@@ -119,40 +121,78 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 // --- Tags ---
 
 func (s *FavoriteService) FavoriteTagsList() []FavoriteTag {
-	rows, err := core.DB.Query("SELECT id, name FROM favorite_tags ORDER BY name ASC")
+	rows, err := queries().ListFavoriteTags(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagsList: %v\n", err)
 		return []FavoriteTag{}
 	}
-	defer rows.Close()
-
-	tags := make([]FavoriteTag, 0)
-	for rows.Next() {
-		var t FavoriteTag
-		if err := rows.Scan(&t.ID, &t.Name); err != nil {
-			continue
-		}
-		tags = append(tags, t)
+	tags := make([]FavoriteTag, 0, len(rows))
+	for _, row := range rows {
+		tags = append(tags, FavoriteTag{ID: row.ID, Name: row.Name})
 	}
 	return tags
 }
 
 func (s *FavoriteService) FavoriteTagAdd(name string) int {
-	res, err := core.DB.Exec("INSERT INTO favorite_tags (name) VALUES (?)", name)
+	id, err := queries().AddFavoriteTag(context.Background(), name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagAdd: %v\n", err)
 		return 0
 	}
-	id, _ := res.LastInsertId()
-	return int(id)
+	return id
 }
 
 // FavoriteTagDelete 删除标签，并将该标签下片段的 tag_id 置 0
 func (s *FavoriteService) FavoriteTagDelete(id int) {
-	if _, err := core.DB.Exec("UPDATE favorite_clips SET tag_id=0 WHERE tag_id=?", id); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagDelete clips: %v\n", err)
-	}
-	if _, err := core.DB.Exec("DELETE FROM favorite_tags WHERE id=?", id); err != nil {
+	ctx := context.Background()
+	tx, err := core.DB.Begin()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "FavoriteTagDelete: %v\n", err)
+		return
 	}
+	q := userdb.New(tx)
+	if err := q.DetachClipsFromTag(ctx, id); err != nil {
+		fmt.Fprintf(os.Stderr, "FavoriteTagDelete clips: %v\n", err)
+		_ = tx.Rollback()
+		return
+	}
+	if err := q.DeleteFavoriteTag(ctx, id); err != nil {
+		fmt.Fprintf(os.Stderr, "FavoriteTagDelete: %v\n", err)
+		_ = tx.Rollback()
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		fmt.Fprintf(os.Stderr, "FavoriteTagDelete commit: %v\n", err)
+	}
+}
+
+// --- Row adapters ---
+
+func newFavoriteClip(id int, filePath string, startTime, endTime float64, text string,
+	tagID int, tagName, word string, reviewCount int, lastReviewedAt, nextReview, createdAt string) FavoriteClip {
+	return FavoriteClip{
+		ID:             id,
+		FilePath:       filePath,
+		FileName:       filepath.Base(filePath),
+		StartTime:      startTime,
+		EndTime:        endTime,
+		Text:           text,
+		TagID:          tagID,
+		TagName:        tagName,
+		Word:           word,
+		ReviewCount:    reviewCount,
+		LastReviewedAt: lastReviewedAt,
+		NextReview:     nextReview,
+		CreatedAt:      createdAt,
+	}
+}
+
+func toFavoriteClip(r userdb.ListFavoriteClipsRow) FavoriteClip {
+	return newFavoriteClip(r.ID, r.FilePath, r.StartTime, r.EndTime, r.Text,
+		r.TagID, r.TagName, r.Word, r.ReviewCount, r.LastReviewedAt, r.NextReview, r.CreatedAt)
+}
+
+func toFavoriteClipByTag(r userdb.ListFavoriteClipsByTagRow) FavoriteClip {
+	return newFavoriteClip(r.ID, r.FilePath, r.StartTime, r.EndTime, r.Text,
+		r.TagID, r.TagName, r.Word, r.ReviewCount, r.LastReviewedAt, r.NextReview, r.CreatedAt)
 }

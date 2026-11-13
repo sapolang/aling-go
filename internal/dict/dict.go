@@ -1,12 +1,15 @@
 package dict
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"aling-go/internal/store/userdb"
 
 	_ "modernc.org/sqlite"
 )
@@ -47,19 +50,7 @@ func OpenDictDB(dataDir string, userDataDB *sql.DB) error {
 	if err := dictDB.Ping(); err != nil {
 		return err
 	}
-	return initProgressTable()
-}
-
-func initProgressTable() error {
-	if userDB == nil {
-		return nil
-	}
-	_, err := userDB.Exec(`CREATE TABLE IF NOT EXISTS dict_progress (
-		tag TEXT PRIMARY KEY,
-		current_index INTEGER DEFAULT 0,
-		updated_at TEXT DEFAULT (datetime('now','localtime'))
-	)`)
-	return err
+	return nil
 }
 
 // Lookup 在 entries 表中查询单词：先用小写 word_key 精确匹配，
@@ -211,23 +202,22 @@ func AddWordsToList(words []DictWord) (added, skipped int, err error) {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT OR IGNORE INTO words (word, definition, phonetic, tags) VALUES (?, ?, ?, ?)")
-	if err != nil {
-		return 0, 0, err
-	}
-	defer stmt.Close()
-
+	q := userdb.New(tx)
 	for _, w := range words {
 		def := w.Translation
 		if w.Definition != "" {
 			def += "\n" + w.Definition
 		}
-		res, err := stmt.Exec(w.Word, def, w.Phonetic, w.Tag)
+		n, err := q.AddDictWord(context.Background(), userdb.AddDictWordParams{
+			Word:       w.Word,
+			Definition: def,
+			Phonetic:   w.Phonetic,
+			Tags:       w.Tag,
+		})
 		if err != nil {
 			skipped++
 			continue
 		}
-		n, _ := res.RowsAffected()
 		if n > 0 {
 			added++
 		} else {
@@ -245,19 +235,17 @@ func SaveProgress(tag string, index int) error {
 	if userDB == nil {
 		return fmt.Errorf("user DB not initialized")
 	}
-	_, err := userDB.Exec(
-		"INSERT OR REPLACE INTO dict_progress (tag, current_index, updated_at) VALUES (?, ?, datetime('now','localtime'))",
-		tag, index,
-	)
-	return err
+	return userdb.New(userDB).SaveDictProgress(context.Background(), userdb.SaveDictProgressParams{
+		Tag:          tag,
+		CurrentIndex: index,
+	})
 }
 
 func GetProgress(tag string) (int, error) {
 	if userDB == nil {
 		return 0, fmt.Errorf("user DB not initialized")
 	}
-	var index int
-	err := userDB.QueryRow("SELECT current_index FROM dict_progress WHERE tag=?", tag).Scan(&index)
+	index, err := userdb.New(userDB).GetDictProgress(context.Background(), tag)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}

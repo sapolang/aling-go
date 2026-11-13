@@ -1,114 +1,135 @@
 package study
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
 	"aling-go/internal/core"
+	"aling-go/internal/store/userdb"
 )
+
+// queries 返回基于当前用户库句柄的类型安全查询集合。
+// sqlc 生成代码只依赖 DBTX 接口，因此可以直接复用 core.DB。
+func queries() *userdb.Queries {
+	return userdb.New(core.DB)
+}
 
 // --- Words CRUD ---
 
 func dbWordsList() []Word {
-	rows, err := core.DB.Query("SELECT * FROM words ORDER BY created_at DESC")
+	rows, err := queries().ListWords(context.Background())
 	if err != nil {
 		return []Word{}
 	}
-	defer rows.Close()
-	return scanWords(rows)
+	return toWords(rows)
 }
 
 func dbWordsAdd(w Word) int {
-	res, err := core.DB.Exec(
-		"INSERT INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
-		w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
-	)
+	id, err := queries().AddWord(context.Background(), userdb.AddWordParams{
+		Word:        w.Word,
+		Definition:  w.Definition,
+		Phonetic:    w.Phonetic,
+		Example:     w.Example,
+		Tags:        w.Tags,
+		Level:       w.Level,
+		NextReview:  w.NextReview,
+		Repetitions: w.Repetitions,
+		Efactor:     w.EFactor,
+		Interval:    w.Interval,
+	})
 	if err != nil {
 		return 0
 	}
-	id, _ := res.LastInsertId()
-	return int(id)
+	return id
 }
 
 func dbWordsUpdate(id int, w Word) {
-	if _, err := core.DB.Exec(
-		"UPDATE words SET word=?, definition=?, phonetic=?, example=?, tags=?, level=?, next_review=?, repetitions=?, efactor=?, interval=?, updated_at=datetime('now','localtime') WHERE id=?",
-		w.Word, w.Definition, w.Phonetic, w.Example,
-		w.Tags, w.Level, w.NextReview,
-		w.Repetitions, w.EFactor, w.Interval, id,
-	); err != nil {
+	if err := queries().UpdateWord(context.Background(), userdb.UpdateWordParams{
+		Word:        w.Word,
+		Definition:  w.Definition,
+		Phonetic:    w.Phonetic,
+		Example:     w.Example,
+		Tags:        w.Tags,
+		Level:       w.Level,
+		NextReview:  w.NextReview,
+		Repetitions: w.Repetitions,
+		Efactor:     w.EFactor,
+		Interval:    w.Interval,
+		ID:          id,
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "dbWordsUpdate: %v\n", err)
 	}
 }
 
 func dbWordsDelete(id int) {
-	if _, err := core.DB.Exec("DELETE FROM words WHERE id=?", id); err != nil {
+	if err := queries().DeleteWord(context.Background(), id); err != nil {
 		fmt.Fprintf(os.Stderr, "dbWordsDelete: %v\n", err)
 	}
 }
 
 func dbWordsDeleteBatch(ids []int) {
-	for _, id := range ids {
-		if _, err := core.DB.Exec("DELETE FROM words WHERE id=?", id); err != nil {
-			fmt.Fprintf(os.Stderr, "dbWordsDeleteBatch id=%d: %v\n", id, err)
-		}
+	if err := queries().DeleteWords(context.Background(), ids); err != nil {
+		fmt.Fprintf(os.Stderr, "dbWordsDeleteBatch: %v\n", err)
 	}
 }
 
 func dbWordsGetReview() []Word {
 	today := time.Now().Format("2006-01-02")
-	rows, err := core.DB.Query("SELECT * FROM words WHERE next_review <= ? ORDER BY next_review ASC", today)
+	rows, err := queries().ListReviewWords(context.Background(), today)
 	if err != nil {
 		return []Word{}
 	}
-	defer rows.Close()
-	return scanWords(rows)
+	return toWords(rows)
 }
 
 func dbWordsGetReviewCount() int {
 	today := time.Now().Format("2006-01-02")
-	var count int
-	if err := core.DB.QueryRow("SELECT COUNT(*) FROM words WHERE next_review <= ?", today).Scan(&count); err != nil {
+	count, err := queries().CountReviewWords(context.Background(), today)
+	if err != nil {
 		return 0
 	}
-	return count
+	return int(count)
 }
 
 func dbWordsSearch(query string) []Word {
 	like := "%" + query + "%"
-	rows, err := core.DB.Query("SELECT * FROM words WHERE word LIKE ? OR definition LIKE ? ORDER BY word ASC", like, like)
+	rows, err := queries().SearchWords(context.Background(), userdb.SearchWordsParams{
+		Word:       like,
+		Definition: like,
+	})
 	if err != nil {
 		return []Word{}
 	}
-	defer rows.Close()
-	return scanWords(rows)
+	return toWords(rows)
 }
 
 // --- Tags CRUD ---
 
 func dbTagsList() []Tag {
-	rows, err := core.DB.Query("SELECT * FROM tags ORDER BY name ASC")
+	rows, err := queries().ListTags(context.Background())
 	if err != nil {
 		return []Tag{}
 	}
-	defer rows.Close()
-	return scanTags(rows)
+	tags := make([]Tag, 0, len(rows))
+	for _, t := range rows {
+		tags = append(tags, Tag{ID: t.ID, Name: t.Name, Color: t.Color})
+	}
+	return tags
 }
 
 func dbTagsAdd(name, color string) int {
-	res, err := core.DB.Exec("INSERT INTO tags (name, color) VALUES (?,?)", name, color)
+	id, err := queries().AddTag(context.Background(), userdb.AddTagParams{Name: name, Color: color})
 	if err != nil {
 		return 0
 	}
-	id, _ := res.LastInsertId()
-	return int(id)
+	return id
 }
 
 func dbTagsDelete(id int) {
-	if _, err := core.DB.Exec("DELETE FROM tags WHERE id=?", id); err != nil {
+	if err := queries().DeleteTag(context.Background(), id); err != nil {
 		fmt.Fprintf(os.Stderr, "dbTagsDelete: %v\n", err)
 	}
 }
@@ -134,7 +155,7 @@ func dbImport(jsonStr string) ImportResult {
 	}
 	result := ImportResult{}
 	for _, t := range data.Tags {
-		_, err := core.DB.Exec("INSERT OR IGNORE INTO tags (name, color) VALUES (?,?)", t.Name, t.Color)
+		err := queries().ImportTag(context.Background(), userdb.ImportTagParams{Name: t.Name, Color: t.Color})
 		if err == nil {
 			result.Imported++
 		} else {
@@ -142,10 +163,18 @@ func dbImport(jsonStr string) ImportResult {
 		}
 	}
 	for _, w := range data.Words {
-		_, err := core.DB.Exec(
-			"INSERT OR IGNORE INTO words (word, definition, phonetic, example, tags, level, next_review, repetitions, efactor, interval) VALUES (?,?,?,?,?,?,?,?,?,?)",
-			w.Word, w.Definition, w.Phonetic, w.Example, w.Tags, w.Level, w.NextReview, w.Repetitions, w.EFactor, w.Interval,
-		)
+		err := queries().ImportWord(context.Background(), userdb.ImportWordParams{
+			Word:        w.Word,
+			Definition:  w.Definition,
+			Phonetic:    w.Phonetic,
+			Example:     w.Example,
+			Tags:        w.Tags,
+			Level:       w.Level,
+			NextReview:  w.NextReview,
+			Repetitions: w.Repetitions,
+			Efactor:     w.EFactor,
+			Interval:    w.Interval,
+		})
 		if err == nil {
 			result.Imported++
 		} else {
@@ -156,10 +185,10 @@ func dbImport(jsonStr string) ImportResult {
 }
 
 func dbClear() {
-	if _, err := core.DB.Exec("DELETE FROM words"); err != nil {
+	if err := queries().ClearWords(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "dbClear words: %v\n", err)
 	}
-	if _, err := core.DB.Exec("DELETE FROM tags"); err != nil {
+	if err := queries().ClearTags(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "dbClear tags: %v\n", err)
 	}
 }
@@ -167,53 +196,56 @@ func dbClear() {
 // --- Review logs ---
 
 func dbReviewLogAdd(wordID, quality int) {
-	if _, err := core.DB.Exec("INSERT INTO review_logs (word_id, quality) VALUES (?, ?)", wordID, quality); err != nil {
+	if err := queries().AddReviewLog(context.Background(), userdb.AddReviewLogParams{
+		WordID:  int64(wordID),
+		Quality: int64(quality),
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "dbReviewLogAdd: %v\n", err)
 	}
 }
 
 func dbLearningStats() LearningStats {
 	stats := LearningStats{Daily: make([]DailyReview, 0, 30)}
-	if err := core.DB.QueryRow("SELECT COUNT(*) FROM review_logs").Scan(&stats.TotalReviews); err != nil {
+	q := queries()
+	bg := context.Background()
+
+	if total, err := q.CountReviews(bg); err == nil {
+		stats.TotalReviews = int(total)
+	} else {
 		fmt.Fprintf(os.Stderr, "learningStats total: %v\n", err)
 	}
-	if err := core.DB.QueryRow("SELECT COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) = date('now','localtime')").Scan(&stats.TodayReviews); err != nil {
+	if today, err := q.CountTodayReviews(bg); err == nil {
+		stats.TodayReviews = int(today)
+	} else {
 		fmt.Fprintf(os.Stderr, "learningStats today: %v\n", err)
 	}
-	if err := core.DB.QueryRow("SELECT COUNT(*) FROM words").Scan(&stats.TotalWords); err != nil {
+	if total, err := q.CountWords(bg); err == nil {
+		stats.TotalWords = int(total)
+	} else {
 		fmt.Fprintf(os.Stderr, "learningStats words: %v\n", err)
 	}
-	if err := core.DB.QueryRow("SELECT COUNT(*) FROM words WHERE repetitions >= 3").Scan(&stats.Mastered); err != nil {
+	if mastered, err := q.CountMasteredWords(bg); err == nil {
+		stats.Mastered = int(mastered)
+	} else {
 		fmt.Fprintf(os.Stderr, "learningStats mastered: %v\n", err)
 	}
 
 	counts := make(map[string]int)
-	rows, err := core.DB.Query("SELECT substr(reviewed_at, 1, 10) AS d, COUNT(*) FROM review_logs WHERE substr(reviewed_at, 1, 10) >= date('now','localtime','-29 days') GROUP BY d")
-	if err != nil {
+	if rows, err := q.DailyReviewCounts(bg); err != nil {
 		fmt.Fprintf(os.Stderr, "learningStats daily: %v\n", err)
 	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var date string
-			var count int
-			if rows.Scan(&date, &count) == nil {
-				counts[date] = count
-			}
+		for _, r := range rows {
+			counts[r.ReviewDate] = int(r.Count)
 		}
 	}
 
 	// 连续天数不受 30 天图表窗口限制，单独统计全部复习日期
 	streakDays := make(map[string]bool)
-	srows, sErr := core.DB.Query("SELECT DISTINCT substr(reviewed_at, 1, 10) FROM review_logs")
-	if sErr != nil {
-		fmt.Fprintf(os.Stderr, "learningStats streak: %v\n", sErr)
+	if dates, err := q.ListReviewDates(bg); err != nil {
+		fmt.Fprintf(os.Stderr, "learningStats streak: %v\n", err)
 	} else {
-		defer srows.Close()
-		for srows.Next() {
-			var date string
-			if srows.Scan(&date) == nil {
-				streakDays[date] = true
-			}
+		for _, d := range dates {
+			streakDays[d] = true
 		}
 	}
 
@@ -242,45 +274,39 @@ func dbLearningStats() LearningStats {
 func dbAddWordsBatch(words []Word) int {
 	count := 0
 	for _, w := range words {
-		res, err := core.DB.Exec(
-			"INSERT OR IGNORE INTO words (word, definition, phonetic) VALUES (?, ?, ?)",
-			w.Word, w.Definition, w.Phonetic,
-		)
+		n, err := queries().AddWordsBatch(context.Background(), userdb.AddWordsBatchParams{
+			Word:       w.Word,
+			Definition: w.Definition,
+			Phonetic:   w.Phonetic,
+		})
 		if err != nil {
 			continue
 		}
-		n, _ := res.RowsAffected()
-		if n > 0 {
-			count++
-		}
+		count += int(n)
 	}
 	return count
 }
 
 // --- Helpers ---
 
-func scanWords(rows *sql.Rows) []Word {
-	words := make([]Word, 0)
-	for rows.Next() {
-		var w Word
-		if err := rows.Scan(&w.ID, &w.Word, &w.Definition, &w.Phonetic, &w.Example,
-			&w.Tags, &w.Level, &w.NextReview, &w.CreatedAt, &w.UpdatedAt,
-			&w.Repetitions, &w.EFactor, &w.Interval); err != nil {
-			continue
-		}
-		words = append(words, w)
+func toWords(rows []userdb.Word) []Word {
+	words := make([]Word, 0, len(rows))
+	for _, w := range rows {
+		words = append(words, Word{
+			ID:          w.ID,
+			Word:        w.Word,
+			Definition:  w.Definition,
+			Phonetic:    w.Phonetic,
+			Example:     w.Example,
+			Tags:        w.Tags,
+			Level:       w.Level,
+			NextReview:  w.NextReview,
+			CreatedAt:   w.CreatedAt,
+			UpdatedAt:   w.UpdatedAt,
+			Repetitions: w.Repetitions,
+			EFactor:     w.Efactor,
+			Interval:    w.Interval,
+		})
 	}
 	return words
-}
-
-func scanTags(rows *sql.Rows) []Tag {
-	tags := make([]Tag, 0)
-	for rows.Next() {
-		var t Tag
-		if err := rows.Scan(&t.ID, &t.Name, &t.Color); err != nil {
-			continue
-		}
-		tags = append(tags, t)
-	}
-	return tags
 }

@@ -20,8 +20,6 @@ import (
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-
-	"aling-go/internal/core"
 )
 
 var mimeTypes = map[string]string{
@@ -212,8 +210,8 @@ func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid episode id", http.StatusBadRequest)
 		return
 	}
-	var raw string
-	if err := core.DB.QueryRow(`SELECT audio_url FROM feed_episodes WHERE id = ?`, episodeID).Scan(&raw); err != nil || raw == "" {
+	raw, err := q().GetEpisodeAudioURL(r.Context(), episodeID)
+	if err != nil || raw == "" {
 		http.Error(w, "episode not found", http.StatusNotFound)
 		return
 	}
@@ -228,6 +226,7 @@ func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Reques
 	client := *baseClient
 	client.Timeout = 0
 	doRequest := func(target string) (*http.Response, error) {
+		//nolint:gosec // G704: target 来自库内节目地址，调用前已校验 scheme 与 host
 		req, reqErr := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
 		if reqErr != nil {
 			return nil, reqErr
@@ -236,6 +235,7 @@ func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Reques
 			req.Header.Set("Range", rangeHeader)
 		}
 		req.Header.Set("User-Agent", "Aling/1.0 (Podcast Player)")
+		//nolint:gosec // G704: 同上，target 已校验来源与协议
 		return client.Do(req)
 	}
 
