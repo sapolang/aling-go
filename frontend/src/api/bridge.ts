@@ -131,6 +131,7 @@ import {
 } from '../../bindings/aling-go/internal/study/favoriteservice'
 
 import { BackupNow, GetBackupStatus } from '../../bindings/aling-go/internal/system/backupservice'
+import type { SubtitleItem } from '../../bindings/aling-go/internal/content/models'
 import {
   ApplyUpdate,
   CheckForUpdate,
@@ -188,23 +189,13 @@ export function initBridge(): void {
     },
     getDownloadProgress: () => GetDownloadProgress(),
 
-    recentList: () => RecentList().then((s: string) => JSON.parse(s)),
-    recentAdd: (filePath: string) => RecentAdd(filePath).then((s: string) => JSON.parse(s)),
-    recentGetPosition: (filePath: string) =>
-      RecentGetPosition(filePath).then((s: string) => {
-        const n = JSON.parse(s)
-        return typeof n === 'number' ? n : 0
-      }),
+    recentList: () => RecentList(),
+    recentAdd: (filePath: string) => RecentAdd(filePath),
+    recentGetPosition: (filePath: string) => RecentGetPosition(filePath),
     recentUpdatePosition: (filePath: string, position: number) =>
       RecentUpdatePosition(filePath, position),
-    cacheSubtitles: (filePath: string, subs: any[]) =>
-      CacheSubtitles(filePath, JSON.stringify(subs)),
-    getCachedSubtitles: (filePath: string) =>
-      GetCachedSubtitles(filePath).then((s: string) => {
-        if (!s) return null
-        const parsed = JSON.parse(s)
-        return Array.isArray(parsed) ? parsed : null
-      }),
+    cacheSubtitles: (filePath: string, subs: SubtitleItem[]) => CacheSubtitles(filePath, subs),
+    getCachedSubtitles: (filePath: string) => GetCachedSubtitles(filePath),
 
     getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
     getWaveformData: (filePath: string) => GetWaveformData(filePath),
@@ -254,22 +245,15 @@ export function initBridge(): void {
       }),
     dbDictSearch: (query: string, limit?: number) => DbDictSearch(query, limit ?? 50),
 
-    libraryList: () => LibraryList().then((s: string) => JSON.parse(s)),
-    libraryImport: (category: string, folderId: string) =>
-      LibraryImport(category, folderId).then((s: string) => JSON.parse(s)),
-    libraryImportPaths: (paths: string[], folderId: string) =>
-      LibraryImportPaths(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
-    libraryRemove: (paths: string[]) =>
-      LibraryRemove(JSON.stringify(paths)).then((s: string) => JSON.parse(s)),
-    libraryRename: (path: string, newName: string) =>
-      LibraryRename(path, newName).then((s: string) => JSON.parse(s)),
-    libraryMove: (paths: string[], folderId: string) =>
-      LibraryMove(JSON.stringify(paths), folderId).then((s: string) => JSON.parse(s)),
-    folderCreate: (name: string, parentId: string) =>
-      FolderCreate(name, parentId).then((s: string) => JSON.parse(s)),
-    folderDelete: (id: string) => FolderDelete(id).then((s: string) => JSON.parse(s)),
-    folderRename: (id: string, name: string) =>
-      FolderRename(id, name).then((s: string) => JSON.parse(s)),
+    libraryList: () => LibraryList(),
+    libraryImport: (category: string, folderId: string) => LibraryImport(category, folderId),
+    libraryImportPaths: (paths: string[], folderId: string) => LibraryImportPaths(paths, folderId),
+    libraryRemove: (paths: string[]) => LibraryRemove(paths),
+    libraryRename: (path: string, newName: string) => LibraryRename(path, newName),
+    libraryMove: (paths: string[], folderId: string) => LibraryMove(paths, folderId),
+    folderCreate: (name: string, parentId: string) => FolderCreate(name, parentId),
+    folderDelete: (id: string) => FolderDelete(id),
+    folderRename: (id: string, name: string) => FolderRename(id, name),
 
     openExternal: (path: string) => OpenExternal(path),
 

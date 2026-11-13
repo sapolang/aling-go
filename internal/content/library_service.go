@@ -114,15 +114,13 @@ func (s *LibraryService) writeLibrary(lib LibraryData) {
 
 // --- Library CRUD ---
 
-func (s *LibraryService) LibraryList() string {
+func (s *LibraryService) LibraryList() LibraryData {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	lib := s.readLibrary()
-	b, _ := json.Marshal(lib)
-	return string(b)
+	return s.readLibrary()
 }
 
-func (s *LibraryService) LibraryImport(category, folderID string) string {
+func (s *LibraryService) LibraryImport(category, folderID string) LibraryImportResult {
 	dialog := s.app.Dialog.OpenFile().CanChooseFiles(true)
 	switch category {
 	case "video":
@@ -136,25 +134,14 @@ func (s *LibraryService) LibraryImport(category, folderID string) string {
 	}
 	files, err := dialog.PromptForMultipleSelection()
 	if err != nil || len(files) == 0 {
-		b, _ := json.Marshal(LibraryImportResult{Files: []LibraryFile{}})
-		return string(b)
+		return LibraryImportResult{Files: []LibraryFile{}}
 	}
-	result := s.ImportFiles(files, folderID)
-	b, _ := json.Marshal(result)
-	return string(b)
+	return s.ImportFiles(files, folderID)
 }
 
 // LibraryImportPaths 直接按绝对路径导入文件（拖拽导入等场景），不走文件选择弹窗。
-func (s *LibraryService) LibraryImportPaths(pathsJSON, folderID string) string {
-	var files []string
-	if err := json.Unmarshal([]byte(pathsJSON), &files); err != nil {
-		fmt.Fprintf(os.Stderr, "LibraryImportPaths: unmarshal error: %v\n", err)
-		b, _ := json.Marshal(LibraryImportResult{Files: []LibraryFile{}})
-		return string(b)
-	}
-	result := s.ImportFiles(files, folderID)
-	b, _ := json.Marshal(result)
-	return string(b)
+func (s *LibraryService) LibraryImportPaths(paths []string, folderID string) LibraryImportResult {
+	return s.ImportFiles(paths, folderID)
 }
 
 // ImportFiles 是 importFiles 的公开加锁版本，供其他服务（如 FeedService）调用。
@@ -198,12 +185,7 @@ func (s *LibraryService) importFiles(files []string, folderID string) LibraryImp
 	return LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped, Dropped: dropped}
 }
 
-func (s *LibraryService) LibraryRemove(pathsJSON string) string {
-	var paths []string
-	if err := json.Unmarshal([]byte(pathsJSON), &paths); err != nil {
-		fmt.Fprintf(os.Stderr, "LibraryRemove: unmarshal error: %v\n", err)
-		return "[]"
-	}
+func (s *LibraryService) LibraryRemove(paths []string) []LibraryFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pathSet := make(map[string]bool, len(paths))
@@ -219,11 +201,10 @@ func (s *LibraryService) LibraryRemove(pathsJSON string) string {
 	}
 	lib.Files = filtered
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(lib.Files)
-	return string(b)
+	return lib.Files
 }
 
-func (s *LibraryService) LibraryRename(path, newName string) string {
+func (s *LibraryService) LibraryRename(path, newName string) LibraryData {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lib := s.readLibrary()
@@ -240,15 +221,10 @@ func (s *LibraryService) LibraryRename(path, newName string) string {
 		}
 	}
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(lib)
-	return string(b)
+	return lib
 }
 
-func (s *LibraryService) LibraryMove(pathsJSON, folderID string) string {
-	var paths []string
-	if err := json.Unmarshal([]byte(pathsJSON), &paths); err != nil {
-		fmt.Fprintf(os.Stderr, "LibraryMove: unmarshal error: %v\n", err)
-	}
+func (s *LibraryService) LibraryMove(paths []string, folderID string) []LibraryFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pathSet := make(map[string]bool, len(paths))
@@ -267,19 +243,17 @@ func (s *LibraryService) LibraryMove(pathsJSON, folderID string) string {
 		}
 	}
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(lib.Files)
-	return string(b)
+	return lib.Files
 }
 
 // --- Folders ---
 
-func (s *LibraryService) FolderCreate(name, parentID string) string {
+func (s *LibraryService) FolderCreate(name, parentID string) []Folder {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lib := s.readLibrary()
 	if len(lib.Folders) >= 50 {
-		b, _ := json.Marshal(lib.Folders)
-		return string(b)
+		return lib.Folders
 	}
 	lib.Folders = append(lib.Folders, Folder{
 		ID:        uuid.New().String(),
@@ -288,11 +262,10 @@ func (s *LibraryService) FolderCreate(name, parentID string) string {
 		CreatedAt: time.Now().Format(time.RFC3339),
 	})
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(lib.Folders)
-	return string(b)
+	return lib.Folders
 }
 
-func (s *LibraryService) FolderDelete(id string) string {
+func (s *LibraryService) FolderDelete(id string) []Folder {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lib := s.readLibrary()
@@ -309,11 +282,10 @@ func (s *LibraryService) FolderDelete(id string) string {
 		}
 	}
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(lib.Folders)
-	return string(b)
+	return lib.Folders
 }
 
-func (s *LibraryService) FolderRename(id, name string) string {
+func (s *LibraryService) FolderRename(id, name string) []Folder {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lib := s.readLibrary()
@@ -324,47 +296,40 @@ func (s *LibraryService) FolderRename(id, name string) string {
 		}
 	}
 	s.writeLibrary(lib)
-	b, _ := json.Marshal(lib.Folders)
-	return string(b)
+	return lib.Folders
 }
 
 // --- Recent ---
 
-func (s *LibraryService) RecentList() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	lib := s.readLibrary()
-	type recentEntry struct {
-		Path         string  `json:"path"`
-		Name         string  `json:"name"`
-		Type         string  `json:"type"`
-		LastPosition float64 `json:"lastPosition,omitempty"`
-	}
-	entries := make([]recentEntry, 0, len(lib.Files))
-	for _, f := range lib.Files {
-		entries = append(entries, recentEntry{
+func toRecentEntries(files []LibraryFile) []RecentEntry {
+	entries := make([]RecentEntry, 0, len(files))
+	for _, f := range files {
+		entries = append(entries, RecentEntry{
 			Path:         f.Path,
 			Name:         f.Name,
 			Type:         f.Type,
 			LastPosition: f.LastPosition,
 		})
 	}
-	b, _ := json.Marshal(entries)
-	return string(b)
+	return entries
 }
 
-// RecentGetPosition 返回文件上次播放位置（秒），无记录时返回 "0"
-func (s *LibraryService) RecentGetPosition(filePath string) string {
+func (s *LibraryService) RecentList() []RecentEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	lib := s.readLibrary()
-	for _, f := range lib.Files {
+	return toRecentEntries(s.readLibrary().Files)
+}
+
+// RecentGetPosition 返回文件上次播放位置（秒），无记录时返回 0
+func (s *LibraryService) RecentGetPosition(filePath string) float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range s.readLibrary().Files {
 		if f.Path == filePath {
-			b, _ := json.Marshal(f.LastPosition)
-			return string(b)
+			return f.LastPosition
 		}
 	}
-	return "0"
+	return 0
 }
 
 // RecentUpdatePosition 保存文件播放位置（秒）
@@ -381,7 +346,7 @@ func (s *LibraryService) RecentUpdatePosition(filePath string, position float64)
 	}
 }
 
-func (s *LibraryService) RecentAdd(filePath string) string {
+func (s *LibraryService) RecentAdd(filePath string) []RecentEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lib := s.readLibrary()
@@ -421,43 +386,36 @@ func (s *LibraryService) RecentAdd(filePath string) string {
 		}
 	}
 	s.writeLibrary(lib)
-	// 直接构建返回值，避免调用 RecentList 导致死锁
-	type recentEntry struct {
-		Path         string  `json:"path"`
-		Name         string  `json:"name"`
-		Type         string  `json:"type"`
-		LastPosition float64 `json:"lastPosition,omitempty"`
-	}
-	entries := make([]recentEntry, 0, len(lib.Files))
-	for _, f := range lib.Files {
-		entries = append(entries, recentEntry{
-			Path:         f.Path,
-			Name:         f.Name,
-			Type:         f.Type,
-			LastPosition: f.LastPosition,
-		})
-	}
-	b, _ := json.Marshal(entries)
-	return string(b)
+	return toRecentEntries(lib.Files)
 }
 
 // --- Subtitle cache ---
 
-func (s *LibraryService) CacheSubtitles(filePath, subsJSON string) {
+func (s *LibraryService) CacheSubtitles(filePath string, subs []SubtitleItem) {
 	cacheDir := filepath.Join(s.dataDir, "subtitle-cache")
 	_ = os.MkdirAll(cacheDir, 0755)
 	cacheKey := md5Hash(filePath)
 	cachePath := filepath.Join(cacheDir, cacheKey+".json")
-	_ = os.WriteFile(cachePath, []byte(subsJSON), 0644)
+	b, err := json.Marshal(subs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "CacheSubtitles: marshal error: %v\n", err)
+		return
+	}
+	_ = os.WriteFile(cachePath, b, 0644)
 }
 
-func (s *LibraryService) GetCachedSubtitles(filePath string) string {
+// GetCachedSubtitles 返回字幕缓存，未命中时返回 nil。
+func (s *LibraryService) GetCachedSubtitles(filePath string) []SubtitleItem {
 	cacheDir := filepath.Join(s.dataDir, "subtitle-cache")
 	cacheKey := md5Hash(filePath)
 	cachePath := filepath.Join(cacheDir, cacheKey+".json")
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
-		return ""
+		return nil
 	}
-	return string(data)
+	var subs []SubtitleItem
+	if err := json.Unmarshal(data, &subs); err != nil {
+		return nil
+	}
+	return subs
 }
