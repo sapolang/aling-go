@@ -54,13 +54,11 @@ jobs:
             sidecar/.whisper-cpp
             sidecar/whisper-sidecar
           key: whisper-${{ runner.os }}-${{ hashFiles('sidecar/build.sh') }}
-          restore-keys: |
-            whisper-${{ runner.os }}-
       - name: Cache ffmpeg
         uses: actions/cache@v4
         with:
           path: sidecar/ffmpeg
-          key: ffmpeg-${{ runner.os }}-8.1.2
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('sidecar/build.sh') }}
       - run: make sidecar
       # zip 依赖 dmg，同时产出 DMG（首次安装）与 zip（应用内自动更新）
       - run: make zip

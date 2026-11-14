@@ -15,6 +15,7 @@ import (
 	goRuntime "runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -75,6 +76,7 @@ type WhisperService struct {
 	dataDir     string
 	modelFile   string
 	whisperLang string
+	gpuDisabled atomic.Bool
 	dlMu        sync.Mutex
 	dlActive    bool
 	dlProgress  int
@@ -101,6 +103,8 @@ func (s *WhisperService) ServiceShutdown() error { return nil }
 
 // --- Transcribe ---
 
+// Transcribe 先用 GPU 转录；部分机器上 sidecar 的 Metal 后端初始化会直接 abort
+// （ggml_metal_library_compile_all 失败后 op 全为 NONE），此时禁用 GPU 重试一次。
 func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 	s.app.Logger.Debug("Transcribe start", "filePath", filePath)
 	wavPath := extractAudio(s.dataDir, s.app.Logger, filePath)
@@ -110,40 +114,68 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 		wavPath = filePath
 	}
 
+	// Metal 后端一旦失败，后续转录直接走 CPU，避免每次都先崩溃并产生一条系统崩溃报告
+	if s.gpuDisabled.Load() {
+		items, err := s.runWhisper(wavPath, filePath, "-ng")
+		if err != nil {
+			s.app.Logger.Info("Transcription failed", "error", err)
+			return []SubtitleItem{}
+		}
+		return items
+	}
+
+	items, err := s.runWhisper(wavPath, filePath)
+	if err != nil {
+		s.app.Logger.Info("GPU transcription failed, retrying without GPU", "error", err)
+		s.gpuDisabled.Store(true)
+		items, err = s.runWhisper(wavPath, filePath, "-ng")
+	}
+	if err != nil {
+		s.app.Logger.Info("Transcription failed", "error", err)
+		return []SubtitleItem{}
+	}
+	return items
+}
+
+// runWhisper 执行一次 whisper-sidecar，cacheKey 用于定位输出文件。
+func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...string) ([]SubtitleItem, error) {
 	sidecar := s.findWhisperSidecar()
 	if sidecar == "" {
-		s.app.Logger.Info("Transcription failed: whisper sidecar not found. Run 'make sidecar' to build it.")
-		return []SubtitleItem{}
+		return nil, fmt.Errorf("whisper sidecar not found, run 'make sidecar' to build it")
 	}
 
 	modelPath := s.modelPath()
-	s.app.Logger.Debug("Transcribe modelPath", "modelPath", modelPath)
 	outDir := filepath.Join(s.dataDir, "temp-transcript")
-	_ = os.MkdirAll(outDir, 0755)
-	outFile := filepath.Join(outDir, md5Hash(filePath))
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return nil, fmt.Errorf("create transcript dir: %w", err)
+	}
+	outFile := filepath.Join(outDir, md5Hash(cacheKey))
+	// 上一次失败的残留会让下面的读取误判为成功
+	_ = os.Remove(outFile + ".json")
 
-	s.app.Logger.Debug("Transcribe outFile", "outFile", outFile)
-	s.app.Logger.Debug("Transcribe whisperLang", "whisperLang", s.whisperLang)
-
-	cmd := exec.Command(sidecar, "-f", wavPath, "-m", modelPath, "-oj", "-of", outFile, "-pp", "-l", s.whisperLang)
+	args := []string{"-f", wavPath, "-m", modelPath, "-oj", "-of", outFile, "-pp", "-l", s.whisperLang}
+	args = append(args, extraArgs...)
+	cmd := exec.Command(sidecar, args...)
 	s.app.Logger.Debug("Transcribe cmd", "cmd", cmd.String())
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		s.app.Logger.Info("Transcription failed: cannot read whisper stderr", "error", err)
-		return []SubtitleItem{}
+		return nil, fmt.Errorf("read whisper stderr: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
-		s.app.Logger.Info("Transcription failed: cannot start whisper process", "error", err)
-		return []SubtitleItem{}
+		return nil, fmt.Errorf("start whisper process: %w", err)
 	}
 
-	stderrLines := []string{}
+	var (
+		stderrMu    sync.Mutex
+		stderrLines []string
+	)
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
+			stderrMu.Lock()
 			stderrLines = append(stderrLines, line)
+			stderrMu.Unlock()
 			if strings.Contains(line, "%") {
 				parts := strings.Fields(line)
 				for _, p := range parts {
@@ -167,12 +199,13 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 
 	data, err := os.ReadFile(outFile + ".json")
 	if err != nil {
-		if len(stderrLines) > 0 {
-			s.app.Logger.Info("Transcription failed: whisper process exited with error", "exitErr", waitErr, "stderr", strings.Join(stderrLines, "\n"))
-		} else {
-			s.app.Logger.Info("Transcription failed: whisper process exited with error", "exitErr", waitErr, "modelPath", modelPath, "sidecar", sidecar)
+		stderrMu.Lock()
+		stderrText := strings.Join(stderrLines, "\n")
+		stderrMu.Unlock()
+		if stderrText != "" {
+			return nil, fmt.Errorf("whisper 退出异常（%v），stderr: %s", waitErr, stderrText)
 		}
-		return []SubtitleItem{}
+		return nil, fmt.Errorf("whisper 退出异常（%v），sidecar: %s", waitErr, sidecar)
 	}
 
 	var whisperOutput struct {
@@ -185,8 +218,7 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 		} `json:"transcription"`
 	}
 	if err := json.Unmarshal(data, &whisperOutput); err != nil {
-		s.app.Logger.Debug("Transcribe unmarshal error", "error", err)
-		return []SubtitleItem{}
+		return nil, fmt.Errorf("parse whisper output: %w", err)
 	}
 
 	result := make([]SubtitleItem, 0, len(whisperOutput.Transcription))
@@ -199,7 +231,7 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 		})
 	}
 
-	return result
+	return result, nil
 }
 
 // --- Whisper status / model ---
