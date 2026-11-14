@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -53,12 +54,22 @@ type UpdateResult struct {
 	Error string `json:"error,omitempty"`
 }
 
+// UpdateState 是后端真实的更新阶段快照，用于前端页面重建后与后端对齐。
+type UpdateState struct {
+	State          string `json:"state"`
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+}
+
 // UpdateService 基于 Wails v3 内置 updater + GitHub Releases 提供应用内更新。
 // 下载完成后由 updater helper 替换 .app bundle 并自动重启。
 type UpdateService struct {
 	app     *application.App
 	version string
 	initErr error
+
+	mu            sync.RWMutex
+	latestVersion string
 }
 
 func NewUpdateService(app *application.App, version string) *UpdateService {
@@ -96,14 +107,34 @@ func (s *UpdateService) CheckForUpdate() UpdateInfo {
 }
 
 // DownloadLatest 下载并校验当前平台的更新包，等待用户重启应用完成安装。
+// 重复调用不会重新下载：下载中直接拒绝，已就绪则直接返回成功。
 func (s *UpdateService) DownloadLatest() UpdateResult {
 	if s.initErr != nil {
 		return UpdateResult{Error: s.initErr.Error()}
+	}
+	switch s.app.Updater.State() {
+	case updater.StateDownloading, updater.StateVerifying, updater.StateInstalling:
+		return UpdateResult{Error: "更新正在下载中，请稍候"}
+	case updater.StateReady:
+		return UpdateResult{OK: true}
 	}
 	if err := s.app.Updater.DownloadAndInstall(context.Background()); err != nil {
 		return UpdateResult{Error: err.Error()}
 	}
 	return UpdateResult{OK: true}
+}
+
+// GetUpdateState 返回后端真实的更新阶段，供前端在页面重建后恢复「下载中 / 已就绪」等状态。
+func (s *UpdateService) GetUpdateState() UpdateState {
+	state := UpdateState{State: string(updater.StateUnconfigured), CurrentVersion: s.version}
+	if s.initErr != nil {
+		return state
+	}
+	state.State = string(s.app.Updater.State())
+	s.mu.RLock()
+	state.LatestVersion = s.latestVersion
+	s.mu.RUnlock()
+	return state
 }
 
 // ApplyUpdate 启动 helper 替换 .app bundle 并重启应用；调用后当前进程会退出。
@@ -138,6 +169,9 @@ func (s *UpdateService) check() (*UpdateInfo, error) {
 	if info.LatestVersion == "" {
 		info.LatestVersion = s.version
 	}
+	s.mu.Lock()
+	s.latestVersion = info.LatestVersion
+	s.mu.Unlock()
 	info.HasUpdate = true
 	info.Notes = rel.Notes
 	if !rel.PublishedAt.IsZero() {

@@ -97,68 +97,33 @@ export default function SettingsPage() {
   } | null>(null)
   const [backingUp, setBackingUp] = useState(false)
 
-  // --- 版本更新 ---
-  const [updateStep, setUpdateStep] = useState<
-    'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'ready'
-  >('idle')
-  const [updateVersion, setUpdateVersion] = useState('')
-  const [updateProgress, setUpdateProgress] = useState(0)
-  const [updateError, setUpdateError] = useState('')
+  // --- 版本更新（状态保存在全局 store，切换页面不会丢失下载进度） ---
+  const updateStep = useUpdateStore((s) => s.step)
+  const updateVersion = useUpdateStore((s) => s.latestVersion)
+  const updateProgress = useUpdateStore((s) => s.progress)
+  const updateError = useUpdateStore((s) => s.error)
   const hasUpdateHint = useUpdateStore((s) => s.hasUpdate)
-  const latestHint = useUpdateStore((s) => s.latestVersion)
 
-  // 侧栏后台检查到新版本后，进入设置页直接展示可更新状态
+  // 回到设置页时与后端真实阶段对齐（下载可能在离开期间完成）
+  useEffect(() => {
+    useUpdateStore.getState().sync()
+  }, [])
+
+  // 历史版本遗留的状态未同步时，用后台检查结果兜底展示
   const displayStep = updateStep === 'idle' && hasUpdateHint ? 'available' : updateStep
-  const displayVersion = updateStep === 'idle' && hasUpdateHint ? latestHint : updateVersion
+  const displayVersion = updateVersion
 
-  const handleUpdateAction = async () => {
+  const handleUpdateAction = () => {
+    const store = useUpdateStore.getState()
     if (displayStep === 'ready') {
-      const r = await window.api.applyUpdate()
-      if (!r?.ok) setUpdateError(r?.error || '安装失败，请稍后重试')
+      void store.apply()
       return
     }
-
     if (displayStep === 'available') {
-      setUpdateError('')
-      setUpdateStep('downloading')
-      setUpdateProgress(0)
-      const off = window.api.updateOnProgress((pct: number) => setUpdateProgress(pct))
-      try {
-        const r = await window.api.downloadUpdate()
-        if (r?.ok) {
-          setUpdateStep('ready')
-        } else {
-          setUpdateError(r?.error || '下载失败')
-          setUpdateStep('available')
-        }
-      } catch (err) {
-        setUpdateError('下载失败: ' + err)
-        setUpdateStep('available')
-      } finally {
-        off()
-      }
+      void store.download()
       return
     }
-
-    setUpdateError('')
-    setUpdateStep('checking')
-    try {
-      const info = await window.api.checkUpdate()
-      if (info?.error) {
-        setUpdateError(info.error)
-        setUpdateStep('idle')
-      } else if (!info?.hasUpdate) {
-        useUpdateStore.getState().clear()
-        setUpdateStep('latest')
-      } else {
-        useUpdateStore.getState().setAvailable(info.latestVersion || '')
-        setUpdateVersion(info.latestVersion || '')
-        setUpdateStep('available')
-      }
-    } catch (err) {
-      setUpdateError('检查更新失败: ' + err)
-      setUpdateStep('idle')
-    }
+    void store.check()
   }
 
   const updateStatus = updateError
