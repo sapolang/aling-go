@@ -81,12 +81,15 @@ func registerServices(app *application.App, dataDir, version string) {
 	mediaSvc := content.NewMediaService(app, dataDir)
 	// B 站 iframe 拿不到 Cookie，由 Go 侧带登录 Cookie 取流再本地代理
 	mediaSvc.SetBilibiliAuth(feedSvc.GetBilibiliCookie, feedSvc.HTTPClient)
+	// 粘贴频道链接时复用已有的链接转 RSS 能力
+	mediaSvc.SetRSSConverter(platformSvc.ConvertToRSS)
 	services := []application.Service{
 		application.NewService(study.NewWordService(app)),
 		application.NewService(study.NewDictService(app)),
 		application.NewService(study.NewFavoriteService(app)),
 		application.NewService(content.NewArticleService(app)),
 		application.NewService(librarySvc),
+		application.NewService(content.NewHistoryService(app)),
 		application.NewService(feedSvc),
 		application.NewService(platformSvc),
 		application.NewService(mediaSvc),

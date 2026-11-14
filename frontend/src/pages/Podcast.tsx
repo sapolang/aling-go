@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -62,6 +62,7 @@ function formatDuration(seconds: number): string {
 
 export default function PodcastPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库
   const openPlayer = () => navigate('/player', { state: { from: '/podcast' } })
   const player = usePlayerStore()
@@ -81,9 +82,12 @@ export default function PodcastPage() {
     setDownloadProgress,
   } = useFeedStore()
 
-  const [showAdd, setShowAdd] = useState(false)
+  // 首页「打开链接」识别到频道时通过导航状态带入，首屏直接展开订阅面板
+  const navState = (location.state || {}) as { feedUrl?: string; platformUrl?: string }
+
+  const [showAdd, setShowAdd] = useState(!!navState.platformUrl || !!navState.feedUrl)
   const [showProxy, setShowProxy] = useState(false)
-  const [feedURL, setFeedURL] = useState('')
+  const [feedURL, setFeedURL] = useState(navState.feedUrl || '')
   const [adding, setAdding] = useState(false)
   const [proxy, setProxy] = useState('')
   const [biliCookie, setBiliCookie] = useState('')
@@ -99,8 +103,8 @@ export default function PodcastPage() {
   const [qrError, setQrError] = useState('')
 
   // YouTube/B站 链接转换
-  const [showPlatformConvert, setShowPlatformConvert] = useState(false)
-  const [platformURL, setPlatformURL] = useState('')
+  const [showPlatformConvert, setShowPlatformConvert] = useState(!!navState.platformUrl)
+  const [platformURL, setPlatformURL] = useState(navState.platformUrl || '')
   const [converting, setConverting] = useState(false)
 
   // 正在获取 B站 播放地址的节目，避免重复点击
@@ -114,6 +118,12 @@ export default function PodcastPage() {
   useEffect(() => {
     loadFeeds()
   }, [loadFeeds])
+
+  // 消费一次导航状态，避免返回页面时重复弹出订阅面板
+  useEffect(() => {
+    if (location.state) navigate(location.pathname, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 下载进度由后端事件推送，避免前端轮询
   useEffect(() => {
@@ -250,8 +260,11 @@ export default function PodcastPage() {
             ? '二维码已过期，请刷新'
             : qrError || '登录失败，请重试'
 
-  const playLocalFile = async (path: string, title?: string) => {
-    player.setFilePath(path, title)
+  const playLocalFile = async (path: string, title?: string, ep?: FeedEpisode) => {
+    player.setFilePath(path, title, ep?.id, {
+      cover: ep?.image,
+      sourceUrl: ep?.link,
+    })
     await window.api.recentAdd(path)
     openPlayer()
     player.setWaveformLoading(true)
@@ -300,6 +313,9 @@ export default function PodcastPage() {
       player.setFilePath(res.url, ep.title || res.title || 'B站 视频', ep.id, {
         sourceKind: 'bilibili',
         mediaKind: 'video',
+        historyKey: `bili:${bvid}`,
+        cover: ep.image,
+        sourceUrl: bvid,
       })
       if (res.duration > 0) player.setDuration(res.duration)
       openPlayer()
@@ -317,6 +333,9 @@ export default function PodcastPage() {
     player.setFilePath(sourcePath, ep.title || 'YouTube', ep.id, {
       sourceKind: 'youtube',
       mediaKind: 'video',
+      historyKey: sourcePath,
+      cover: ep.image,
+      sourceUrl: ep.link,
     })
     openPlayer()
     loadPlatformSubtitles(ep.id, sourcePath)
@@ -342,11 +361,14 @@ export default function PodcastPage() {
     }
     // 已下载的音频优先播放本地文件，未下载的直接在线播放
     if (ep.localPath) {
-      await playLocalFile(ep.localPath, ep.title)
+      await playLocalFile(ep.localPath, ep.title, ep)
       return
     }
     if (ep.audioUrl) {
-      player.setFilePath(ep.audioUrl, ep.title, ep.id)
+      player.setFilePath(ep.audioUrl, ep.title, ep.id, {
+        cover: ep.image,
+        sourceUrl: ep.link,
+      })
       openPlayer()
       try {
         const cached = await window.api.getCachedSubtitles(ep.audioUrl)

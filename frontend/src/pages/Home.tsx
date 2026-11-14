@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { showToast, confirmDialog } from '@/components/feedback'
-import type { RecentEntry } from '@/types/electron'
+import { looksLikeMediaLink, openResolvedMedia } from '@/utils/mediaLink'
 import SrtParser from 'srt-parser-2'
 import { timeToSeconds } from '@/lib/srt'
 import {
@@ -36,11 +36,11 @@ import {
   Home,
   FolderOutput,
   MoreHorizontal,
-  PlayCircle,
   Search,
   X,
   UploadCloud,
   History,
+  Link2,
 } from 'lucide-react'
 
 function formatTime(s: number): string {
@@ -111,12 +111,10 @@ export default function HomePage() {
     itemPath: '',
     isFolder: false,
   })
-  const [resumeEntry, setResumeEntry] = useState<{
-    path: string
-    name: string
-    type: string
-    lastPosition?: number
-  } | null>(null)
+  // 打开链接弹窗（全局 Ctrl/Cmd+V 可直接识别播放）
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkInput, setLinkInput] = useState('')
+  const [resolving, setResolving] = useState(false)
   const [renameDialog, setRenameDialog] = useState<{
     visible: boolean
     name: string
@@ -133,14 +131,16 @@ export default function HomePage() {
     store.load()
   }, [])
 
+  // Cmd/Ctrl + L 打开链接输入框
   useEffect(() => {
-    window.api
-      .recentList()
-      .then((list: RecentEntry[]) => {
-        const hit = (list || []).find((e) => (e.lastPosition || 0) > 10 && e.type !== 'pdf')
-        setResumeEntry(hit || null)
-      })
-      .catch(() => {})
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault()
+        setLinkOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   const closeContextMenu = useCallback(() => {
@@ -354,18 +354,40 @@ export default function HomePage() {
     store.setCurrentFolder(folder.id)
   }
 
-  const handleResume = () => {
-    if (!resumeEntry) return
-    const file =
-      store.files.find((f) => f.path === resumeEntry.path) ||
-      ({
-        path: resumeEntry.path,
-        name: resumeEntry.name,
-        type: resumeEntry.type || 'video',
-        folderId: '',
-        addedAt: '',
-      } as LibraryFile)
-    handleOpenFile(file)
+  const handleOpenLink = async (raw?: string) => {
+    const target = (raw ?? linkInput).trim()
+    if (!target || resolving) return
+    setResolving(true)
+    try {
+      const res = await window.api.resolveMediaURL(target)
+      if (res.needSubscribe) {
+        const ok = await confirmDialog({
+          title: '这是一个频道链接',
+          description: '频道链接不能直接播放。是否前往播客页订阅该频道？',
+          confirmText: '去订阅',
+          cancelText: '取消',
+        })
+        if (!ok) return
+        setLinkOpen(false)
+        setLinkInput('')
+        navigate('/podcast', { state: { feedUrl: res.feedUrl, platformUrl: target } })
+        return
+      }
+      if (!res.ok) {
+        showToast(res.error || '无法播放该链接', 'error')
+        return
+      }
+      if (!openResolvedMedia(res, navigate, '/')) {
+        showToast(res.error || '暂不支持该链接', 'error')
+        return
+      }
+      setLinkOpen(false)
+      setLinkInput('')
+    } catch {
+      showToast('解析链接失败，请检查网络后重试', 'error')
+    } finally {
+      setResolving(false)
+    }
   }
 
   const handleExitFolder = () => {
@@ -462,24 +484,13 @@ export default function HomePage() {
         </Card>
       )}
 
-      {resumeEntry && (
-        <Card className="flex items-center justify-between gap-3 p-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium truncate">继续学习：{resumeEntry.name}</p>
-            <p className="text-xs text-muted-foreground">
-              上次看到 {formatTime(resumeEntry.lastPosition || 0)}
-            </p>
-          </div>
-          <Button size="sm" variant="outline" onClick={handleResume}>
-            <PlayCircle className="h-4 w-4 mr-1" /> 继续播放
-          </Button>
-        </Card>
-      )}
-
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button size="sm" onClick={handleImport}>
           <FileUp className="h-4 w-4 mr-1" /> 导入
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setLinkOpen(true)}>
+          <Link2 className="h-4 w-4 mr-1" /> 打开链接
         </Button>
         <Button
           size="sm"
@@ -670,6 +681,54 @@ export default function HomePage() {
           </Button>
         </div>
       )}
+
+      {/* 打开链接 */}
+      <Dialog
+        open={linkOpen}
+        onOpenChange={(open) => {
+          setLinkOpen(open)
+          if (!open) setLinkInput('')
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm">打开链接</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              autoFocus
+              value={linkInput}
+              placeholder="粘贴 YouTube 或 B站 视频链接"
+              onChange={(e) => setLinkInput(e.target.value)}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData('text')
+                if (!looksLikeMediaLink(text)) return
+                e.preventDefault()
+                setLinkInput(text.trim())
+                handleOpenLink(text)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleOpenLink()
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              支持 YouTube watch / youtu.be / Shorts 与 B站 BV / b23.tv 短链；频道链接会引导订阅
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setLinkOpen(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              disabled={!linkInput.trim() || resolving}
+              onClick={() => handleOpenLink()}
+            >
+              {resolving ? '解析中…' : '打开'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New folder dialog */}
       <Dialog open={showNewFolder} onOpenChange={setShowNewFolder}>

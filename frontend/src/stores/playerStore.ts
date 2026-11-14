@@ -74,6 +74,10 @@ interface PlayerStore {
   mediaKind: MediaKind | null
   mediaTitle: string
   mediaEpisodeID: number
+  // 播放历史的稳定标识：B站流地址每次会话都会变，用 bili:<bvid> 代替代理地址
+  historyKey: string
+  historyCover: string
+  historySourceUrl: string
   playing: boolean
   played: number
   duration: number
@@ -103,7 +107,13 @@ interface PlayerStore {
     path: string | null,
     title?: string,
     episodeID?: number,
-    opts?: { sourceKind?: SourceKind; mediaKind?: MediaKind },
+    opts?: {
+      sourceKind?: SourceKind
+      mediaKind?: MediaKind
+      historyKey?: string
+      cover?: string
+      sourceUrl?: string
+    },
   ) => void
   setPlaying: (playing: boolean) => void
   setPlayed: (played: number) => void
@@ -137,6 +147,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   mediaKind: null,
   mediaTitle: '',
   mediaEpisodeID: 0,
+  historyKey: '',
+  historyCover: '',
+  historySourceUrl: '',
   playing: false,
   played: 0,
   duration: 0,
@@ -175,6 +188,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       mediaKind: opts?.mediaKind ?? null,
       mediaTitle: title || '',
       mediaEpisodeID: episodeID || 0,
+      historyKey: opts?.historyKey ?? '',
+      historyCover: opts?.cover ?? '',
+      historySourceUrl: opts?.sourceUrl ?? '',
       playing: false,
       played: 0,
       duration: 0,
@@ -209,6 +225,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       mediaKind: null,
       mediaTitle: '',
       mediaEpisodeID: 0,
+      historyKey: '',
+      historyCover: '',
+      historySourceUrl: '',
       playing: false,
       played: 0,
       duration: 0,

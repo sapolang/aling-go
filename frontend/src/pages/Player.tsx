@@ -65,6 +65,18 @@ import './Player.css'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+// 播放历史的来源类型：由播放源与是否关联播客节目推导
+function historyKindOf(sourceKind: string, episodeID: number): string {
+  if (sourceKind === 'youtube') return 'youtube'
+  if (sourceKind === 'bilibili') return 'bilibili'
+  return episodeID > 0 ? 'podcast' : 'local'
+}
+
+// B站代理播放地址每次会话都会变，历史 key 优先用调用方传入的稳定标识
+function historyKeyOf(state: { filePath: string | null; historyKey: string }): string {
+  return state.historyKey || state.filePath || ''
+}
+
 // 纯音频扩展名：决定用音频 deck 还是视频舞台渲染
 const AUDIO_EXTS = [
   'mp3',
@@ -465,6 +477,49 @@ export default function PlayerPage() {
   // 悬停查词时暂停播放；鼠标离开后恢复
   const hoverPauseRef = useRef(false)
 
+  // --- 播放历史 ---
+  const historyKey = historyKeyOf(store)
+
+  // 打开新媒体时写一条历史：元信息由发起播放的页面通过 setFilePath 传入
+  useEffect(() => {
+    if (!historyKey) return
+    const st = usePlayerStore.getState()
+    window.api.historyUpsert({
+      mediaKey: historyKey,
+      kind: historyKindOf(st.sourceKind, st.mediaEpisodeID),
+      title: st.mediaTitle || basename(st.filePath || ''),
+      cover: st.historyCover,
+      sourceUrl: st.historySourceUrl,
+      episodeId: st.mediaEpisodeID,
+      position: 0,
+      duration: 0,
+      playCount: 0,
+      lastPlayedAt: '',
+    })
+  }, [historyKey])
+
+  // 播放中每 5 秒落一次进度：YouTube/B站 没有原生 timeupdate，统一读 store
+  useEffect(() => {
+    if (!historyKey) return
+    const timer = window.setInterval(() => {
+      const st = usePlayerStore.getState()
+      if (!st.playing) return
+      window.api.historyUpdatePosition(historyKey, st.played, st.duration)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [historyKey])
+
+  // 暂停或播完时立即落一次，避免最后几秒进度丢失
+  const wasPlayingRef = useRef(false)
+  useEffect(() => {
+    const was = wasPlayingRef.current
+    wasPlayingRef.current = store.playing
+    if (!was || store.playing || !historyKey) return
+    // 切换文件时 store 已重置，duration 为 0，不能把新文件的进度写成 0
+    if (store.duration <= 0 || store.played <= 0) return
+    window.api.historyUpdatePosition(historyKey, store.played, store.duration)
+  }, [store.playing, store.played, store.duration, historyKey])
+
   onTimeUpdateRef.current = () => {
     const el = mediaRef.current
     if (!el) return
@@ -539,23 +594,32 @@ export default function PlayerPage() {
       store.setPlayClip(null)
       return
     }
-    // 打开文件后续播上次位置；剩余 <15s 或 <5% 视为已看完，归零
+    // 打开文件后续播上次位置：历史优先，媒体库里的 LastPosition 兜底
     if (resumedForRef.current === fp) return
     resumedForRef.current = fp
     lastPosSaveRef.current = 0
-    window.api.recentGetPosition(fp).then((pos: number) => {
+    const resumeKey = historyKeyOf(usePlayerStore.getState())
+    const applyResume = (pos: number) => {
       if (!pos || pos <= 0) return
       const dur = el.duration || 0
       const remaining = dur - pos
       if (dur > 0 && (remaining < 15 || remaining / dur < 0.05)) {
         window.api.recentUpdatePosition(fp, 0)
+        window.api.historyUpdatePosition(resumeKey, 0, dur)
         return
       }
       el.currentTime = pos
       lastPosSaveRef.current = pos
       // 立即同步 played，不等 timeupdate，避免波形/进度条停留在开头
       store.setPlayed(pos)
-    })
+    }
+    window.api
+      .historyGet(resumeKey)
+      .then((h: { position?: number } | null) =>
+        h && h.position && h.position > 0 ? h.position : window.api.recentGetPosition(fp),
+      )
+      .then(applyResume)
+      .catch(() => applyResume(0))
   }
 
   // --- Media element event wiring ---
@@ -1095,11 +1159,9 @@ export default function PlayerPage() {
   }
 
   const startTranscription = async (filePath: string) => {
-    // 在线视频没有 audio_url，只能走平台接口；播客源才走音频转录
-    const onlineVideo =
-      store.mediaEpisodeID > 0 &&
-      (store.sourceKind === 'youtube' || store.sourceKind === 'bilibili')
-    const isPodcast = !onlineVideo && store.mediaEpisodeID > 0 && /^https?:\/\//i.test(filePath)
+    // 在线视频走平台接口：已订阅节目按 episodeID 取，粘贴链接播放的按平台视频 ID 取
+    const platformVideo = store.sourceKind === 'youtube' || store.sourceKind === 'bilibili'
+    const isPodcast = !platformVideo && store.mediaEpisodeID > 0 && /^https?:\/\//i.test(filePath)
     const force = store.subtitles.length > 0
     const status = await window.api.whisperStatus()
     if (!status.loaded) {
@@ -1123,7 +1185,7 @@ export default function PlayerPage() {
     }
     store.setTranscribing(true)
     store.setTranscriptionProgress(0)
-    setTranscribingLabel(isPodcast || onlineVideo ? '下载音频' : '转录中')
+    setTranscribingLabel(isPodcast || platformVideo ? '下载音频' : '转录中')
     const cleanup = window.api.onWhisperProgress((d: { progress: number; status: string }) => {
       store.setTranscriptionProgress(d.progress)
       if (d.status === 'downloading') setTranscribingLabel('下载音频')
@@ -1131,11 +1193,16 @@ export default function PlayerPage() {
     })
     try {
       let subs: SubtitleItem[]
-      if (onlineVideo) {
+      if (platformVideo) {
         // 平台接口会先抓官方字幕，抓不到再下载音轨做本地转录
-        const result = (await window.api.platformGetSubtitles(
-          store.mediaEpisodeID,
-        )) as PlatformSubtitleResult
+        const result = (
+          store.mediaEpisodeID > 0
+            ? await window.api.platformGetSubtitles(store.mediaEpisodeID)
+            : await window.api.platformGetSubtitlesBySource(
+                store.sourceKind,
+                historyKeyOf(store).replace(/^(yt:|bili:)/, ''),
+              )
+        ) as PlatformSubtitleResult
         if (!result.ok) throw new Error(result.error || '转录失败')
         subs = (result.cues || []).map((c: PlatformSubtitleCue, i: number) => ({
           id: i,

@@ -42,6 +42,7 @@ type BiliStreamResult struct {
 	QualityLabel string `json:"qualityLabel"`
 	Duration     int    `json:"duration"`
 	Title        string `json:"title"`
+	Cover        string `json:"cover"`
 	Error        string `json:"error"`
 }
 
@@ -52,6 +53,7 @@ type biliViewResponse struct {
 		Title    string `json:"title"`
 		Duration int    `json:"duration"`
 		CID      int64  `json:"cid"`
+		Pic      string `json:"pic"`
 	} `json:"data"`
 }
 
@@ -122,6 +124,7 @@ func (s *MediaService) GetBilibiliStream(bvid string) BiliStreamResult {
 		QualityLabel: label,
 		Duration:     view.Data.Duration,
 		Title:        view.Data.Title,
+		Cover:        view.Data.Pic,
 	}
 }
 

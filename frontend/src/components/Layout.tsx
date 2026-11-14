@@ -1,9 +1,10 @@
-import { ReactNode, useState, useEffect } from 'react'
+import { ReactNode, useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { confirmDialog } from '@/components/feedback'
+import { confirmDialog, showToast } from '@/components/feedback'
 import { basename } from '@/utils/path'
+import { looksLikeMediaLink, openResolvedMedia } from '@/utils/mediaLink'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import { useUpdateStore } from '@/stores/updateStore'
@@ -23,11 +24,13 @@ import {
   BarChart3,
   Star,
   Rss,
+  History,
 } from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '文件库', icon: Home },
   { path: '/podcast', label: '播客订阅', icon: Rss },
+  { path: '/history', label: '学习历史', icon: History },
   { path: '/favorites', label: '收藏片段', icon: Star },
   { path: '/words', label: '生词库', icon: BookOpen },
   { path: '/dict', label: '词库浏览', icon: Library },
@@ -47,6 +50,7 @@ export function Layout({
   const navigate = useNavigate()
   const location = useLocation()
   const filePath = usePlayerStore((s) => s.filePath)
+  const mediaTitle = usePlayerStore((s) => s.mediaTitle)
   const playing = usePlayerStore((s) => s.playing)
   const transcribing = usePlayerStore((s) => s.transcribing)
   const progress = usePlayerStore((s) => s.transcriptionProgress)
@@ -59,6 +63,8 @@ export function Layout({
   const [appVersion, setAppVersion] = useState('dev')
   const hasUpdate = useUpdateStore((s) => s.hasUpdate)
   const latestVersion = useUpdateStore((s) => s.latestVersion)
+  // 粘贴解析期间避免重复触发
+  const linkBusyRef = useRef(false)
 
   // 窄窗口下自动收起侧栏，给内容留出空间
   useEffect(() => {
@@ -74,6 +80,48 @@ export function Layout({
   useEffect(() => {
     loadReviewCount()
   }, [location.pathname, loadReviewCount])
+
+  // 全局 Ctrl/Cmd+V：粘贴 YouTube / B站 视频地址直接打开播放，频道链接引导订阅
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null
+      // 输入框内的粘贴交给输入框自己处理
+      if (
+        target &&
+        (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      ) {
+        return
+      }
+      const text = e.clipboardData?.getData('text') || ''
+      if (!text || !looksLikeMediaLink(text)) return
+      e.preventDefault()
+      if (linkBusyRef.current) return
+      linkBusyRef.current = true
+      try {
+        const res = await window.api.resolveMediaURL(text)
+        if (res.needSubscribe) {
+          const ok = await confirmDialog({
+            title: '这是一个频道链接',
+            description: '频道链接不能直接播放。是否前往播客页订阅该频道？',
+            confirmText: '去订阅',
+            cancelText: '取消',
+          })
+          if (!ok) return
+          navigate('/podcast', { state: { feedUrl: res.feedUrl, platformUrl: text.trim() } })
+          return
+        }
+        if (!res.ok || !openResolvedMedia(res, navigate, location.pathname)) {
+          showToast(res.error || '暂不支持该链接', 'error')
+        }
+      } catch {
+        showToast('解析链接失败，请检查网络后重试', 'error')
+      } finally {
+        linkBusyRef.current = false
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [navigate, location.pathname])
 
   useEffect(() => {
     let timer: number | undefined
@@ -196,7 +244,7 @@ export function Layout({
             <Button variant="ghost" size="sm" onClick={() => setPlaying(!playing)}>
               {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
-            <span className="text-sm truncate flex-1">{basename(filePath)}</span>
+            <span className="text-sm truncate flex-1">{mediaTitle || basename(filePath)}</span>
             {transcribing && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" /> 转录中 {progress}%

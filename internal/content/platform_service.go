@@ -373,6 +373,39 @@ func (s *PlatformService) GetSubtitles(episodeID int64) PlatformSubtitlesResult 
 	}
 
 	kind, id := DetectPlatform(link)
+	result := s.subtitlesByPlatform(kind, id)
+	if result.OK {
+		result.Title = title
+	}
+	return result
+}
+
+// GetSubtitlesBySource 按平台与视频 ID 直接取字幕，供粘贴链接播放使用：
+// 这类视频没有 feed_episodes 记录，不能走 GetSubtitles(episodeID)。
+func (s *PlatformService) GetSubtitlesBySource(sourceKind, videoID string) PlatformSubtitlesResult {
+	videoID = strings.TrimSpace(videoID)
+	var kind platformKind
+	switch strings.ToLower(strings.TrimSpace(sourceKind)) {
+	case "youtube":
+		kind = platformYouTube
+		videoID = strings.TrimPrefix(videoID, "yt:")
+		if !strings.HasPrefix(videoID, "video:") {
+			videoID = "video:" + videoID
+		}
+	case "bilibili":
+		kind = platformBilibili
+		videoID = strings.TrimPrefix(videoID, "bili:")
+		if !strings.HasPrefix(videoID, "bv:") {
+			videoID = "bv:" + videoID
+		}
+	default:
+		return PlatformSubtitlesResult{Error: "不支持的平台，目前仅支持 YouTube 与 B站"}
+	}
+	return s.subtitlesByPlatform(kind, videoID)
+}
+
+// subtitlesByPlatform 按平台 + 视频 ID 取字幕：先读缓存，再抓官方字幕，最后兜底本地转录
+func (s *PlatformService) subtitlesByPlatform(kind platformKind, id string) PlatformSubtitlesResult {
 	cacheKey := md5Hash("platform:" + kindLabel(kind) + ":" + id)
 	cachePath := filepath.Join(s.dataDir, "subtitle-cache", cacheKey+".json")
 
@@ -408,7 +441,6 @@ func (s *PlatformService) GetSubtitles(episodeID int64) PlatformSubtitlesResult 
 		OK:       true,
 		Platform: kindLabel(kind),
 		VideoID:  id,
-		Title:    title,
 		Cues:     cues,
 	}
 }
