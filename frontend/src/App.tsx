@@ -17,6 +17,7 @@ const ArticleTyping = lazy(() => import('@/pages/ArticleTyping'))
 const Stats = lazy(() => import('@/pages/StatsPage'))
 const Favorites = lazy(() => import('@/pages/Favorites'))
 const Podcast = lazy(() => import('@/pages/Podcast'))
+const History = lazy(() => import('@/pages/History'))
 
 function Loading() {
   return (
@@ -107,6 +108,7 @@ function AppContent() {
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/podcast" element={<Podcast />} />
+          <Route path="/history" element={<History />} />
           {/* 旧在线播放页已并入 /player，保留路径做重定向 */}
           <Route path="/player-online" element={<Navigate to="/player" replace />} />
           <Route path="/words" element={<WordList />} />

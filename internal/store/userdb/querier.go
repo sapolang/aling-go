@@ -18,6 +18,7 @@ type Querier interface {
 	AddTypingRecord(ctx context.Context, arg AddTypingRecordParams) error
 	AddWord(ctx context.Context, arg AddWordParams) (int, error)
 	AddWordsBatch(ctx context.Context, arg AddWordsBatchParams) (int64, error)
+	ClearHistory(ctx context.Context) error
 	ClearTags(ctx context.Context) error
 	ClearWords(ctx context.Context) error
 	CountFeedByURL(ctx context.Context, url string) (int64, error)
@@ -31,6 +32,7 @@ type Querier interface {
 	DeleteFavoriteTag(ctx context.Context, id int) error
 	DeleteFeed(ctx context.Context, id int64) (int64, error)
 	DeleteFeedEpisodes(ctx context.Context, feedID int64) error
+	DeleteHistory(ctx context.Context, mediaKey string) error
 	DeleteTag(ctx context.Context, id int) error
 	DeleteWord(ctx context.Context, id int) error
 	DeleteWords(ctx context.Context, ids []int) error
@@ -43,18 +45,21 @@ type Querier interface {
 	GetEpisodeForSubtitles(ctx context.Context, id int64) (GetEpisodeForSubtitlesRow, error)
 	GetFavoriteClipReviewCount(ctx context.Context, id int) (int, error)
 	GetFeedURL(ctx context.Context, id int64) (string, error)
+	GetHistory(ctx context.Context, mediaKey string) (PlayHistory, error)
 	GetTypingProgress(ctx context.Context, arg GetTypingProgressParams) (TypingProgress, error)
 	GradeDistribution(ctx context.Context) ([]GradeDistributionRow, error)
 	ImportTag(ctx context.Context, arg ImportTagParams) error
 	ImportWord(ctx context.Context, arg ImportWordParams) error
 	LevelDistribution(ctx context.Context) ([]LevelDistributionRow, error)
 	ListAllTypingProgress(ctx context.Context) ([]TypingProgress, error)
+	ListContinueLearning(ctx context.Context, lim int64) ([]PlayHistory, error)
 	ListFavoriteClips(ctx context.Context) ([]ListFavoriteClipsRow, error)
 	ListFavoriteClipsByTag(ctx context.Context, tagID int) ([]ListFavoriteClipsByTagRow, error)
 	ListFavoriteTags(ctx context.Context) ([]ListFavoriteTagsRow, error)
 	ListFeedEpisodes(ctx context.Context, arg ListFeedEpisodesParams) ([]ListFeedEpisodesRow, error)
 	ListFeedIDs(ctx context.Context) ([]int64, error)
 	ListFeeds(ctx context.Context) ([]ListFeedsRow, error)
+	ListHistory(ctx context.Context, arg ListHistoryParams) ([]PlayHistory, error)
 	ListReviewDates(ctx context.Context) ([]string, error)
 	ListReviewWords(ctx context.Context, nextReview string) ([]Word, error)
 	ListTags(ctx context.Context) ([]Tag, error)
@@ -67,11 +72,14 @@ type Querier interface {
 	SearchWords(ctx context.Context, arg SearchWordsParams) ([]Word, error)
 	SetEpisodeLocalPath(ctx context.Context, arg SetEpisodeLocalPathParams) error
 	SetFeedError(ctx context.Context, arg SetFeedErrorParams) error
+	TrimHistory(ctx context.Context, keep int64) error
 	TypingDailyStats(ctx context.Context) ([]TypingDailyStatsRow, error)
 	UpdateFavoriteClipTag(ctx context.Context, arg UpdateFavoriteClipTagParams) error
 	UpdateFeedMeta(ctx context.Context, arg UpdateFeedMetaParams) error
+	UpdateHistoryPosition(ctx context.Context, arg UpdateHistoryPositionParams) error
 	UpdateWord(ctx context.Context, arg UpdateWordParams) error
 	UpsertFeedEpisode(ctx context.Context, arg UpsertFeedEpisodeParams) error
+	UpsertHistory(ctx context.Context, arg UpsertHistoryParams) error
 }
 
 var _ Querier = (*Queries)(nil)

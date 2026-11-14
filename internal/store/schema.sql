@@ -105,3 +105,18 @@ CREATE TABLE IF NOT EXISTS dict_progress (
 	current_index INTEGER DEFAULT 0,
 	updated_at TEXT DEFAULT (datetime('now','localtime'))
 );
+-- 播放历史：所有来源（本地文件/播客在线/B站/YouTube）统一记录，与媒体库相互独立
+CREATE TABLE IF NOT EXISTS play_history (
+	media_key TEXT PRIMARY KEY,
+	kind TEXT NOT NULL DEFAULT 'local',
+	title TEXT NOT NULL DEFAULT '',
+	cover TEXT NOT NULL DEFAULT '',
+	source_url TEXT NOT NULL DEFAULT '',
+	episode_id INTEGER NOT NULL DEFAULT 0,
+	position REAL NOT NULL DEFAULT 0,
+	duration REAL NOT NULL DEFAULT 0,
+	play_count INTEGER NOT NULL DEFAULT 0,
+	last_played_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_play_history_last ON play_history(last_played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_play_history_kind ON play_history(kind, last_played_at DESC);

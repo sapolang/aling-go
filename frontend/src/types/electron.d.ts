@@ -46,6 +46,35 @@ export interface RecentEntry {
   lastPosition?: number
 }
 
+/** 播放历史条目，mediaKey 与播放器 filePath 一致 */
+export interface HistoryEntry {
+  mediaKey: string
+  kind: string
+  title: string
+  cover: string
+  sourceUrl: string
+  episodeId: number
+  position: number
+  duration: number
+  playCount: number
+  lastPlayedAt: string
+}
+
+/** 粘贴链接解析结果 */
+export interface ResolvedMedia {
+  ok: boolean
+  kind: string
+  mediaKey: string
+  playUrl: string
+  videoId: string
+  title: string
+  cover: string
+  duration: number
+  needSubscribe: boolean
+  feedUrl: string
+  error: string
+}
+
 export interface WhisperProgress {
   progress: number
   status: string
@@ -225,6 +254,16 @@ export interface ElectronAPI {
 
   recentList: () => Promise<RecentEntry[]>
   recentAdd: (filePath: string) => Promise<RecentEntry[]>
+  recentGetPosition: (filePath: string) => Promise<number>
+  recentUpdatePosition: (filePath: string, position: number) => Promise<void>
+
+  historyUpsert: (entry: HistoryEntry) => Promise<HistoryEntry>
+  historyUpdatePosition: (mediaKey: string, position: number, duration: number) => Promise<void>
+  historyList: (kind: string, limit: number, offset: number) => Promise<HistoryEntry[]>
+  historyContinueLearning: (limit: number) => Promise<HistoryEntry[]>
+  historyGet: (mediaKey: string) => Promise<HistoryEntry>
+  historyDelete: (mediaKey: string) => Promise<void>
+  historyClear: () => Promise<void>
   cacheSubtitles: (filePath: string, subtitles: SubtitleItem[]) => Promise<void>
   getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[] | null>
   getVideoThumbnail: (filePath: string) => Promise<string | null>
@@ -234,6 +273,7 @@ export interface ElectronAPI {
 
   getPlatform: () => string
   getMediaPort: () => Promise<number>
+  resolveMediaURL: (url: string) => Promise<ResolvedMedia>
 
   // Dictionary
   dbDictTags: () => Promise<DictTag[]>
@@ -308,6 +348,10 @@ export interface ElectronAPI {
   platformGetRSSHubURL: () => Promise<string>
   platformSetRSSHubURL: (u: string) => Promise<FeedActionResult>
   platformGetSubtitles: (episodeId: number) => Promise<PlatformSubtitleResult>
+  platformGetSubtitlesBySource: (
+    sourceKind: string,
+    videoID: string,
+  ) => Promise<PlatformSubtitleResult>
   platformTranscribePodcast: (
     episodeId: number,
     force: boolean,

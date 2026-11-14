@@ -75,7 +75,19 @@ import {
   GetMediaPort,
   GetBilibiliStream,
   TranscodeForPlayback,
+  ResolveMediaURL,
 } from '../../bindings/aling-go/internal/content/mediaservice'
+
+import {
+  Upsert as HistoryUpsert,
+  UpdatePosition as HistoryUpdatePosition,
+  List as HistoryList,
+  ContinueLearning as HistoryContinueLearning,
+  Get as HistoryGet,
+  Delete as HistoryDelete,
+  Clear as HistoryClear,
+} from '../../bindings/aling-go/internal/content/historyservice'
+import type { HistoryEntry as HistoryInput } from '../types/electron'
 
 import {
   FeedList,
@@ -97,6 +109,7 @@ import {
   GetRSSHubURL,
   SetRSSHubURL,
   GetSubtitles,
+  GetSubtitlesBySource,
   TranscribePodcast as PlatformTranscribePodcast,
 } from '../../bindings/aling-go/internal/content/platformservice'
 
@@ -193,12 +206,22 @@ export function initBridge(): void {
     cacheSubtitles: (filePath: string, subs: SubtitleItem[]) => CacheSubtitles(filePath, subs),
     getCachedSubtitles: (filePath: string) => GetCachedSubtitles(filePath),
 
+    historyUpsert: (entry: HistoryInput) => HistoryUpsert(entry),
+    historyUpdatePosition: (mediaKey: string, position: number, duration: number) =>
+      HistoryUpdatePosition(mediaKey, position, duration),
+    historyList: (kind: string, limit: number, offset: number) => HistoryList(kind, limit, offset),
+    historyContinueLearning: (limit: number) => HistoryContinueLearning(limit),
+    historyGet: (mediaKey: string) => HistoryGet(mediaKey),
+    historyDelete: (mediaKey: string) => HistoryDelete(mediaKey),
+    historyClear: () => HistoryClear(),
+
     getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
     getWaveformData: (filePath: string) => GetWaveformData(filePath),
     transcodeForPlayback: (filePath: string) => TranscodeForPlayback(filePath),
     getPlatform: () => GetPlatform(),
     getVersion: () => GetVersion(),
     getMediaPort: () => GetMediaPort(),
+    resolveMediaURL: (url: string) => ResolveMediaURL(url),
 
     feedList: () => FeedList(),
     feedAdd: (url: string) => FeedAdd(url),
@@ -221,6 +244,8 @@ export function initBridge(): void {
     platformGetRSSHubURL: () => GetRSSHubURL(),
     platformSetRSSHubURL: (u: string) => SetRSSHubURL(u),
     platformGetSubtitles: (episodeId: number) => GetSubtitles(episodeId),
+    platformGetSubtitlesBySource: (sourceKind: string, videoID: string) =>
+      GetSubtitlesBySource(sourceKind, videoID),
     platformTranscribePodcast: (episodeId: number, force: boolean) =>
       PlatformTranscribePodcast(episodeId, force),
 

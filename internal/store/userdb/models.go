@@ -66,6 +66,19 @@ type FeedEpisode struct {
 	CreatedAt   string
 }
 
+type PlayHistory struct {
+	MediaKey     string
+	Kind         string
+	Title        string
+	Cover        string
+	SourceUrl    string
+	EpisodeID    int64
+	Position     float64
+	Duration     float64
+	PlayCount    int64
+	LastPlayedAt string
+}
+
 type ReviewLog struct {
 	ID         int64
 	WordID     int64
