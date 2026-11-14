@@ -202,6 +202,39 @@ func TestResilientProviderRejectsIgnoredRange(t *testing.T) {
 	}
 }
 
+func TestResilientProviderRejectsWrongContentRange(t *testing.T) {
+	payload := testPayload()
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		i := atomic.AddInt32(&requests, 1)
+		if i == 1 {
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			_, _ = w.Write(payload[:len(payload)/2])
+			w.(http.Flusher).Flush()
+			time.Sleep(100 * time.Millisecond)
+			panic(http.ErrAbortHandler)
+		}
+		// Always claim the range starts at 0, not at the requested offset.
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", len(payload)-1, len(payload)))
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	p := newResilientProvider(&stubProvider{name: "github"}, newUpdateHTTPClient(time.Second))
+	p.maxAttempts = 2
+	p.retryBaseDelay = time.Millisecond
+	err := p.Download(context.Background(), testRelease(srv.URL, int64(len(payload))), &buf, func(int64, int64) {})
+	if err == nil || !strings.Contains(err.Error(), "Content-Range starts at") {
+		t.Fatalf("error = %v, want Content-Range offset error", err)
+	}
+	if buf.Len() != len(payload)/2 {
+		t.Fatalf("buffer grew to %d bytes, want %d (no misaligned data)", buf.Len(), len(payload)/2)
+	}
+}
+
 func TestResilientProviderIdleTimeout(t *testing.T) {
 	payload := testPayload()
 	stall := len(payload) / 10
