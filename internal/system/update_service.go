@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -14,7 +15,24 @@ import (
 const (
 	updateRepo       = "sapolang/aling-go"
 	updateReleaseURL = "https://github.com/" + updateRepo + "/releases/tag/v"
+	// updateIdleTimeout is an inactivity timeout, not an overall download
+	// deadline: a slow link may take minutes for the full 15MB asset.
+	updateIdleTimeout = 60 * time.Second
 )
+
+// newUpdateProvider wires the GitHub provider to a client that can survive
+// slow links and wraps it with resumable downloads.
+func newUpdateProvider(client *http.Client) (updater.Provider, error) {
+	base, err := github.New(github.Config{
+		Repository:    updateRepo,
+		ChecksumAsset: "SHA256SUMS",
+		HTTPClient:    client,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return newResilientProvider(base, client), nil
+}
 
 // UpdateInfo 是检查更新后回传给前端的结果。
 type UpdateInfo struct {
@@ -46,10 +64,8 @@ type UpdateService struct {
 func NewUpdateService(app *application.App, version string) *UpdateService {
 	svc := &UpdateService{app: app, version: version}
 
-	provider, err := github.New(github.Config{
-		Repository:    updateRepo,
-		ChecksumAsset: "SHA256SUMS",
-	})
+	client := newUpdateHTTPClient(updateIdleTimeout)
+	provider, err := newUpdateProvider(client)
 	if err != nil {
 		svc.initErr = err
 		return svc
