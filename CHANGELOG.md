@@ -21,6 +21,9 @@
 - CI / Release 的 Node 版本由 20 提至 26（LTS，满足 Vite 8 引擎要求）
 - ESLint 固定为 9.x（`eslint-plugin-react` 尚未支持 ESLint 10），保证 `npm ci` 无 peer 冲突
 
+### Fixed
+- 应用内更新不再受 30 秒下载总超时限制，支持慢速网络下的 Range 断点续传与重试
+
 ## [0.1.0] - 2026-07-28
 
 - 初始版本
