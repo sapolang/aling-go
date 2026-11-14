@@ -129,21 +129,18 @@ export function Layout({
       setAppVersion(v)
       // 开发构建不做后台检查，避免把正式版本误标为新版本
       if (!v || !/^\d+\.\d+\.\d+/.test(v)) return
-      timer = window.setTimeout(async () => {
-        try {
-          const info = await window.api.checkUpdate()
-          if (info?.hasUpdate && info.latestVersion) {
-            useUpdateStore.getState().setAvailable(info.latestVersion)
-          }
-        } catch {
-          // 后台检查失败保持静默
-        }
+      timer = window.setTimeout(() => {
+        // 后台检查复用全局 store，保证切页后更新状态一致
+        void useUpdateStore.getState().check(true)
       }, 8000)
     })
     return () => {
       if (timer) clearTimeout(timer)
     }
   }, [])
+
+  // 下载进度订阅只建立一次，设置页卸载后仍能持续更新进度
+  useEffect(() => useUpdateStore.getState().init(), [])
 
   const handleCloseFile = async () => {
     if (playing || transcribing) {

@@ -149,6 +149,7 @@ import {
   ApplyUpdate,
   CheckForUpdate,
   DownloadLatest,
+  GetUpdateState,
 } from '../../bindings/aling-go/internal/system/updateservice'
 import { Events } from '@wailsio/runtime'
 
@@ -307,6 +308,7 @@ export function initBridge(): void {
     getBackupStatus: () => GetBackupStatus(),
 
     checkUpdate: () => CheckForUpdate(),
+    getUpdateState: () => GetUpdateState(),
     downloadUpdate: () => DownloadLatest(),
     applyUpdate: () => ApplyUpdate(),
     updateOnProgress: (cb: (pct: number) => void) => {
