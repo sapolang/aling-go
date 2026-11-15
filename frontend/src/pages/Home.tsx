@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLibraryStore, type LibraryFile, type Folder } from '@/stores/libraryStore'
 import { useWordStore } from '@/stores/wordStore'
@@ -119,6 +119,14 @@ export default function HomePage() {
   useEffect(() => {
     store.load()
   }, [])
+
+  // store 是搜索词的唯一状态源，输入框直接读写 store；仅列表过滤使用 120ms 防抖副本，避免逐键触发全量计算
+  const [debouncedSearch, setDebouncedSearch] = useState(store.searchQuery)
+  useEffect(() => {
+    if (debouncedSearch === store.searchQuery) return
+    const timer = setTimeout(() => setDebouncedSearch(store.searchQuery), 120)
+    return () => clearTimeout(timer)
+  }, [store.searchQuery, debouncedSearch])
 
   // 播放进度以播放历史为唯一来源，mediaKey 对本地文件即绝对路径
   const [progressByPath, setProgressByPath] = useState<Record<string, number>>({})
@@ -362,50 +370,92 @@ export default function HomePage() {
     }
   }
 
-  const handleExitFolder = () => {
-    store.setCurrentFolder(currentFolder?.parentId || null)
-  }
-
   const sortOptions: { key: typeof store.sortBy; label: string }[] = [
     { key: 'addedAt', label: '添加时间 (新→旧)' },
     { key: 'name', label: '名称 (A-Z)' },
     { key: 'type', label: '类型' },
   ]
 
-  const sortFn = (a: LibraryFile, b: LibraryFile) => {
-    if (store.sortBy === 'name') return a.name.localeCompare(b.name)
-    if (store.sortBy === 'type') return a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
-    return b.addedAt.localeCompare(a.addedAt)
-  }
+  const currentFolder = useMemo(
+    () =>
+      store.currentFolderId
+        ? (store.folders.find((f) => f.id === store.currentFolderId) ?? null)
+        : null,
+    [store.folders, store.currentFolderId],
+  )
 
-  const currentFolder = store.currentFolderId
-    ? store.folders.find((f) => f.id === store.currentFolderId)
-    : null
+  const searchQuery = debouncedSearch.trim().toLowerCase()
 
-  const searchQuery = store.searchQuery.trim().toLowerCase()
-  const matchQuery = (name: string) =>
-    searchQuery === '' || name.toLowerCase().includes(searchQuery)
-
-  const visibleFolders = store.folders.filter((f) => {
-    if (!matchQuery(f.name)) return false
-    if (currentFolder) {
-      return f.parentId === currentFolder.id
-    }
-    if (store.category === 'folder') return !f.parentId
-    if (store.category === 'all') return !f.parentId
-    return false
-  })
-
-  const visibleFiles = store.files
-    .filter((f) => {
+  const visibleFolders = useMemo(() => {
+    const matchQuery = (name: string) =>
+      searchQuery === '' || name.toLowerCase().includes(searchQuery)
+    return store.folders.filter((f) => {
       if (!matchQuery(f.name)) return false
-      if (currentFolder && f.folderId !== currentFolder.id) return false
-      if (!currentFolder && f.folderId) return false
-      if (store.category === 'folder') return false
-      if (store.category === 'all') return true
-      return f.type === store.category
+      if (currentFolder) return f.parentId === currentFolder.id
+      if (store.category === 'folder') return !f.parentId
+      if (store.category === 'all') return !f.parentId
+      return false
     })
-    .sort(sortFn)
+  }, [store.folders, store.category, currentFolder, searchQuery])
+
+  const visibleFiles = useMemo(() => {
+    const matchQuery = (name: string) =>
+      searchQuery === '' || name.toLowerCase().includes(searchQuery)
+    const sortFn = (a: LibraryFile, b: LibraryFile) => {
+      if (store.sortBy === 'name') return a.name.localeCompare(b.name)
+      if (store.sortBy === 'type')
+        return a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
+      return b.addedAt.localeCompare(a.addedAt)
+    }
+    return store.files
+      .filter((f) => {
+        if (!matchQuery(f.name)) return false
+        if (currentFolder && f.folderId !== currentFolder.id) return false
+        if (!currentFolder && f.folderId) return false
+        if (store.category === 'folder') return false
+        if (store.category === 'all') return true
+        return f.type === store.category
+      })
+      .sort(sortFn)
+  }, [store.files, store.category, store.sortBy, currentFolder, searchQuery])
+
+  // 一次性预计算每个文件夹（含子文件夹）的文件数，避免渲染时逐个递归遍历
+  const folderFileCounts = useMemo(() => {
+    const directCounts = new Map<string, number>()
+    for (const f of store.files) {
+      if (!f.folderId) continue
+      directCounts.set(f.folderId, (directCounts.get(f.folderId) ?? 0) + 1)
+    }
+    const childrenByParent = new Map<string, string[]>()
+    for (const folder of store.folders) {
+      if (!folder.parentId) continue
+      const siblings = childrenByParent.get(folder.parentId)
+      if (siblings) siblings.push(folder.id)
+      else childrenByParent.set(folder.parentId, [folder.id])
+    }
+    const counts = new Map<string, number>()
+    const countFolder = (folderId: string): number => {
+      const cached = counts.get(folderId)
+      if (cached !== undefined) return cached
+      let total = directCounts.get(folderId) ?? 0
+      for (const childId of childrenByParent.get(folderId) ?? []) total += countFolder(childId)
+      counts.set(folderId, total)
+      return total
+    }
+    for (const folder of store.folders) countFolder(folder.id)
+    return counts
+  }, [store.files, store.folders])
+
+  const breadcrumbPath = useMemo(() => {
+    const parts: Folder[] = []
+    const byId = new Map(store.folders.map((f) => [f.id, f]))
+    let cur = store.currentFolderId ? byId.get(store.currentFolderId) : undefined
+    while (cur) {
+      parts.unshift(cur)
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined
+    }
+    return parts
+  }, [store.folders, store.currentFolderId])
 
   const totalVisible = visibleFolders.length + visibleFiles.length
   const isAllSelected =
@@ -424,22 +474,8 @@ export default function HomePage() {
     }
   }
 
-  const getFolderFileCount = (folderId: string): number => {
-    let count = store.files.filter((f) => f.folderId === folderId).length
-    for (const sub of store.folders.filter((f) => f.parentId === folderId)) {
-      count += getFolderFileCount(sub.id)
-    }
-    return count
-  }
-
-  const getBreadcrumbPath = (): Folder[] => {
-    const parts: Folder[] = []
-    let cur: Folder | null | undefined = currentFolder
-    while (cur) {
-      parts.unshift(cur)
-      cur = store.folders.find((f) => f.id === cur!.parentId) ?? null
-    }
-    return parts
+  const handleExitFolder = () => {
+    store.setCurrentFolder(currentFolder?.parentId || null)
   }
 
   return (
@@ -570,35 +606,28 @@ export default function HomePage() {
       </div>
 
       {/* Breadcrumb for folder */}
-      {currentFolder &&
-        (() => {
-          const path = getBreadcrumbPath()
-          return (
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <button
-                onClick={() => store.setCurrentFolder(null)}
-                className="hover:text-foreground"
-              >
-                <Home className="h-3.5 w-3.5 inline" />
-              </button>
-              {path.map((f, i) => (
-                <span key={f.id} className="flex items-center gap-1">
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  {i < path.length - 1 ? (
-                    <button
-                      onClick={() => store.setCurrentFolder(f.id)}
-                      className="hover:text-foreground"
-                    >
-                      {f.name}
-                    </button>
-                  ) : (
-                    <span className="font-medium text-foreground">{f.name}</span>
-                  )}
-                </span>
-              ))}
-            </div>
-          )
-        })()}
+      {currentFolder && (
+        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <button onClick={() => store.setCurrentFolder(null)} className="hover:text-foreground">
+            <Home className="h-3.5 w-3.5 inline" />
+          </button>
+          {breadcrumbPath.map((f, i) => (
+            <span key={f.id} className="flex items-center gap-1">
+              <ChevronRight className="h-3.5 w-3.5" />
+              {i < breadcrumbPath.length - 1 ? (
+                <button
+                  onClick={() => store.setCurrentFolder(f.id)}
+                  className="hover:text-foreground"
+                >
+                  {f.name}
+                </button>
+              ) : (
+                <span className="font-medium text-foreground">{f.name}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Edit mode controls */}
       {store.editing && (
@@ -764,7 +793,7 @@ export default function HomePage() {
             <GridFolderCard
               key={folder.id}
               folder={folder}
-              fileCount={getFolderFileCount(folder.id)}
+              fileCount={folderFileCounts.get(folder.id) ?? 0}
               editing={store.editing}
               selected={store.selectedPaths.has(folder.id)}
               onToggle={() => store.toggleSelect(folder.id)}
@@ -832,7 +861,7 @@ export default function HomePage() {
       {/* Empty state */}
       {visibleFolders.length === 0 && visibleFiles.length === 0 && searchQuery !== '' && (
         <div className="text-center py-20 text-muted-foreground">
-          <p className="text-lg mb-2">未找到匹配「{store.searchQuery.trim()}」的文件</p>
+          <p className="text-lg mb-2">未找到匹配「{debouncedSearch.trim()}」的文件</p>
           <p className="text-sm">试试其他关键词，或清除搜索</p>
         </div>
       )}
