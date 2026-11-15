@@ -120,13 +120,13 @@ export default function HomePage() {
     store.load()
   }, [])
 
-  // 搜索输入先在本地状态中更新，防抖 120ms 再写入 store，避免每次按键触发列表全量过滤与排序
-  const [searchInput, setSearchInput] = useState(store.searchQuery)
+  // store 是搜索词的唯一状态源，输入框直接读写 store；仅列表过滤使用 120ms 防抖副本，避免逐键触发全量计算
+  const [debouncedSearch, setDebouncedSearch] = useState(store.searchQuery)
   useEffect(() => {
-    if (searchInput === useLibraryStore.getState().searchQuery) return
-    const timer = setTimeout(() => useLibraryStore.getState().setSearchQuery(searchInput), 120)
+    if (debouncedSearch === store.searchQuery) return
+    const timer = setTimeout(() => setDebouncedSearch(store.searchQuery), 120)
     return () => clearTimeout(timer)
-  }, [searchInput])
+  }, [store.searchQuery, debouncedSearch])
 
   // 播放进度以播放历史为唯一来源，mediaKey 对本地文件即绝对路径
   const [progressByPath, setProgressByPath] = useState<Record<string, number>>({})
@@ -384,7 +384,7 @@ export default function HomePage() {
     [store.folders, store.currentFolderId],
   )
 
-  const searchQuery = store.searchQuery.trim().toLowerCase()
+  const searchQuery = debouncedSearch.trim().toLowerCase()
 
   const visibleFolders = useMemo(() => {
     const matchQuery = (name: string) =>
@@ -516,18 +516,15 @@ export default function HomePage() {
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            value={store.searchQuery}
+            onChange={(e) => store.setSearchQuery(e.target.value)}
             placeholder="搜索文件名"
             className="h-8 w-32 sm:w-48 md:w-56 pl-7 pr-6 text-xs"
           />
-          {searchInput && (
+          {store.searchQuery && (
             <button
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                setSearchInput('')
-                store.setSearchQuery('')
-              }}
+              onClick={() => store.setSearchQuery('')}
               aria-label="清除搜索"
             >
               <X className="h-3.5 w-3.5" />
@@ -864,7 +861,7 @@ export default function HomePage() {
       {/* Empty state */}
       {visibleFolders.length === 0 && visibleFiles.length === 0 && searchQuery !== '' && (
         <div className="text-center py-20 text-muted-foreground">
-          <p className="text-lg mb-2">未找到匹配「{store.searchQuery.trim()}」的文件</p>
+          <p className="text-lg mb-2">未找到匹配「{debouncedSearch.trim()}」的文件</p>
           <p className="text-sm">试试其他关键词，或清除搜索</p>
         </div>
       )}
