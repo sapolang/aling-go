@@ -1172,7 +1172,7 @@ export default function PlayerPage() {
         store.setTranscriptionProgress(pct),
       )
       try {
-        await window.api.downloadWhisperModel('https://hf-mirror.com', 'tiny')
+        await window.api.downloadWhisperModel('tiny')
         await window.api.setWhisperModel('tiny')
       } catch (err: any) {
         dlCleanup()
@@ -1226,7 +1226,7 @@ export default function PlayerPage() {
       const msg = err?.message || String(err)
       store.setTranscriptionProgress(-1)
       if (msg.includes('fetch'))
-        showToast('模型下载失败，设 HF_MIRROR=https://hf-mirror.com 后重试', 'error')
+        showToast('模型下载失败，请检查网络或代理后在设置页重新下载模型', 'error')
       else showToast(`转录失败: ${msg}`, 'error')
     } finally {
       cleanup()
