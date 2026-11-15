@@ -13,7 +13,7 @@
 		<key>CFBundleIdentifier</key>
 		<string>com.aling-go</string>
 		<key>CFBundleName</key>
-		<string>语练</string>
+		<string>aling-go</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

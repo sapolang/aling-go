@@ -9,12 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"aling-go/internal/config"
 	"aling-go/internal/core"
 	"aling-go/internal/store/userdb"
 
@@ -97,44 +96,29 @@ type AIExplainData struct {
 }
 
 type AIService struct {
-	app     *application.App
-	dataDir string
-	mu      sync.RWMutex
-	cfg     AIConfig
+	app   *application.App
+	store *config.Store
+	mu    sync.RWMutex
+	cfg   AIConfig
 }
 
-func NewAIService(app *application.App, dataDir string) *AIService {
-	return &AIService{app: app, dataDir: dataDir, cfg: loadAIConfig(dataDir)}
+func NewAIService(app *application.App, store *config.Store) *AIService {
+	cfg := AIConfig{BaseURL: defaultAIBaseURL, Model: defaultAIModel}
+	st := store.Settings()
+	if v := strings.TrimSpace(st.AIBaseURL); v != "" {
+		cfg.BaseURL = strings.TrimRight(v, "/")
+	}
+	if v := strings.TrimSpace(st.AIModel); v != "" {
+		cfg.Model = v
+	}
+	cfg.APIKey = store.Secrets().AIAPIKey
+	return &AIService{app: app, store: store, cfg: cfg}
 }
 
 func (s *AIService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	return nil
 }
 func (s *AIService) ServiceShutdown() error { return nil }
-
-func aiConfigPath(dataDir string) string {
-	return filepath.Join(dataDir, "ai-config.json")
-}
-
-func loadAIConfig(dataDir string) AIConfig {
-	cfg := AIConfig{BaseURL: defaultAIBaseURL, Model: defaultAIModel}
-	data, err := os.ReadFile(aiConfigPath(dataDir))
-	if err != nil {
-		return cfg
-	}
-	var stored AIConfig
-	if err := json.Unmarshal(data, &stored); err != nil {
-		return cfg
-	}
-	if stored.BaseURL != "" {
-		cfg.BaseURL = strings.TrimRight(stored.BaseURL, "/")
-	}
-	if stored.Model != "" {
-		cfg.Model = stored.Model
-	}
-	cfg.APIKey = stored.APIKey
-	return cfg
-}
 
 // --- 配置 ---
 
@@ -164,16 +148,17 @@ func (s *AIService) SetAIConfig(in AIConfig) ActionResult {
 }
 
 func (s *AIService) saveConfig() error {
-	// #nosec G117 -- 配置仅写到本地 0600 文件，不会输出到日志或网络
-	data, err := json.Marshal(s.cfg)
-	if err != nil {
+	cfg := s.cfg
+	if err := s.store.UpdateSettings(func(st *config.Settings) {
+		st.AIBaseURL = cfg.BaseURL
+		st.AIModel = cfg.Model
+	}); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(s.dataDir, 0755); err != nil {
-		return err
-	}
-	// API Key 落盘，权限收紧到仅当前用户可读
-	return os.WriteFile(aiConfigPath(s.dataDir), data, 0600)
+	// API Key 单独落到 0600 的 secrets.json
+	return s.store.UpdateSecrets(func(sc *config.Secrets) {
+		sc.AIAPIKey = cfg.APIKey
+	})
 }
 
 func (s *AIService) client() (*openai.Client, AIConfig, error) {

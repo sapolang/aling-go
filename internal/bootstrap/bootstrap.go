@@ -4,10 +4,13 @@ package bootstrap
 
 import (
 	"embed"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
+	"aling-go/internal/config"
 	"aling-go/internal/content"
 	"aling-go/internal/core"
 	"aling-go/internal/study"
@@ -15,6 +18,14 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+const (
+	// appDataDirName 与 bundle identifier 保持一致，卸载工具才能把数据目录
+	// 正确关联到应用
+	appDataDirName = "com.aling-go"
+	// legacyAppDataDirName 是旧版本使用的数据目录，首次启动时整体改名迁移
+	legacyAppDataDirName = "aling-go"
 )
 
 // Config 是启动应用所需的外部输入（来自根包的 embed 与 ldflags）。
@@ -37,7 +48,8 @@ func Run(cfg Config) {
 	defer core.Close()
 
 	app := application.New(newAppOptions(cfg.Assets))
-	registerServices(app, dataDir, cfg.AppVersion)
+	store := config.New(dataDir, app.Logger)
+	registerServices(app, dataDir, store, cfg.AppVersion)
 
 	win := newMainWindow(app)
 	setupTray(app, win, cfg.TrayIcon)
@@ -52,7 +64,25 @@ func appDataDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDir, "aling-go"), nil
+	return resolveDataDir(configDir), nil
+}
+
+// resolveDataDir 返回应用数据目录。升级用户首次启动时把旧的 aling-go 目录
+// 整体改名为 com.aling-go：同一卷内 rename 是原子操作，1.8G 数据可以瞬间完成，
+// 不会出现半拷贝状态；迁移发生在 core.Init 打开数据库之前。
+func resolveDataDir(configDir string) string {
+	newDir := filepath.Join(configDir, appDataDirName)
+	oldDir := filepath.Join(configDir, legacyAppDataDirName)
+
+	if _, err := os.Stat(newDir); errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(oldDir); err == nil {
+			if err := os.Rename(oldDir, newDir); err != nil {
+				// 改名失败（如跨卷、权限不足）时继续使用旧目录，保证数据不丢
+				return oldDir
+			}
+		}
+	}
+	return newDir
 }
 
 func fatal(format string, args ...any) {
@@ -72,10 +102,10 @@ func newAppOptions(assets embed.FS) application.Options {
 	}
 }
 
-func registerServices(app *application.App, dataDir, version string) {
+func registerServices(app *application.App, dataDir string, store *config.Store, version string) {
 	librarySvc := content.NewLibraryService(app, dataDir)
-	feedSvc := content.NewFeedService(app, dataDir, librarySvc)
-	whisperSvc := content.NewWhisperService(app, dataDir)
+	feedSvc := content.NewFeedService(app, dataDir, librarySvc, store)
+	whisperSvc := content.NewWhisperService(app, dataDir, store)
 	// YouTube 无字幕时复用本地 Whisper 转录音轨
 	platformSvc := content.NewPlatformService(app, dataDir, feedSvc, whisperSvc)
 	mediaSvc := content.NewMediaService(app, dataDir)
@@ -97,7 +127,7 @@ func registerServices(app *application.App, dataDir, version string) {
 		application.NewService(system.NewPlatformService(app, version)),
 		application.NewService(system.NewBackupService(app, dataDir)),
 		application.NewService(system.NewUpdateService(app, version)),
-		application.NewService(system.NewAIService(app, dataDir)),
+		application.NewService(system.NewAIService(app, store)),
 	}
 	for _, svc := range services {
 		app.RegisterService(svc)

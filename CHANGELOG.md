@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Added
+- 设置持久化统一为 `internal/config`：`settings.json` 存普通设置，`secrets.json`（0600）存 API Key / Cookie，启动时自动迁移旧的 txt / json 配置
 - 基础设施：golangci-lint v2 接入（gosec / revive / gocyclo / misspell）
 - 基础设施：前端 ESLint + Prettier
 - 基础设施：lefthook pre-commit 钩子
@@ -16,6 +17,7 @@
 - 基础设施：SECURITY.md / CHANGELOG.md / Issue 模板
 
 ### Changed
+- bundle identifier 统一为 `com.aling-go`，CFBundleName 统一为 `aling-go`，用户数据目录同步改名，升级用户首次启动自动迁移旧的 `aling-go/` 目录
 - `make test` 现运行 typecheck + eslint，原 typecheck 拆为 `make typecheck`
 - 升级 Vite 5 → 8、@vitejs/plugin-react 4 → 6，清除 esbuild/vite 的 high 级漏洞
 - CI / Release 的 Node 版本由 20 提至 26（LTS，满足 Vite 8 引擎要求）
