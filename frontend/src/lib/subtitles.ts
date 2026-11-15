@@ -90,10 +90,12 @@ export function findCueIndexAt<T extends TimedCue>(
   return idx
 }
 
-/** 把秒格式化为 m:ss，与播放器时间码保持一致 */
+/** 把秒格式化为 m:ss（≥1 小时为 h:mm:ss），全站时间码统一使用 */
 export function formatClockTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  return `${m}:${Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, '0')}`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const mm = m.toString().padStart(2, '0')
+  const ss = s.toString().padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
 }

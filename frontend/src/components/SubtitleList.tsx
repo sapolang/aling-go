@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -43,7 +44,9 @@ interface SubtitleListProps {
 interface CueRowProps {
   cue: SubtitleCue
   index: number
-  played: number
+  /** 是否当前播放句：由父级统一算好后传入，避免播放进度导致每行重渲染 */
+  isActive: boolean
+  isPast: boolean
   offset: number
   range: { start: number; end: number } | null
   fontScale: number
@@ -55,10 +58,11 @@ interface CueRowProps {
   renderText: (cue: SubtitleCue) => ReactNode
 }
 
-function CueRow({
+const CueRow = memo(function CueRow({
   cue,
   index,
-  played,
+  isActive,
+  isPast,
   offset,
   range,
   fontScale,
@@ -69,9 +73,6 @@ function CueRow({
   onDragHover,
   renderText,
 }: CueRowProps) {
-  const cursor = played - offset
-  const isActive = cursor >= cue.startTime - 0.08 && cursor < cue.endTime
-  const isPast = cursor > cue.endTime
   const inRange = range !== null && index >= range.start && index <= range.end
 
   return (
@@ -121,7 +122,7 @@ function CueRow({
       </div>
     </div>
   )
-}
+})
 
 // 列表首尾留白，与原有字幕面板内边距保持一致
 const ListHeader = () => <div style={{ height: 6 }} />
@@ -152,6 +153,8 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const lastIdxRef = useRef(-2)
   const cursor = played - offset
+  // 当前句只计算一次，避免每行各自比较播放时间
+  const activeIndex = findCueIndexAt(cues, cursor, { inclusiveEnd: false })
 
   const scrollToIndex = useCallback((index: number) => {
     virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'smooth' })
@@ -229,7 +232,8 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
                 key={cue.id}
                 cue={cue}
                 index={index}
-                played={played}
+                isActive={index === activeIndex}
+                isPast={cursor > cue.endTime}
                 offset={offset}
                 range={range}
                 fontScale={fontScale}

@@ -22,51 +22,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-var mimeTypes = map[string]string{
-	".mp4":  "video/mp4",
-	".mp3":  "audio/mpeg",
-	".wav":  "audio/wav",
-	".m4a":  "audio/mp4",
-	".m4b":  "audio/mp4",
-	".m4v":  "video/mp4",
-	".mkv":  "video/x-matroska",
-	".mov":  "video/quicktime",
-	".webm": "video/webm",
-	".flac": "audio/flac",
-	".ogg":  "audio/ogg",
-	".oga":  "audio/ogg",
-	".opus": "audio/ogg",
-	".aac":  "audio/aac",
-	".aiff": "audio/aiff",
-	".aif":  "audio/aiff",
-	".caf":  "audio/x-caf",
-	".wma":  "audio/x-ms-wma",
-	".ape":  "audio/x-ape",
-	".wv":   "audio/x-wavpack",
-	".mka":  "audio/x-matroska",
-	".amr":  "audio/amr",
-	".ogv":  "video/ogg",
-	".avi":  "video/x-msvideo",
-	".wmv":  "video/x-ms-wmv",
-	".flv":  "video/x-flv",
-	".ts":   "video/mp2t",
-	".m2ts": "video/mp2t",
-	".mts":  "video/mp2t",
-	".mpg":  "video/mpeg",
-	".mpeg": "video/mpeg",
-	".3gp":  "video/3gpp",
-	".rmvb": "application/vnd.rn-realmedia-vbr",
-	".rm":   "application/vnd.rn-realmedia",
-}
-
-// transcodeAudioExts 标记纯音频容器：转码兜底时只取音轨，避免把长视频整体重编码
-var transcodeAudioExts = map[string]bool{
-	".mp3": true, ".m4a": true, ".m4b": true, ".aac": true, ".wav": true,
-	".flac": true, ".ogg": true, ".oga": true, ".opus": true, ".aiff": true,
-	".aif": true, ".caf": true, ".wma": true, ".ape": true, ".wv": true,
-	".mka": true, ".amr": true,
-}
-
 type MediaService struct {
 	app           *application.App
 	dataDir       string
@@ -217,7 +172,7 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 	}
 
 	ext := strings.ToLower(filepath.Ext(filePath))
-	mime := mimeTypes[ext]
+	mime := mediaMIME(ext)
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
@@ -625,8 +580,7 @@ func (s *MediaService) TranscodeForPlayback(filePath string) (string, error) {
 	}
 	caps := s.probeCaps(ffmpeg)
 
-	ext := strings.ToLower(filepath.Ext(filePath))
-	audioOnly := transcodeAudioExts[ext]
+	audioOnly := isAudioExt(filepath.Ext(filePath))
 
 	// 选输出容器：音频优先压缩成 m4a，没有编码器时退回体积更大的 wav
 	var outExt string

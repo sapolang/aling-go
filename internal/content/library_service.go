@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,32 +18,6 @@ func md5Hash(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
 	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-var videoExts = map[string]bool{
-	"mp4": true, "mkv": true, "avi": true, "mov": true, "webm": true, "flv": true,
-	"wmv": true, "ogv": true, "ts": true, "m2ts": true, "mts": true, "mpg": true,
-	"mpeg": true, "3gp": true, "rmvb": true, "rm": true,
-}
-var audioExts = map[string]bool{
-	"mp3": true, "wav": true, "m4a": true, "m4b": true, "ogg": true, "oga": true,
-	"opus": true, "flac": true, "aac": true, "wma": true, "aiff": true, "aif": true,
-	"caf": true, "ape": true, "wv": true, "mka": true, "amr": true,
-}
-var pdfExts = map[string]bool{"pdf": true}
-
-func detectFileType(name string) string {
-	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
-	if videoExts[ext] {
-		return "video"
-	}
-	if audioExts[ext] {
-		return "audio"
-	}
-	if pdfExts[ext] {
-		return "pdf"
-	}
-	return ""
 }
 
 func containsFile(files []LibraryFile, path string) bool {
@@ -365,31 +338,17 @@ func (s *LibraryService) RecentAdd(filePath string) []RecentEntry {
 		}
 	}
 	if !found {
-		now := time.Now().Format(time.RFC3339)
-		ftype := detectFileType(filePath)
-		if ftype != "" {
-			if len(lib.Files) >= 200 {
-				lib.Files = lib.Files[:199]
-			}
-			lib.Files = append([]LibraryFile{{
-				Path:     filePath,
-				Name:     filepath.Base(filePath),
-				Type:     ftype,
-				FolderID: "",
-				AddedAt:  now,
-			}}, lib.Files...)
-		} else {
-			if len(lib.Files) >= 200 {
-				lib.Files = lib.Files[:199]
-			}
-			lib.Files = append([]LibraryFile{{
-				Path:     filePath,
-				Name:     filepath.Base(filePath),
-				Type:     "",
-				FolderID: "",
-				AddedAt:  now,
-			}}, lib.Files...)
+		// 未知类型也保留记录（type 为空），仅用于最近打开列表展示
+		if len(lib.Files) >= 200 {
+			lib.Files = lib.Files[:199]
 		}
+		lib.Files = append([]LibraryFile{{
+			Path:     filePath,
+			Name:     filepath.Base(filePath),
+			Type:     detectFileType(filePath),
+			FolderID: "",
+			AddedAt:  time.Now().Format(time.RFC3339),
+		}}, lib.Files...)
 	}
 	s.writeLibrary(lib)
 	return toRecentEntries(lib.Files)

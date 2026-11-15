@@ -7,11 +7,6 @@ import (
 	"aling-go/internal/store/userdb"
 )
 
-// q 返回基于当前用户库句柄的类型安全查询集合。
-func q() *userdb.Queries {
-	return userdb.New(core.DB)
-}
-
 func dbGetCategories() []ArticleCategory {
 	rows, err := core.ArticleDB.Query("SELECT id, en_name, name, description, cover, length FROM categories ORDER BY id")
 	if err != nil {
