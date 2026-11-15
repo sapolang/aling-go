@@ -107,6 +107,8 @@ aling-go/
 └── Makefile                 # Build targets
 ```
 
+> 新增服务、数据访问或前端页面之前，先读 [AGENTS.md](AGENTS.md)。
+
 ## Testing
 
 ```bash
