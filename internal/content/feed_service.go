@@ -86,6 +86,8 @@ type FeedService struct {
 
 	mu    sync.RWMutex
 	proxy string
+	// client 复用 HTTP 连接；代理配置变化时置空，下次使用时按新代理重建
+	client *http.Client
 
 	// biliCookie 是匿名请求 B站接口所需的 buvid Cookie，首次使用时生成
 	biliCookie string
@@ -168,8 +170,13 @@ func (s *FeedService) SetProxy(proxy string) ActionResult {
 	}
 	s.mu.Lock()
 	s.proxy = proxy
+	oldClient := s.client
+	s.client = nil
 	cookie := s.biliUserCookie
 	s.mu.Unlock()
+	if oldClient != nil {
+		oldClient.CloseIdleConnections()
+	}
 
 	if err := saveFeedConfig(s.dataDir, feedConfig{Proxy: proxy, BilibiliCookie: cookie}); err != nil {
 		return ActionResult{Error: "保存配置失败: " + err.Error()}
@@ -214,16 +221,33 @@ func normalizeCookie(cookie string) string {
 }
 
 func (s *FeedService) httpClient() *http.Client {
-	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	s.mu.RLock()
-	proxy := s.proxy
+	client := s.client
 	s.mu.RUnlock()
-	if proxy != "" {
-		if u, err := url.Parse(proxy); err == nil {
+	if client != nil {
+		return client
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// 双重检查：并发首次调用时只创建一个 client
+	if s.client != nil {
+		return s.client
+	}
+	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 8,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 15 * time.Second,
+	}
+	if s.proxy != "" {
+		if u, err := url.Parse(s.proxy); err == nil {
 			transport.Proxy = http.ProxyURL(u)
 		}
 	}
-	return &http.Client{Timeout: 60 * time.Second, Transport: transport}
+	s.client = &http.Client{Timeout: 60 * time.Second, Transport: transport}
+	return s.client
 }
 
 // HTTPClient 返回带用户代理配置的 HTTP 客户端，供其他服务（如 B 站取流）复用
