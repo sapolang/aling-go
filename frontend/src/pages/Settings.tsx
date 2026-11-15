@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { confirmDialog, showToast } from '@/components/feedback'
-import type { CacheStats, WhisperDownloadProgress } from '@/types/api'
+import type { BackupStatus, CacheStats, WhisperDownloadProgress } from '@/types/api'
 import { useThemeStore } from '@/stores/themeStore'
 import type { ThemeMode } from '@/stores/themeStore'
 import {
@@ -103,11 +103,7 @@ export default function SettingsPage() {
   const [aiTestMsg, setAiTestMsg] = useState<{ ok: boolean; message: string } | null>(null)
 
   // --- 数据备份 ---
-  const [backupStatus, setBackupStatus] = useState<{
-    lastBackup: string
-    dir: string
-    files: { name: string; size: number }[]
-  } | null>(null)
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null)
   const [backingUp, setBackingUp] = useState(false)
 
   // --- 缓存管理 ---

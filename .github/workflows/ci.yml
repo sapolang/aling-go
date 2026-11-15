@@ -35,8 +35,13 @@ jobs:
         if: steps.cache-wails.outputs.cache-hit != 'true'
         run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
 
+      # 与打包使用同一套参数（make bindings，含 -i），保证 CI 类型检查覆盖真实产物
       - name: Generate bindings
-        run: wails3 generate bindings -ts
+        run: make bindings
+
+      # 回归保护：若误用默认 class 模式生成，可空类型会消失，CI 将漏掉打包阶段的 tsc 错误
+      - name: Verify bindings are interface mode
+        run: grep -q '^export interface ' frontend/bindings/aling-go/internal/study/models.ts
 
       - uses: actions/upload-artifact@v4
         with:

@@ -1,4 +1,4 @@
-.PHONY: dev build dmg zip exe dist sidecar clean run vet tidy frontend-install upgrade-wails lint typecheck test sqlc
+.PHONY: dev build dmg zip exe dist sidecar clean run vet tidy frontend-install bindings upgrade-wails lint typecheck test sqlc
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -114,6 +114,12 @@ sqlc:
 frontend-install:
 	cd frontend && npm install
 
+# 生成前端 bindings（产物 gitignored）。参数必须与 build/Taskfile.yml 的 generate:bindings 一致：
+# -i 生成 TS interface，Go 切片会带 T[] | null；若改用默认 class 模式，可空类型会消失，
+# CI 的类型检查就和真实打包产物不一致（曾导致 Release 打包时 tsc 才报错）
+bindings:
+	wails3 generate bindings -f '-tags production' -clean=true -ts -i
+
 # 升级 Wails 版本：make upgrade-wails            → 最新稳定版
 #                 make upgrade-wails VERSION=v3.1.0
 # 依次同步 CLI、Go 依赖、前端 runtime，并重新生成绑定，最后做校验
@@ -129,7 +135,7 @@ upgrade-wails:
 	( cd frontend && npm install "@wailsio/runtime@$$NPM_REF" ); \
 	go mod tidy; \
 	echo "==> 重新生成 bindings"; \
-	wails3 generate bindings -ts; \
+	$(MAKE) --no-print-directory bindings; \
 	echo "==> 前端构建 + go vet"; \
 	( cd frontend && npm run build ); \
 	go vet ./...; \

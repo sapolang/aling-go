@@ -167,16 +167,17 @@ export function initBridge(): void {
     readTextFile: (path: string) => ReadTextFile(path),
     writeTextFile: (path: string, content: string) => WriteTextFile(path, content),
 
-    dbWordsList: () => DbWordsList(),
+    // bindings 以 interface 模式生成时，Go 切片返回类型为 T[] | null；这里统一归一化为空数组
+    dbWordsList: () => DbWordsList().then((rows) => rows ?? []),
     dbWordsAdd: (word: any) => DbWordsAdd(word),
     dbWordsUpdate: (id: number, data: any) => DbWordsUpdate(id, data),
     dbWordsDelete: (id: number) => DbWordsDelete(id),
     dbWordsDeleteBatch: (ids: number[]) => DbWordsDeleteBatch(ids),
-    dbWordsGetReview: () => DbWordsGetReview(),
+    dbWordsGetReview: () => DbWordsGetReview().then((rows) => rows ?? []),
     dbWordsGetReviewCount: () => DbWordsGetReviewCount(),
-    dbWordsSearch: (query: string) => DbWordsSearch(query),
+    dbWordsSearch: (query: string) => DbWordsSearch(query).then((rows) => rows ?? []),
 
-    dbTagsList: () => DbTagsList(),
+    dbTagsList: () => DbTagsList().then((rows) => rows ?? []),
     dbTagsAdd: (name: string, color: string) => DbTagsAdd(name, color),
     dbTagsDelete: (id: number) => DbTagsDelete(id),
 
@@ -188,11 +189,11 @@ export function initBridge(): void {
     learningStats: () => GetLearningStats(),
     extendedStats: () => GetExtendedStats(),
 
-    whisperTranscribe: (filePath: string) => Transcribe(filePath),
+    whisperTranscribe: (filePath: string) => Transcribe(filePath).then((subs) => subs ?? []),
     whisperStatus: () => WhisperStatus(),
     downloadWhisperModel: (modelName: string) => DownloadWhisperModel(modelName),
     setWhisperModel: (name: string) => SetWhisperModel(name),
-    listWhisperModels: () => ListWhisperModels(),
+    listWhisperModels: () => ListWhisperModels().then((models) => models ?? []),
     getWhisperLang: () => GetWhisperLang(),
     setWhisperLang: (lang: string) => SetWhisperLang(lang),
     onWhisperProgress: (cb: (data: any) => void) =>
@@ -221,7 +222,7 @@ export function initBridge(): void {
     historyClear: () => HistoryClear(),
 
     getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
-    getWaveformData: (filePath: string) => GetWaveformData(filePath),
+    getWaveformData: (filePath: string) => GetWaveformData(filePath).then((data) => data ?? []),
     transcodeForPlayback: (filePath: string) => TranscodeForPlayback(filePath),
     getPlatform: () => GetPlatform(),
     getVersion: () => GetVersion(),
@@ -253,13 +254,14 @@ export function initBridge(): void {
     platformTranscribePodcast: (episodeId: number, force: boolean) =>
       PlatformTranscribePodcast(episodeId, force),
 
-    dbDictTags: () => DbDictTags(),
-    dbDictWords: (tag: string) => DbDictWords(tag),
+    dbDictTags: () => DbDictTags().then((tags) => tags ?? []),
+    dbDictWords: (tag: string) => DbDictWords(tag).then((words) => words ?? []),
     dbDictAddToWordList: (words: any[]) => DbDictAddToWordList(words),
     dbDictSaveProgress: (tag: string, index: number) => DbDictSaveProgress(tag, index),
     dbDictGetProgress: (tag: string) => DbDictGetProgress(tag),
     dbDictLookup: (word: string) => DbDictLookup(word),
-    dbDictSearch: (query: string, limit?: number) => DbDictSearch(query, limit ?? 50),
+    dbDictSearch: (query: string, limit?: number) =>
+      DbDictSearch(query, limit ?? 50).then((words) => words ?? []),
 
     libraryList: () => LibraryList(),
     libraryImport: (category: string, folderId: string) => LibraryImport(category, folderId),
@@ -276,22 +278,24 @@ export function initBridge(): void {
 
     openExternal: (path: string) => OpenExternal(path),
 
-    getCategories: () => GetCategories(),
-    getArticles: (categoryEnName: string) => GetArticles(categoryEnName),
+    getCategories: () => GetCategories().then((categories) => categories ?? []),
+    getArticles: (categoryEnName: string) =>
+      GetArticles(categoryEnName).then((articles) => articles ?? []),
     getArticle: (id: number) => GetArticle(id),
     getTypingProgress: (articleId: number, mode: string) => GetTypingProgress(articleId, mode),
     saveTypingProgress: (progress: any) => SaveTypingProgress(progress),
-    getTypingRecords: (articleId: number) => GetTypingRecords(articleId),
+    getTypingRecords: (articleId: number) =>
+      GetTypingRecords(articleId).then((records) => records ?? []),
     saveTypingRecord: (record: any) => SaveTypingRecord(record),
-    getAllTypingProgress: () => GetAllTypingProgress(),
+    getAllTypingProgress: () => GetAllTypingProgress().then((progress) => progress ?? []),
     addWordsBatch: (words: any[]) => AddWordsBatch(words),
 
-    favoriteList: (tagId: number) => FavoriteList(tagId),
+    favoriteList: (tagId: number) => FavoriteList(tagId).then((clips) => clips ?? []),
     favoriteAdd: (clip: any) => FavoriteAdd(clip),
     favoriteDelete: (id: number) => FavoriteDelete(id),
     favoriteUpdateTag: (id: number, tagId: number) => FavoriteUpdateTag(id, tagId),
     favoriteReview: (id: number, rating: number) => FavoriteReview(id, rating),
-    favoriteTagsList: () => FavoriteTagsList(),
+    favoriteTagsList: () => FavoriteTagsList().then((tags) => tags ?? []),
     favoriteTagAdd: (name: string) => FavoriteTagAdd(name),
     favoriteTagDelete: (id: number) => FavoriteTagDelete(id),
 
