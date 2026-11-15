@@ -104,12 +104,17 @@ func (s *MediaService) ServiceShutdown() error {
 
 // --- Media streaming ---
 
-func (s *MediaService) startMediaServer() {
+func (s *MediaService) mediaMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media/", s.handleMediaStream)
 	mux.HandleFunc("/podcast-stream", s.handlePodcastStream)
 	mux.HandleFunc("/yt-embed", s.handleYTEmbed)
 	mux.HandleFunc("/bili-stream", s.handleBiliStream)
+	return mux
+}
+
+func (s *MediaService) startMediaServer() {
+	mux := s.mediaMux()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -125,22 +130,83 @@ func (s *MediaService) GetMediaPort() int {
 	return s.mediaPort
 }
 
+// authorizeMediaPath 校验请求路径是否允许经由本地代理读取，返回解析后的真实路径。
+// 只放行媒体库登记的文件与应用自管目录（转码缓存、播客下载），并通过解析符号链接
+// 确保目标不会落到允许范围之外。第二个返回值为 0 表示通过，否则为应返回的 HTTP 状态码。
+func (s *MediaService) authorizeMediaPath(filePath string) (string, int) {
+	// filepath.Clean 会改写带 .. 的路径，与原始值不一致即视为非法
+	if !filepath.IsAbs(filePath) || filepath.Clean(filePath) != filePath {
+		return "", http.StatusForbidden
+	}
+	resolved, err := filepath.EvalSymlinks(filePath)
+	if err != nil {
+		return "", http.StatusNotFound
+	}
+	if s.isAllowedMediaPath(resolved) {
+		return resolved, 0
+	}
+	return "", http.StatusForbidden
+}
+
+// isAllowedMediaPath 判断真实路径是否落在媒体库或应用自管目录内。
+func (s *MediaService) isAllowedMediaPath(resolved string) bool {
+	for _, root := range []string{
+		filepath.Join(s.dataDir, "transcoded"),
+		filepath.Join(s.dataDir, "podcasts"),
+	} {
+		resolvedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		if isPathWithin(resolved, resolvedRoot) {
+			return true
+		}
+	}
+	for _, file := range loadLibrary(s.dataDir).Files {
+		entry := file.Path
+		if resolvedEntry, err := filepath.EvalSymlinks(entry); err == nil {
+			entry = resolvedEntry
+		}
+		if entry == resolved {
+			return true
+		}
+	}
+	return false
+}
+
+// isPathWithin 判断 path 是否位于 root 目录内（允许等于 root）。
+func isPathWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request) {
 	rawPath := strings.TrimPrefix(r.URL.Path, "/media/")
 	filePath, err := url.QueryUnescape(rawPath)
 	if err != nil {
-		http.Error(w, "invalid path", 400)
+		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
-	if strings.Contains(filePath, "..") || !filepath.IsAbs(filePath) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	filePath, status := s.authorizeMediaPath(filePath)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
 
-	stat, err := os.Stat(filePath)
+	f, err := os.Open(filePath)
 	if err != nil {
-		http.Error(w, "file not found", 404)
+		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	stat, err := f.Stat()
+	if err != nil || stat.IsDir() {
+		http.Error(w, "file not found", http.StatusNotFound)
 		return
 	}
 
@@ -150,54 +216,8 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 		mime = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Accept-Ranges", "bytes")
-
-	fileSize := stat.Size()
-
-	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
-		var start, end int64 = 0, fileSize - 1
-		if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end); err == nil {
-			if end == 0 || end >= fileSize {
-				end = fileSize - 1
-			}
-		} else {
-			if strings.HasPrefix(rangeHeader, "bytes=") {
-				parts := strings.SplitN(rangeHeader[6:], "-", 2)
-				if len(parts) == 2 && parts[0] == "" {
-					suffix, _ := strconv.ParseInt(parts[1], 10, 64)
-					if suffix > 0 && suffix <= fileSize {
-						start = fileSize - suffix
-					}
-				}
-			}
-		}
-		if start < 0 {
-			start = 0
-		}
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
-		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
-		w.WriteHeader(206)
-
-		f, err := os.Open(filePath)
-		if err != nil {
-			http.Error(w, "file not found", 404)
-			return
-		}
-		defer f.Close()
-		_, _ = f.Seek(start, 0)
-		_, _ = io.CopyN(w, f, end-start+1)
-		return
-	}
-
-	w.Header().Set("Content-Length", strconv.FormatInt(fileSize, 10))
-	w.WriteHeader(200)
-	f, err := os.Open(filePath)
-	if err != nil {
-		http.Error(w, "file not found", 404)
-		return
-	}
-	defer f.Close()
-	_, _ = io.Copy(w, f)
+	// Range、If-Range、Last-Modified 等由标准库处理，避免手写解析导致区间错误
+	http.ServeContent(w, r, filepath.Base(filePath), stat.ModTime(), f)
 }
 
 // handlePodcastStream 代理已订阅节目的在线音频，避免 HTTP 混合内容并复用订阅代理设置。
