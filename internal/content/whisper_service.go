@@ -72,8 +72,10 @@ type WhisperDownloadProgress struct {
 }
 
 type WhisperService struct {
-	app         *application.App
-	dataDir     string
+	app     *application.App
+	dataDir string
+	// cfgMu 保护 modelFile 与 whisperLang：UI goroutine 写入、转录 goroutine 读取
+	cfgMu       sync.RWMutex
 	modelFile   string
 	whisperLang string
 	gpuDisabled atomic.Bool
@@ -153,7 +155,7 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 	// 上一次失败的残留会让下面的读取误判为成功
 	_ = os.Remove(outFile + ".json")
 
-	args := []string{"-f", wavPath, "-m", modelPath, "-oj", "-of", outFile, "-pp", "-l", s.whisperLang}
+	args := []string{"-f", wavPath, "-m", modelPath, "-oj", "-of", outFile, "-pp", "-l", s.currentWhisperLang()}
 	args = append(args, extraArgs...)
 	cmd := exec.Command(sidecar, args...)
 	s.app.Logger.Debug("Transcribe cmd", "cmd", cmd.String())
@@ -168,9 +170,14 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 	var (
 		stderrMu    sync.Mutex
 		stderrLines []string
+		readDone    sync.WaitGroup
 	)
+	readDone.Add(1)
 	go func() {
+		defer readDone.Done()
 		scanner := bufio.NewScanner(stderr)
+		// 避免单行过长时读取提前中断，导致子进程写满管道阻塞
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			stderrMu.Lock()
@@ -195,6 +202,8 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 		}
 	}()
 
+	// StderrPipe 文档要求读完管道后才能调用 Wait，否则 Wait 关闭管道会截断 stderr
+	readDone.Wait()
 	waitErr := cmd.Wait()
 
 	data, err := os.ReadFile(outFile + ".json")
@@ -237,18 +246,21 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 // --- Whisper status / model ---
 
 func (s *WhisperService) WhisperStatus() WhisperStatus {
-	modelPath := s.modelPath()
-	_, err := os.Stat(modelPath)
+	modelFile := s.currentModelFile()
+	_, err := os.Stat(filepath.Join(s.dataDir, "whisper-models", modelFile))
 	return WhisperStatus{
 		Loaded:  err == nil,
 		Loading: false,
-		Model:   s.modelFile,
+		Model:   modelFile,
 	}
 }
 
 func (s *WhisperService) SetWhisperModel(name string) {
-	s.modelFile = s.modelFileFor(name)
-	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-model.txt"), []byte(s.modelFile), 0644)
+	modelFile := s.modelFileFor(name)
+	s.cfgMu.Lock()
+	s.modelFile = modelFile
+	s.cfgMu.Unlock()
+	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-model.txt"), []byte(modelFile), 0644)
 }
 
 func (s *WhisperService) loadWhisperModel() {
@@ -262,11 +274,13 @@ func (s *WhisperService) loadWhisperModel() {
 }
 
 func (s *WhisperService) GetWhisperLang() string {
-	return s.whisperLang
+	return s.currentWhisperLang()
 }
 
 func (s *WhisperService) SetWhisperLang(lang string) {
+	s.cfgMu.Lock()
 	s.whisperLang = lang
+	s.cfgMu.Unlock()
 	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-lang.txt"), []byte(lang), 0644)
 }
 
@@ -317,33 +331,50 @@ func (s *WhisperService) DownloadWhisperModel(modelName string) error {
 	}
 	defer cleanup()
 
-	s.modelFile = s.modelFileFor(modelName)
+	modelFile := s.modelFileFor(modelName)
+	urls := make([]string, 0, len(whisperModelSources))
+	for _, src := range whisperModelSources {
+		urls = append(urls, src.Base+"/"+modelFile)
+	}
+	fetch := func(url, tmpPath string) error {
+		s.app.Logger.Info("downloading whisper model", "url", url, "model", modelName)
+		if err := s.downloadFromURL(url, tmpPath); err != nil {
+			s.app.Logger.Info("download source failed, trying next", "url", url, "error", err)
+			return err
+		}
+		return nil
+	}
+	return s.downloadModel(modelName, urls, fetch)
+}
+
+// downloadModel 依次尝试各个下载地址。只有校验通过且重命名成功后才会切换当前模型，
+// 避免下载失败后 WhisperStatus 与转录仍指向一个不存在的模型文件。
+func (s *WhisperService) downloadModel(modelName string, urls []string, fetch func(url, tmpPath string) error) error {
+	modelFile := s.modelFileFor(modelName)
 	modelDir := filepath.Join(s.dataDir, "whisper-models")
 	_ = os.MkdirAll(modelDir, 0755)
-	modelPath := s.modelPath()
+	modelPath := filepath.Join(modelDir, modelFile)
 	tmpPath := modelPath + ".tmp"
 
 	var lastErr error
-	ok := false
-	for _, src := range whisperModelSources {
-		s.app.Logger.Info("downloading whisper model", "source", src.Name, "model", modelName)
-		if err := s.downloadFromURL(src.Base+"/"+s.modelFile, tmpPath); err != nil {
-			s.app.Logger.Info("download source failed, trying next", "source", src.Name, "error", err)
+	for _, url := range urls {
+		if err := fetch(url, tmpPath); err != nil {
 			lastErr = err
 			continue
 		}
-		ok = true
-		break
+		if err := verifyModelSHA256(tmpPath, modelFile); err != nil {
+			_ = os.Remove(tmpPath)
+			return err
+		}
+		if err := os.Rename(tmpPath, modelPath); err != nil {
+			return err
+		}
+		s.cfgMu.Lock()
+		s.modelFile = modelFile
+		s.cfgMu.Unlock()
+		return nil
 	}
-	if !ok {
-		return fmt.Errorf("all download sources failed: %w", lastErr)
-	}
-
-	if err := s.verifyModelSHA256(tmpPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	return os.Rename(tmpPath, modelPath)
+	return fmt.Errorf("all download sources failed: %w", lastErr)
 }
 
 // downloadFromURL 下载到 tmpPath；已存在 tmp 时用 Range 断点续传，失败保留 tmp
@@ -415,10 +446,10 @@ func (s *WhisperService) downloadFromURL(url, tmpPath string) error {
 	return out.Close()
 }
 
-func (s *WhisperService) verifyModelSHA256(path string) error {
+func verifyModelSHA256(path, modelFile string) error {
 	want := ""
 	for _, m := range whisperModels {
-		if m.File == s.modelFile {
+		if m.File == modelFile {
 			want = m.SHA256
 			break
 		}
@@ -453,7 +484,19 @@ func (s *WhisperService) GetDownloadProgress() *WhisperDownloadProgress {
 // --- Helpers ---
 
 func (s *WhisperService) modelPath() string {
-	return filepath.Join(s.dataDir, "whisper-models", s.modelFile)
+	return filepath.Join(s.dataDir, "whisper-models", s.currentModelFile())
+}
+
+func (s *WhisperService) currentModelFile() string {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.modelFile
+}
+
+func (s *WhisperService) currentWhisperLang() string {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.whisperLang
 }
 
 func (s *WhisperService) modelFileFor(name string) string {

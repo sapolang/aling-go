@@ -243,7 +243,7 @@ export interface ElectronAPI {
 
   whisperTranscribe: (filePath: string) => Promise<SubtitleItem[]>
   whisperStatus: () => Promise<WhisperStatus>
-  downloadWhisperModel: (mirrorURL: string, modelName: string) => Promise<void>
+  downloadWhisperModel: (modelName: string) => Promise<void>
   setWhisperModel: (name: string) => void
   listWhisperModels: () => Promise<WhisperModelInfo[]>
   getWhisperLang: () => Promise<string>
