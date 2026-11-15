@@ -189,14 +189,10 @@ export function initBridge(): void {
     listWhisperModels: () => ListWhisperModels(),
     getWhisperLang: () => GetWhisperLang(),
     setWhisperLang: (lang: string) => SetWhisperLang(lang),
-    onWhisperProgress: (cb: (data: any) => void) => {
-      Events.On('whisper:progress', (e: any) => cb(e.data))
-      return () => Events.Off('whisper:progress')
-    },
-    onDownloadProgress: (cb: (pct: number) => void) => {
-      Events.On('whisper:download-progress', (e: any) => cb(e.data))
-      return () => Events.Off('whisper:download-progress')
-    },
+    onWhisperProgress: (cb: (data: any) => void) =>
+      Events.On('whisper:progress', (e: any) => cb(e.data)),
+    onDownloadProgress: (cb: (pct: number) => void) =>
+      Events.On('whisper:download-progress', (e: any) => cb(e.data)),
     getDownloadProgress: () => GetDownloadProgress(),
 
     recentList: () => RecentList(),
@@ -237,10 +233,8 @@ export function initBridge(): void {
     getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid),
     feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin(),
     feedPollBilibiliQRLogin: (key: string) => FeedPollBilibiliQRLogin(key),
-    feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => {
-      Events.On('feed:download-progress', (e: any) => cb(e.data))
-      return () => Events.Off('feed:download-progress')
-    },
+    feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) =>
+      Events.On('feed:download-progress', (e: any) => cb(e.data)),
     platformConvertToRSS: (url: string) => PlatformConvertToRSS(url),
     platformGetRSSHubURL: () => GetRSSHubURL(),
     platformSetRSSHubURL: (u: string) => SetRSSHubURL(u),
@@ -295,14 +289,10 @@ export function initBridge(): void {
     aiTranslateStream: (text: string, context: string, reqId: string) =>
       TranslateStream(text, context, reqId),
     aiExplain: (text: string, context: string) => Explain(text, context),
-    aiOnChunk: (cb: (data: { reqId: string; delta: string }) => void) => {
-      Events.On('ai:translate:chunk', (e: any) => cb(e.data))
-      return () => Events.Off('ai:translate:chunk')
-    },
-    aiOnDone: (cb: (data: { reqId: string; text?: string; error?: string }) => void) => {
-      Events.On('ai:translate:done', (e: any) => cb(e.data))
-      return () => Events.Off('ai:translate:done')
-    },
+    aiOnChunk: (cb: (data: { reqId: string; delta: string }) => void) =>
+      Events.On('ai:translate:chunk', (e: any) => cb(e.data)),
+    aiOnDone: (cb: (data: { reqId: string; text?: string; error?: string }) => void) =>
+      Events.On('ai:translate:done', (e: any) => cb(e.data)),
 
     backupNow: () => BackupNow(),
     getBackupStatus: () => GetBackupStatus(),
@@ -311,13 +301,11 @@ export function initBridge(): void {
     getUpdateState: () => GetUpdateState(),
     downloadUpdate: () => DownloadLatest(),
     applyUpdate: () => ApplyUpdate(),
-    updateOnProgress: (cb: (pct: number) => void) => {
+    updateOnProgress: (cb: (pct: number) => void) =>
       Events.On('wails:updater:download-progress', (e: any) => {
         const p = e?.data
         const pct = p && p.total > 0 ? Math.min(100, Math.round((p.written / p.total) * 100)) : 0
         cb(pct)
-      })
-      return () => Events.Off('wails:updater:download-progress')
-    },
+      }),
   } as any
 }

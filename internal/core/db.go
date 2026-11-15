@@ -48,11 +48,16 @@ func initDB(dataDir string) error {
 		return err
 	}
 	dbPath := filepath.Join(dataDir, "userData.db")
+	// WAL 让读写可以并发，busy_timeout 让并发写等待锁而不是直接报 database is locked。
+	dsn := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	var err error
-	DB, err = sql.Open("sqlite", dbPath)
+	DB, err = sql.Open("sqlite", dsn)
 	if err != nil {
 		return err
 	}
+	// SQLite 是单写者模型，限制为单连接，避免多连接互相抢锁。
+	DB.SetMaxOpenConns(1)
+	DB.SetMaxIdleConns(1)
 	return createTables()
 }
 

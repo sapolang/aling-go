@@ -1,9 +1,11 @@
 package content
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 )
 
@@ -207,6 +209,48 @@ func TestSanitizeFileName(t *testing.T) {
 	}
 	if got := sanitizeFileName("   "); got != "" {
 		t.Errorf("blank name = %q", got)
+	}
+}
+
+func TestHTTPClientReusesConnections(t *testing.T) {
+	var mu sync.Mutex
+	remotes := map[string]struct{}{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		remotes[r.RemoteAddr] = struct{}{}
+		mu.Unlock()
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	svc := &FeedService{}
+	for i := 0; i < 5; i++ {
+		resp, err := svc.httpClient().Get(srv.URL)
+		if err != nil {
+			t.Fatalf("request %d: %v", i, err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}
+
+	// 连接复用时所有请求应来自同一个本地连接
+	if len(remotes) != 1 {
+		t.Fatalf("got %d connections, want 1 (keep-alive not reused)", len(remotes))
+	}
+}
+
+func TestSetProxyRebuildsHTTPClient(t *testing.T) {
+	svc := &FeedService{dataDir: t.TempDir()}
+	before := svc.httpClient()
+	if got := svc.httpClient(); got != before {
+		t.Fatal("httpClient should be cached")
+	}
+
+	if r := svc.SetProxy("http://127.0.0.1:7890"); !r.OK {
+		t.Fatalf("SetProxy failed: %s", r.Error)
+	}
+	if svc.httpClient() == before {
+		t.Fatal("proxy change should rebuild the HTTP client")
 	}
 }
 
