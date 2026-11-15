@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { DailyReview, TypingDayStat } from '@/types/electron'
+import type { DailyReview, TypingDayStat } from '@/types/api'
 
 const fmtInt = (n: number): string => n.toLocaleString('zh-CN')
 

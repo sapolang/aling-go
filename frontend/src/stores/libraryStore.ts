@@ -1,20 +1,8 @@
 import { create } from 'zustand'
+import type { LibraryFile, Folder } from '@/types/api'
 
-export interface LibraryFile {
-  path: string
-  name: string
-  type: 'video' | 'audio' | 'pdf'
-  folderId: string
-  addedAt: string
-  lastPosition?: number
-}
-
-export interface Folder {
-  id: string
-  name: string
-  createdAt: string
-  parentId: string
-}
+// 媒体库结构由 Wails bindings 生成，这里仅做转出，避免与后端重复维护
+export type { LibraryFile, Folder }
 
 export type Category = 'all' | 'folder' | 'video' | 'audio' | 'pdf'
 export type ViewMode = 'grid' | 'list'

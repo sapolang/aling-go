@@ -34,7 +34,7 @@ func (s *BackupService) ServiceStartup(ctx context.Context, options application.
 	last, err := s.lastBackupTime()
 	if err != nil || last.IsZero() || time.Since(last) > backupAutoInterval {
 		if _, err := s.runBackup(); err != nil {
-			fmt.Fprintf(os.Stderr, "auto backup failed: %v\n", err)
+			s.app.Logger.Error("auto backup", "error", err)
 		}
 	}
 	return nil
@@ -66,7 +66,7 @@ type BackupResult struct {
 // library.json 直接文件拷贝，均输出到配置目录 backups/ 下，保留最近 7 份。
 func (s *BackupService) BackupNow() BackupResult {
 	if _, err := s.runBackup(); err != nil {
-		fmt.Fprintf(os.Stderr, "BackupNow: %v\n", err)
+		s.app.Logger.Error("BackupNow", "error", err)
 		return BackupResult{OK: false, Error: err.Error()}
 	}
 	status := s.getStatus()

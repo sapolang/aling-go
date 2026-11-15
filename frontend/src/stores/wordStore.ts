@@ -1,26 +1,8 @@
 import { create } from 'zustand'
+import type { Word, Tag } from '@/types/api'
 
-export interface Word {
-  id: number
-  word: string
-  definition: string
-  phonetic: string
-  example: string
-  tags: string
-  level: number
-  next_review: string
-  created_at: string
-  updated_at: string
-  repetitions: number
-  efactor: number
-  interval: number
-}
-
-interface Tag {
-  id: number
-  name: string
-  color: string
-}
+// 生词与标签结构由 Wails bindings 生成，这里仅做转出
+export type { Word, Tag }
 
 export const DEFAULT_NEW_LIMIT = 20
 export const DEFAULT_REVIEW_LIMIT = 100

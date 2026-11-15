@@ -172,7 +172,7 @@ func (q *Queries) UpdateHistoryPosition(ctx context.Context, arg UpdateHistoryPo
 	return err
 }
 
-const upsertHistory = `-- name: UpsertHistory :exec
+const upsertHistory = `-- name: UpsertHistory :one
 INSERT INTO play_history (media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
 ON CONFLICT(media_key) DO UPDATE SET
@@ -184,6 +184,7 @@ ON CONFLICT(media_key) DO UPDATE SET
 	duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE play_history.duration END,
 	play_count = play_history.play_count + 1,
 	last_played_at = datetime('now','localtime')
+RETURNING media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
 `
 
 type UpsertHistoryParams struct {
@@ -197,8 +198,8 @@ type UpsertHistoryParams struct {
 	Duration  float64
 }
 
-func (q *Queries) UpsertHistory(ctx context.Context, arg UpsertHistoryParams) error {
-	_, err := q.db.ExecContext(ctx, upsertHistory,
+func (q *Queries) UpsertHistory(ctx context.Context, arg UpsertHistoryParams) (PlayHistory, error) {
+	row := q.db.QueryRowContext(ctx, upsertHistory,
 		arg.MediaKey,
 		arg.Kind,
 		arg.Title,
@@ -208,5 +209,18 @@ func (q *Queries) UpsertHistory(ctx context.Context, arg UpsertHistoryParams) er
 		arg.Position,
 		arg.Duration,
 	)
-	return err
+	var i PlayHistory
+	err := row.Scan(
+		&i.MediaKey,
+		&i.Kind,
+		&i.Title,
+		&i.Cover,
+		&i.SourceUrl,
+		&i.EpisodeID,
+		&i.Position,
+		&i.Duration,
+		&i.PlayCount,
+		&i.LastPlayedAt,
+	)
+	return i, err
 }

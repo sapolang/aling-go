@@ -1,6 +1,6 @@
 import type { NavigateFunction } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
-import type { PlatformSubtitleCue, PlatformSubtitleResult, ResolvedMedia } from '@/types/electron'
+import type { PlatformSubtitleCue, PlatformSubtitleResult, ResolvedMedia } from '@/types/api'
 
 // 只对 YouTube / B站 链接响应，避免普通文本粘贴触发解析
 export function looksLikeMediaLink(text: string): boolean {
@@ -48,7 +48,8 @@ export function openResolvedMedia(
       mediaKind: 'video',
       historyKey: res.mediaKey,
       cover: res.cover,
-      sourceUrl: res.mediaKey,
+      // sourceUrl 统一为可打开的原始页面地址，mediaKey 只做内部标识
+      sourceUrl: `https://www.youtube.com/watch?v=${res.videoId}`,
     })
     navigate('/player', { state: { from } })
     loadSourceSubtitles('youtube', res.videoId, res.mediaKey)
@@ -61,7 +62,7 @@ export function openResolvedMedia(
       mediaKind: 'video',
       historyKey: res.mediaKey,
       cover: res.cover,
-      sourceUrl: res.videoId,
+      sourceUrl: `https://www.bilibili.com/video/${res.videoId}`,
     })
     if (res.duration > 0) player.setDuration(res.duration)
     navigate('/player', { state: { from } })

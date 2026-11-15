@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ArticleCategory, ArticleItem, TypingProgress, TypingRecord } from '@/types/electron'
+import type { ArticleCategory, ArticleItem, TypingProgress, TypingRecord } from '@/types/api'
 
 interface ArticleStore {
   categories: ArticleCategory[]

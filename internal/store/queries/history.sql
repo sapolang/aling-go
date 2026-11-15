@@ -1,4 +1,4 @@
--- name: UpsertHistory :exec
+-- name: UpsertHistory :one
 INSERT INTO play_history (media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
 ON CONFLICT(media_key) DO UPDATE SET
@@ -9,7 +9,8 @@ ON CONFLICT(media_key) DO UPDATE SET
 	episode_id = CASE WHEN excluded.episode_id <> 0 THEN excluded.episode_id ELSE play_history.episode_id END,
 	duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE play_history.duration END,
 	play_count = play_history.play_count + 1,
-	last_played_at = datetime('now','localtime');
+	last_played_at = datetime('now','localtime')
+RETURNING media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at;
 
 -- name: UpdateHistoryPosition :exec
 UPDATE play_history

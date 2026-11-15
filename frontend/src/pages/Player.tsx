@@ -4,7 +4,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useWordStore } from '@/stores/wordStore'
 import type { LibraryFile } from '@/stores/libraryStore'
-import type { PlatformSubtitleCue, PlatformSubtitleResult, SubtitleItem } from '@/types/electron'
+import type { PlatformSubtitleCue, PlatformSubtitleResult, SubtitleItem } from '@/types/api'
 import type { SubtitleDisplayMode } from '@/stores/playerStore'
 import {
   SHORTCUT_ACTIONS,
@@ -480,7 +480,7 @@ export default function PlayerPage() {
   // --- 播放历史 ---
   const historyKey = historyKeyOf(store)
 
-  // 打开新媒体时写一条历史：元信息由发起播放的页面通过 setFilePath 传入
+  // 每次进入播放（同媒体重播也算）写一条历史：setFilePath 会自增 playSession
   useEffect(() => {
     if (!historyKey) return
     const st = usePlayerStore.getState()
@@ -493,10 +493,8 @@ export default function PlayerPage() {
       episodeId: st.mediaEpisodeID,
       position: 0,
       duration: 0,
-      playCount: 0,
-      lastPlayedAt: '',
     })
-  }, [historyKey])
+  }, [historyKey, store.playSession])
 
   // 播放中每 5 秒落一次进度：YouTube/B站 没有原生 timeupdate，统一读 store
   useEffect(() => {

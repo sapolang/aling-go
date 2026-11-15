@@ -8,7 +8,7 @@ import {
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { Captions, Loader2, Star, Subtitles, Volume2 as Speaker } from 'lucide-react'
-import type { SubtitleItem } from '@/types/electron'
+import type { SubtitleItem } from '@/types/api'
 import { findCueIndexAt, formatClockTime } from '@/lib/subtitles'
 
 export type SubtitleCue = SubtitleItem & { displayText: string }

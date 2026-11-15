@@ -84,7 +84,7 @@ const CATEGORIES = [
   { key: 'pdf' as const, label: 'PDF', icon: FileText },
 ]
 
-const TYPE_ICON = { video: Film, audio: Music, pdf: FileText }
+const TYPE_ICON: Record<string, typeof FileText> = { video: Film, audio: Music, pdf: FileText }
 
 interface ContextMenuState {
   visible: boolean

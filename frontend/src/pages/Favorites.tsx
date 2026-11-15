@@ -25,7 +25,7 @@ import {
   BookPlus,
 } from 'lucide-react'
 import { confirmDialog, showToast } from '@/components/feedback'
-import type { SubtitleItem } from '@/types/electron'
+import type { SubtitleItem } from '@/types/api'
 
 interface FavoriteClip {
   id: number
