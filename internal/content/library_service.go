@@ -76,8 +76,14 @@ func (s *LibraryService) libraryPath() string {
 }
 
 func (s *LibraryService) readLibrary() LibraryData {
+	return loadLibrary(s.dataDir)
+}
+
+// loadLibrary 读取媒体库并对历史并发写入产生的重复条目去重。
+// 没有 LibraryService 实例的调用方（如媒体代理的白名单校验）也可直接复用。
+func loadLibrary(dataDir string) LibraryData {
 	var lib LibraryData
-	data, err := os.ReadFile(s.libraryPath())
+	data, err := os.ReadFile(filepath.Join(dataDir, "library.json"))
 	if err == nil {
 		_ = json.Unmarshal(data, &lib)
 	}
