@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLibraryStore, type LibraryFile, type Folder } from '@/stores/libraryStore'
-import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,8 +14,8 @@ import {
 } from '@/components/ui/dialog'
 import { showToast, confirmDialog } from '@/components/feedback'
 import { looksLikeMediaLink, openResolvedMedia } from '@/utils/mediaLink'
-import SrtParser from 'srt-parser-2'
-import { timeToSeconds } from '@/lib/srt'
+import { openLocalMedia } from '@/lib/openMedia'
+import { formatClockTime as formatTime } from '@/lib/subtitles'
 import {
   FileUp,
   Pencil,
@@ -42,15 +41,6 @@ import {
   History,
   Link2,
 } from 'lucide-react'
-
-function formatTime(s: number): string {
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = Math.floor(s % 60)
-  return h > 0
-    ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
-    : `${m}:${sec.toString().padStart(2, '0')}`
-}
 
 interface ImportResultLike {
   imported?: number
@@ -96,7 +86,6 @@ interface ContextMenuState {
 
 export default function HomePage() {
   const store = useLibraryStore()
-  const player = usePlayerStore()
   const reviewCount = useWordStore((s) => s.reviewTotal)
   const navigate = useNavigate()
   const [showNewFolder, setShowNewFolder] = useState(false)
@@ -130,6 +119,21 @@ export default function HomePage() {
   useEffect(() => {
     store.load()
   }, [])
+
+  // 播放进度以播放历史为唯一来源，mediaKey 对本地文件即绝对路径
+  const [progressByPath, setProgressByPath] = useState<Record<string, number>>({})
+  useEffect(() => {
+    window.api
+      .historyList('', 500, 0)
+      .then((list) => {
+        const map: Record<string, number> = {}
+        for (const e of list) {
+          if (e.position > 0) map[e.mediaKey] = e.position
+        }
+        setProgressByPath(map)
+      })
+      .catch(() => {})
+  }, [store.files])
 
   // Cmd/Ctrl + L 打开链接输入框
   useEffect(() => {
@@ -312,42 +316,10 @@ export default function HomePage() {
       await window.api.openExternal(file.path)
       return
     }
-    player.setFilePath(file.path)
     // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库
     navigate('/player', { state: { from: '/' } })
-    player.setWaveformLoading(true)
-    window.api
-      .getWaveformData(file.path)
-      .then((data: number[]) => {
-        if (data && data.length > 0) player.setWaveformData(data)
-        else player.setWaveformLoading(false)
-      })
-      .catch(() => player.setWaveformLoading(false))
-    try {
-      const cached = await window.api.getCachedSubtitles(file.path)
-      if (cached && cached.length > 0) {
-        player.setSubtitles(cached)
-        return
-      }
-      const srtPath = file.path.replace(/\.[^.]+$/, '.srt')
-      try {
-        const content = await window.api.readTextFile(srtPath)
-        const parsed = new SrtParser().fromSrt(content)
-        const subs = parsed.map((s: any) => ({
-          id: parseInt(s.id),
-          startTime: timeToSeconds(s.startTime),
-          endTime: timeToSeconds(s.endTime),
-          text: s.text,
-        }))
-        player.setSubtitles(subs)
-        window.api.cacheSubtitles(file.path, subs)
-      } catch {
-        /* ignore parse errors */
-      }
-    } catch {
-      /* ignore */
-    }
-    await window.api.recentAdd(file.path)
+    // 与播放页共用同一打开入口：波形、字幕缓存与同名 SRT 回退
+    await openLocalMedia(file.path)
   }
 
   const handleEnterFolder = (folder: Folder) => {
@@ -806,6 +778,7 @@ export default function HomePage() {
             <GridFileCard
               key={file.path}
               file={file}
+              lastPosition={progressByPath[file.path] ?? file.lastPosition ?? 0}
               editing={store.editing}
               selected={store.selectedPaths.has(file.path)}
               onToggle={() => store.toggleSelect(file.path)}
@@ -842,6 +815,7 @@ export default function HomePage() {
               <ListFileRow
                 key={file.path}
                 file={file}
+                lastPosition={progressByPath[file.path] ?? file.lastPosition ?? 0}
                 editing={store.editing}
                 selected={store.selectedPaths.has(file.path)}
                 onToggle={() => store.toggleSelect(file.path)}
@@ -1075,6 +1049,7 @@ function GridFolderCard({
 
 function GridFileCard({
   file,
+  lastPosition,
   editing,
   selected,
   onToggle,
@@ -1082,6 +1057,7 @@ function GridFileCard({
   onContextMenu,
 }: {
   file: LibraryFile
+  lastPosition: number
   editing: boolean
   selected: boolean
   onToggle: () => void
@@ -1147,10 +1123,10 @@ function GridFileCard({
       </div>
       <div className="p-2 border-t">
         <p className="text-xs truncate">{file.name}</p>
-        {(file.lastPosition ?? 0) > 0 && (
+        {lastPosition > 0 && (
           <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
             <History className="h-2.5 w-2.5 shrink-0" />
-            上次播放到 {formatTime(file.lastPosition!)}
+            上次播放到 {formatTime(lastPosition)}
           </p>
         )}
       </div>
@@ -1214,6 +1190,7 @@ function ListFolderRow({
 
 function ListFileRow({
   file,
+  lastPosition,
   editing,
   selected,
   onToggle,
@@ -1221,6 +1198,7 @@ function ListFileRow({
   onContextMenu,
 }: {
   file: LibraryFile
+  lastPosition: number
   editing: boolean
   selected: boolean
   onToggle: () => void
@@ -1261,9 +1239,7 @@ function ListFileRow({
       </div>
       <div className="hidden sm:block sm:col-span-3 text-muted-foreground text-xs">
         {file.type === 'video' ? '视频' : file.type === 'audio' ? '音频' : 'PDF'}
-        {(file.lastPosition ?? 0) > 0 && (
-          <span className="ml-1">· 播至 {formatTime(file.lastPosition!)}</span>
-        )}
+        {lastPosition > 0 && <span className="ml-1">· 播至 {formatTime(lastPosition)}</span>}
       </div>
       <div className="col-span-6 sm:col-span-4 text-muted-foreground text-xs text-right sm:text-left">
         {new Date(file.addedAt).toLocaleDateString('zh-CN')}

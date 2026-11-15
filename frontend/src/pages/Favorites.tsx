@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '@/stores/playerStore'
+import { isAudioPath } from '@/lib/mediaFormats'
+import { formatClockTime as formatTime } from '@/lib/subtitles'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -47,16 +49,6 @@ interface FavoriteTag {
   id: number
   name: string
 }
-
-const formatTime = (s: number) => {
-  const m = Math.floor(s / 60)
-  return `${m}:${Math.floor(s % 60)
-    .toString()
-    .padStart(2, '0')}`
-}
-
-const isAudioPath = (path: string) =>
-  ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(path.split('.').pop()?.toLowerCase() || '')
 
 const formatDate = (s: string) => (s ? s.split(' ')[0] : '')
 
