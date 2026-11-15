@@ -17,7 +17,7 @@
 - 基础设施：SECURITY.md / CHANGELOG.md / Issue 模板
 
 ### Changed
-- bundle identifier 统一为 `com.aling-go`，用户数据目录同步改名，升级用户首次启动自动迁移旧的 `aling-go/` 目录
+- bundle identifier 统一为 `com.aling-go`，CFBundleName 统一为 `aling-go`，用户数据目录同步改名，升级用户首次启动自动迁移旧的 `aling-go/` 目录
 - `make test` 现运行 typecheck + eslint，原 typecheck 拆为 `make typecheck`
 - 升级 Vite 5 → 8、@vitejs/plugin-react 4 → 6，清除 esbuild/vite 的 high 级漏洞
 - CI / Release 的 Node 版本由 20 提至 26（LTS，满足 Vite 8 引擎要求）
