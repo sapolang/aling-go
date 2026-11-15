@@ -51,6 +51,12 @@ ON CONFLICT(feed_id, guid) DO UPDATE SET
 	published_at = excluded.published_at,
 	image = excluded.image;
 
+-- name: ListFeedEpisodePaths :many
+SELECT local_path FROM feed_episodes WHERE feed_id = ? AND local_path <> '';
+
+-- name: ClearAllEpisodeLocalPaths :exec
+UPDATE feed_episodes SET local_path = '' WHERE local_path <> '';
+
 -- name: GetEpisodeDownloadInfo :one
 SELECT feed_id, title, audio_url, local_path FROM feed_episodes WHERE id = ?;
 

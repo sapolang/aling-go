@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { confirmDialog, showToast } from '@/components/feedback'
-import type { WhisperDownloadProgress } from '@/types/api'
+import type { CacheStats, WhisperDownloadProgress } from '@/types/api'
 import { useThemeStore } from '@/stores/themeStore'
 import type { ThemeMode } from '@/stores/themeStore'
 import {
@@ -38,6 +38,7 @@ import {
   Info,
   DatabaseBackup,
   RefreshCw,
+  HardDrive,
 } from 'lucide-react'
 
 interface ExportedWord {
@@ -51,6 +52,18 @@ interface ExportedWord {
 function escapeCSV(value: unknown): string {
   const text = String(value ?? '')
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
 }
 
 export default function SettingsPage() {
@@ -96,6 +109,10 @@ export default function SettingsPage() {
     files: { name: string; size: number }[]
   } | null>(null)
   const [backingUp, setBackingUp] = useState(false)
+
+  // --- 缓存管理 ---
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
+  const [clearingCache, setClearingCache] = useState<string | null>(null)
 
   // --- 版本更新（状态保存在全局 store，切换页面不会丢失下载进度） ---
   const updateStep = useUpdateStore((s) => s.step)
@@ -212,6 +229,62 @@ export default function SettingsPage() {
     }
   }
 
+  const loadCacheStats = async () => {
+    try {
+      setCacheStats(await window.api.cacheStats())
+    } catch (err) {
+      console.error('[cache] load stats failed', err)
+    }
+  }
+
+  const handleClearCache = async (kind: string, label: string) => {
+    const ok = await confirmDialog({
+      title: `清理${label}？`,
+      description:
+        kind === 'podcasts'
+          ? '已下载的音频文件会从磁盘删除，并同时移出媒体库。'
+          : '对应缓存文件会被删除，后续需要时会重新生成。',
+      confirmText: '清理',
+      destructive: true,
+    })
+    if (!ok) return
+    setClearingCache(kind)
+    try {
+      const res = await window.api.clearCache(kind)
+      if (res?.ok) {
+        showToast(`已清理${label}，释放 ${formatBytes(res.freed)}`)
+      } else {
+        showToast('清理失败: ' + (res?.error || '未知错误'), 'error')
+      }
+      await loadCacheStats()
+    } finally {
+      setClearingCache(null)
+    }
+  }
+
+  const handleClearAllCaches = async () => {
+    const ok = await confirmDialog({
+      title: '清理全部缓存？',
+      description:
+        '缩略图、波形、转码文件、字幕缓存、已下载音频等都会被删除；生词、收藏与播放记录不受影响。',
+      confirmText: '全部清理',
+      destructive: true,
+    })
+    if (!ok) return
+    setClearingCache('all')
+    try {
+      const res = await window.api.clearAllCaches()
+      if (res?.ok) {
+        showToast(`已清理全部缓存，释放 ${formatBytes(res.freed)}`)
+      } else {
+        showToast('清理失败: ' + (res?.error || '未知错误'), 'error')
+      }
+      await loadCacheStats()
+    } finally {
+      setClearingCache(null)
+    }
+  }
+
   useEffect(() => {
     window.api.whisperStatus().then((s: any) => {
       setWhisperStatus(s)
@@ -230,6 +303,11 @@ export default function SettingsPage() {
     window.api.getVersion().then(setAppVersion)
 
     window.api.getBackupStatus().then(setBackupStatus)
+
+    window.api
+      .cacheStats()
+      .then(setCacheStats)
+      .catch((err: unknown) => console.error('[cache] load stats failed', err))
 
     let resumeCleanup: (() => void) | null = null
     window.api.getDownloadProgress().then((d: WhisperDownloadProgress | null) => {
@@ -715,6 +793,63 @@ export default function SettingsPage() {
                 {aiTestMsg.message}
               </span>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <HardDrive className="h-5 w-5" /> 缓存管理
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-muted-foreground max-w-md">
+              缩略图、波形、转码文件与字幕缓存会在播放时自动生成；转码缓存超过 2GB
+              时会自动回收最旧的文件。
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                共 {formatBytes(cacheStats?.total ?? 0)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!cacheStats || cacheStats.total === 0 || clearingCache !== null}
+                onClick={handleClearAllCaches}
+              >
+                {clearingCache === 'all' ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                )}
+                全部清理
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-1">
+            {(cacheStats?.entries ?? []).map((entry) => (
+              <div
+                key={entry.kind}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded hover:bg-muted/40"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="text-sm">{entry.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {entry.files} 个文件 · {formatBytes(entry.size)}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={entry.files === 0 || clearingCache !== null}
+                  onClick={() => handleClearCache(entry.kind, entry.label)}
+                >
+                  清理
+                </Button>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

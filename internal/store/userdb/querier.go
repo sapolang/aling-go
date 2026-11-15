@@ -18,6 +18,7 @@ type Querier interface {
 	AddTypingRecord(ctx context.Context, arg AddTypingRecordParams) error
 	AddWord(ctx context.Context, arg AddWordParams) (int, error)
 	AddWordsBatch(ctx context.Context, arg AddWordsBatchParams) (int64, error)
+	ClearAllEpisodeLocalPaths(ctx context.Context) error
 	ClearHistory(ctx context.Context) error
 	ClearTags(ctx context.Context) error
 	ClearWords(ctx context.Context) error
@@ -56,6 +57,7 @@ type Querier interface {
 	ListFavoriteClips(ctx context.Context) ([]ListFavoriteClipsRow, error)
 	ListFavoriteClipsByTag(ctx context.Context, tagID int) ([]ListFavoriteClipsByTagRow, error)
 	ListFavoriteTags(ctx context.Context) ([]ListFavoriteTagsRow, error)
+	ListFeedEpisodePaths(ctx context.Context, feedID int64) ([]string, error)
 	ListFeedEpisodes(ctx context.Context, arg ListFeedEpisodesParams) ([]ListFeedEpisodesRow, error)
 	ListFeedIDs(ctx context.Context) ([]int64, error)
 	ListFeeds(ctx context.Context) ([]ListFeedsRow, error)

@@ -145,6 +145,11 @@ import {
 } from '../../bindings/aling-go/internal/study/favoriteservice'
 
 import { BackupNow, GetBackupStatus } from '../../bindings/aling-go/internal/system/backupservice'
+import {
+  GetCacheStats,
+  ClearCache,
+  ClearAllCaches,
+} from '../../bindings/aling-go/internal/content/cacheservice'
 import type { SubtitleItem } from '../../bindings/aling-go/internal/content/models'
 import {
   ApplyUpdate,
@@ -225,7 +230,7 @@ export function initBridge(): void {
 
     feedList: () => FeedList().then((r) => ({ ...r, feeds: r.feeds ?? [] })),
     feedAdd: (url: string) => FeedAdd(url),
-    feedRemove: (id: number) => FeedRemove(id),
+    feedRemove: (id: number, deleteDownloads: boolean) => FeedRemove(id, deleteDownloads),
     feedRefresh: (id: number) => FeedRefresh(id),
     feedEpisodes: (id: number, limit: number) =>
       FeedEpisodes(id, limit).then((r) => ({ ...r, episodes: r.episodes ?? [] })),
@@ -303,6 +308,10 @@ export function initBridge(): void {
 
     backupNow: () => BackupNow(),
     getBackupStatus: () => GetBackupStatus(),
+
+    cacheStats: () => GetCacheStats(),
+    clearCache: (kind: string) => ClearCache(kind),
+    clearAllCaches: () => ClearAllCaches(),
 
     checkUpdate: () => CheckForUpdate(),
     getUpdateState: () => GetUpdateState(),

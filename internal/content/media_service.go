@@ -47,6 +47,8 @@ func NewMediaService(app *application.App, dataDir string) *MediaService {
 
 func (s *MediaService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	s.startMediaServer()
+	// 转码缓存可能在上次退出时已超出上限，启动后异步回收，避免拖慢首屏
+	go enforceTranscodeLimit(s.dataDir, "", transcodeCacheMaxBytes)
 	return nil
 }
 
@@ -654,5 +656,6 @@ func (s *MediaService) TranscodeForPlayback(filePath string) (string, error) {
 		return "", fmt.Errorf("保存转码结果失败: %w", err)
 	}
 	s.app.Logger.Info("Transcoded for playback", "input", filePath, "output", outPath)
+	enforceTranscodeLimit(s.dataDir, outPath, transcodeCacheMaxBytes)
 	return outPath, nil
 }

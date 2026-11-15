@@ -154,14 +154,22 @@ export default function PodcastPage() {
   const handleRemove = async (id: number, title: string) => {
     const ok = await confirmDialog({
       title: `取消订阅《${title || '未命名'}》？`,
-      description: '仅移除订阅记录与节目列表，已下载到本地的音频文件不会被删除。',
+      description: '将移除订阅记录与节目列表，随后可选择是否一并删除已下载的音频文件。',
       confirmText: '取消订阅',
       cancelText: '保留',
       destructive: true,
     })
     if (!ok) return
-    await removeFeed(id)
-    showToast('已取消订阅', 'success')
+    // 二次确认删除音频：Esc / 点遮罩都会落到「保留音频」，避免误删
+    const deleteDownloads = await confirmDialog({
+      title: '删除已下载的音频？',
+      description: '已下载的音频文件会从磁盘删除，并同时移出媒体库。选择「保留音频」只取消订阅。',
+      confirmText: '一并删除',
+      cancelText: '保留音频',
+      destructive: true,
+    })
+    await removeFeed(id, deleteDownloads)
+    showToast(deleteDownloads ? '已取消订阅并删除音频' : '已取消订阅', 'success')
   }
 
   const handleRefresh = async (id: number) => {
