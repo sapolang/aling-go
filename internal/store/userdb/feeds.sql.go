@@ -38,6 +38,15 @@ func (q *Queries) AddFeed(ctx context.Context, arg AddFeedParams) (int64, error)
 	return id, err
 }
 
+const clearAllEpisodeLocalPaths = `-- name: ClearAllEpisodeLocalPaths :exec
+UPDATE feed_episodes SET local_path = '' WHERE local_path <> ''
+`
+
+func (q *Queries) ClearAllEpisodeLocalPaths(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearAllEpisodeLocalPaths)
+	return err
+}
+
 const countFeedByURL = `-- name: CountFeedByURL :one
 SELECT COUNT(*) FROM feeds WHERE url = ?
 `
@@ -152,6 +161,33 @@ func (q *Queries) GetFeedURL(ctx context.Context, id int64) (string, error) {
 	var url string
 	err := row.Scan(&url)
 	return url, err
+}
+
+const listFeedEpisodePaths = `-- name: ListFeedEpisodePaths :many
+SELECT local_path FROM feed_episodes WHERE feed_id = ? AND local_path <> ''
+`
+
+func (q *Queries) ListFeedEpisodePaths(ctx context.Context, feedID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listFeedEpisodePaths, feedID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var local_path string
+		if err := rows.Scan(&local_path); err != nil {
+			return nil, err
+		}
+		items = append(items, local_path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listFeedEpisodes = `-- name: ListFeedEpisodes :many

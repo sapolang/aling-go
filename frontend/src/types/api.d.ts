@@ -44,6 +44,9 @@ import type {
   BiliQRLoginResult,
   PodcastTranscribeResult,
   RSSConvertResult,
+  CacheEntry,
+  CacheStats,
+  CacheClearResult,
 } from '../../bindings/aling-go/internal/content/models'
 import type {
   AIConfig,
@@ -101,6 +104,9 @@ export type {
   BiliQRLoginResult,
   PodcastTranscribeResult,
   RSSConvertResult,
+  CacheEntry,
+  CacheStats,
+  CacheClearResult,
   AIConfig,
   AIConfigView,
   AIExplainResult,
@@ -228,7 +234,7 @@ export interface ElectronAPI {
   // Podcast feeds
   feedList: () => Promise<FeedListResult>
   feedAdd: (url: string) => Promise<ActionResult>
-  feedRemove: (id: number) => Promise<ActionResult>
+  feedRemove: (id: number, deleteDownloads: boolean) => Promise<ActionResult>
   feedRefresh: (id: number) => Promise<ActionResult>
   feedEpisodes: (id: number, limit: number) => Promise<FeedEpisodesResult>
   episodeDownload: (id: number) => Promise<EpisodeDownloadResult>
@@ -274,6 +280,11 @@ export interface ElectronAPI {
   // Backup
   backupNow: () => Promise<BackupResult>
   getBackupStatus: () => Promise<BackupStatus>
+
+  // Cache
+  cacheStats: () => Promise<CacheStats>
+  clearCache: (kind: string) => Promise<CacheClearResult>
+  clearAllCaches: () => Promise<CacheClearResult>
 
   // Updater
   checkUpdate: () => Promise<UpdateInfo>

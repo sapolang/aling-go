@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -334,9 +337,14 @@ func (s *FeedService) refreshOne(feedID int64) error {
 	return nil
 }
 
-// FeedRemove 取消订阅并删除该订阅下的节目记录（不删除已下载的音频文件）
-func (s *FeedService) FeedRemove(feedID int64) ActionResult {
+// FeedRemove 取消订阅并删除该订阅下的节目记录。deleteDownloads 为 true 时
+// 同时删除 podcasts/<feedID> 下的音频文件与对应的媒体库记录。
+func (s *FeedService) FeedRemove(feedID int64, deleteDownloads bool) ActionResult {
 	ctx := context.Background()
+	var paths []string
+	if deleteDownloads {
+		paths, _ = q().ListFeedEpisodePaths(ctx, feedID)
+	}
 	_ = q().DeleteFeedEpisodes(ctx, feedID)
 	n, err := q().DeleteFeed(ctx, feedID)
 	if err != nil {
@@ -344,6 +352,15 @@ func (s *FeedService) FeedRemove(feedID int64) ActionResult {
 	}
 	if n == 0 {
 		return ActionResult{Error: "订阅源不存在"}
+	}
+	if deleteDownloads {
+		dir := filepath.Join(s.dataDir, "podcasts", strconv.FormatInt(feedID, 10))
+		if err := os.RemoveAll(dir); err != nil {
+			s.app.Logger.Warn("Remove podcast downloads", "feedID", feedID, "error", err)
+		} else if len(paths) > 0 && s.library != nil {
+			// 音频已删除，媒体库里的记录也要一并清掉，否则会留下打不开的条目
+			s.library.LibraryRemove(paths)
+		}
 	}
 	return ActionResult{OK: true, Message: "已取消订阅"}
 }

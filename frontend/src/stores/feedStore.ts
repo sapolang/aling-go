@@ -38,7 +38,7 @@ interface FeedStore {
 
   loadFeeds: () => Promise<void>
   addFeed: (url: string) => Promise<{ ok: boolean; message: string }>
-  removeFeed: (id: number) => Promise<void>
+  removeFeed: (id: number, deleteDownloads: boolean) => Promise<void>
   refreshFeed: (id: number) => Promise<{ ok: boolean; message: string }>
   selectFeed: (id: number) => Promise<void>
   loadEpisodes: (id: number) => Promise<void>
@@ -80,8 +80,8 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
     return { ok: !!res?.ok, message: res?.error || res?.message || '' }
   },
 
-  removeFeed: async (id) => {
-    await window.api.feedRemove(id)
+  removeFeed: async (id, deleteDownloads) => {
+    await window.api.feedRemove(id, deleteDownloads)
     const { selectedFeedId } = get()
     if (selectedFeedId === id) {
       set({ selectedFeedId: null, episodes: [] })
