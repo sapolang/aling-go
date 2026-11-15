@@ -132,6 +132,9 @@ export function useMediaElement({ filePath, onEnded }: UseMediaElementOptions): 
       // 已接近结尾则从头开始，避免刚打开就立刻播完
       if (dur > 0 && (remaining < 15 || remaining / dur < 0.05)) {
         window.api.historyUpdatePosition(resumeKey, 0, dur)
+        // 迁移期遗留的 library lastPosition 仍是兜底来源，必须同步归零，
+        // 否则下次打开会把已重置的进度重新恢复到结尾
+        if (st.sourceKind === 'html5') window.api.recentUpdatePosition(fp, 0)
         return
       }
       el.currentTime = pos
