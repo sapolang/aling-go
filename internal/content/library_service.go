@@ -110,11 +110,11 @@ func loadLibrary(dataDir string) LibraryData {
 func (s *LibraryService) writeLibrary(lib LibraryData) {
 	b, err := json.Marshal(lib)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "writeLibrary: marshal error: %v\n", err)
+		loggerOf(s.app).Error("write library: marshal", "error", err)
 		return
 	}
 	if err := os.WriteFile(s.libraryPath(), b, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "writeLibrary: write error: %v\n", err)
+		loggerOf(s.app).Error("write library: write", "error", err)
 	}
 }
 
@@ -404,7 +404,7 @@ func (s *LibraryService) CacheSubtitles(filePath string, subs []SubtitleItem) {
 	cachePath := filepath.Join(cacheDir, cacheKey+".json")
 	b, err := json.Marshal(subs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "CacheSubtitles: marshal error: %v\n", err)
+		loggerOf(s.app).Error("cache subtitles: marshal", "filePath", filePath, "error", err)
 		return
 	}
 	_ = os.WriteFile(cachePath, b, 0644)

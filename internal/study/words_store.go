@@ -3,13 +3,24 @@ package study
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
+	"log/slog"
 	"time"
 
 	"aling-go/internal/core"
 	"aling-go/internal/store/userdb"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+// logger 由各服务构造时注入应用日志器；测试等未注入场景退回默认日志器，
+// 避免包级存储函数直接写 os.Stderr。
+var logger = slog.Default()
+
+func injectLogger(app *application.App) {
+	if app != nil && app.Logger != nil {
+		logger = app.Logger
+	}
+}
 
 // queries 返回基于当前用户库句柄的类型安全查询集合。
 // sqlc 生成代码只依赖 DBTX 接口，因此可以直接复用 core.DB。
@@ -60,19 +71,19 @@ func dbWordsUpdate(id int, w Word) {
 		Interval:    w.Interval,
 		ID:          id,
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "dbWordsUpdate: %v\n", err)
+		logger.Error("dbWordsUpdate", "id", id, "error", err)
 	}
 }
 
 func dbWordsDelete(id int) {
 	if err := queries().DeleteWord(context.Background(), id); err != nil {
-		fmt.Fprintf(os.Stderr, "dbWordsDelete: %v\n", err)
+		logger.Error("dbWordsDelete", "id", id, "error", err)
 	}
 }
 
 func dbWordsDeleteBatch(ids []int) {
 	if err := queries().DeleteWords(context.Background(), ids); err != nil {
-		fmt.Fprintf(os.Stderr, "dbWordsDeleteBatch: %v\n", err)
+		logger.Error("dbWordsDeleteBatch", "count", len(ids), "error", err)
 	}
 }
 
@@ -130,7 +141,7 @@ func dbTagsAdd(name, color string) int {
 
 func dbTagsDelete(id int) {
 	if err := queries().DeleteTag(context.Background(), id); err != nil {
-		fmt.Fprintf(os.Stderr, "dbTagsDelete: %v\n", err)
+		logger.Error("dbTagsDelete", "id", id, "error", err)
 	}
 }
 
@@ -150,7 +161,7 @@ func dbImport(jsonStr string) ImportResult {
 		Tags  []Tag  `json:"tags"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-		fmt.Fprintf(os.Stderr, "dbImport: unmarshal error: %v\n", err)
+		logger.Error("dbImport: unmarshal", "error", err)
 		return ImportResult{}
 	}
 	result := ImportResult{}
@@ -186,10 +197,10 @@ func dbImport(jsonStr string) ImportResult {
 
 func dbClear() {
 	if err := queries().ClearWords(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "dbClear words: %v\n", err)
+		logger.Error("dbClear words", "error", err)
 	}
 	if err := queries().ClearTags(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "dbClear tags: %v\n", err)
+		logger.Error("dbClear tags", "error", err)
 	}
 }
 
@@ -200,7 +211,7 @@ func dbReviewLogAdd(wordID, quality int) {
 		WordID:  int64(wordID),
 		Quality: int64(quality),
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "dbReviewLogAdd: %v\n", err)
+		logger.Error("dbReviewLogAdd", "wordId", wordID, "error", err)
 	}
 }
 
@@ -212,27 +223,27 @@ func dbLearningStats() LearningStats {
 	if total, err := q.CountReviews(bg); err == nil {
 		stats.TotalReviews = int(total)
 	} else {
-		fmt.Fprintf(os.Stderr, "learningStats total: %v\n", err)
+		logger.Error("learningStats total", "error", err)
 	}
 	if today, err := q.CountTodayReviews(bg); err == nil {
 		stats.TodayReviews = int(today)
 	} else {
-		fmt.Fprintf(os.Stderr, "learningStats today: %v\n", err)
+		logger.Error("learningStats today", "error", err)
 	}
 	if total, err := q.CountWords(bg); err == nil {
 		stats.TotalWords = int(total)
 	} else {
-		fmt.Fprintf(os.Stderr, "learningStats words: %v\n", err)
+		logger.Error("learningStats words", "error", err)
 	}
 	if mastered, err := q.CountMasteredWords(bg); err == nil {
 		stats.Mastered = int(mastered)
 	} else {
-		fmt.Fprintf(os.Stderr, "learningStats mastered: %v\n", err)
+		logger.Error("learningStats mastered", "error", err)
 	}
 
 	counts := make(map[string]int)
 	if rows, err := q.DailyReviewCounts(bg); err != nil {
-		fmt.Fprintf(os.Stderr, "learningStats daily: %v\n", err)
+		logger.Error("learningStats daily", "error", err)
 	} else {
 		for _, r := range rows {
 			counts[r.ReviewDate] = int(r.Count)
@@ -242,7 +253,7 @@ func dbLearningStats() LearningStats {
 	// 连续天数不受 30 天图表窗口限制，单独统计全部复习日期
 	streakDays := make(map[string]bool)
 	if dates, err := q.ListReviewDates(bg); err != nil {
-		fmt.Fprintf(os.Stderr, "learningStats streak: %v\n", err)
+		logger.Error("learningStats streak", "error", err)
 	} else {
 		for _, d := range dates {
 			streakDays[d] = true

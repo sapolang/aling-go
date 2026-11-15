@@ -79,7 +79,7 @@ type Querier interface {
 	UpdateHistoryPosition(ctx context.Context, arg UpdateHistoryPositionParams) error
 	UpdateWord(ctx context.Context, arg UpdateWordParams) error
 	UpsertFeedEpisode(ctx context.Context, arg UpsertFeedEpisodeParams) error
-	UpsertHistory(ctx context.Context, arg UpsertHistoryParams) error
+	UpsertHistory(ctx context.Context, arg UpsertHistoryParams) (PlayHistory, error)
 }
 
 var _ Querier = (*Queries)(nil)

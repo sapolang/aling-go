@@ -2,8 +2,6 @@ package study
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -13,6 +11,7 @@ type WordService struct {
 }
 
 func NewWordService(app *application.App) *WordService {
+	injectLogger(app)
 	return &WordService{app: app}
 }
 
@@ -108,7 +107,7 @@ func queryGradeDistribution() []GradeCount {
 	result := make([]GradeCount, 0)
 	rows, err := queries().GradeDistribution(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "extendedStats grades: %v\n", err)
+		logger.Error("extendedStats grades", "error", err)
 		return result
 	}
 	for _, row := range rows {
@@ -122,7 +121,7 @@ func queryLevelDistribution() []LevelCount {
 	result := make([]LevelCount, 0)
 	rows, err := queries().LevelDistribution(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "extendedStats levels: %v\n", err)
+		logger.Error("extendedStats levels", "error", err)
 		return result
 	}
 	for _, row := range rows {
@@ -136,7 +135,7 @@ func queryTypingDailyStats() []TypingDayStat {
 	result := make([]TypingDayStat, 0)
 	rows, err := queries().TypingDailyStats(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "extendedStats typing: %v\n", err)
+		logger.Error("extendedStats typing", "error", err)
 		return result
 	}
 	for _, row := range rows {

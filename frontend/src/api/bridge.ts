@@ -87,7 +87,8 @@ import {
   Delete as HistoryDelete,
   Clear as HistoryClear,
 } from '../../bindings/aling-go/internal/content/historyservice'
-import type { HistoryEntry as HistoryInput } from '../types/electron'
+import type { HistoryUpsertInput } from '../../bindings/aling-go/internal/content/models'
+import type { ElectronAPI } from '../types/api'
 
 import {
   FeedList,
@@ -154,7 +155,7 @@ import {
 import { Events } from '@wailsio/runtime'
 
 export function initBridge(): void {
-  window.api = {
+  const api: ElectronAPI = {
     openFile: (filters?: any) => OpenFile(filters || ''),
     saveFile: (name: string) => SaveFile(name),
     openSubtitle: () => OpenSubtitle(),
@@ -195,19 +196,21 @@ export function initBridge(): void {
       Events.On('whisper:download-progress', (e: any) => cb(e.data)),
     getDownloadProgress: () => GetDownloadProgress(),
 
-    recentList: () => RecentList(),
-    recentAdd: (filePath: string) => RecentAdd(filePath),
+    recentList: () => RecentList().then((rows) => rows ?? []),
+    recentAdd: (filePath: string) => RecentAdd(filePath).then((rows) => rows ?? []),
     recentGetPosition: (filePath: string) => RecentGetPosition(filePath),
     recentUpdatePosition: (filePath: string, position: number) =>
       RecentUpdatePosition(filePath, position),
     cacheSubtitles: (filePath: string, subs: SubtitleItem[]) => CacheSubtitles(filePath, subs),
     getCachedSubtitles: (filePath: string) => GetCachedSubtitles(filePath),
 
-    historyUpsert: (entry: HistoryInput) => HistoryUpsert(entry),
+    historyUpsert: (entry: HistoryUpsertInput) => HistoryUpsert(entry),
     historyUpdatePosition: (mediaKey: string, position: number, duration: number) =>
       HistoryUpdatePosition(mediaKey, position, duration),
-    historyList: (kind: string, limit: number, offset: number) => HistoryList(kind, limit, offset),
-    historyContinueLearning: (limit: number) => HistoryContinueLearning(limit),
+    historyList: (kind: string, limit: number, offset: number) =>
+      HistoryList(kind, limit, offset).then((rows) => rows ?? []),
+    historyContinueLearning: (limit: number) =>
+      HistoryContinueLearning(limit).then((rows) => rows ?? []),
     historyGet: (mediaKey: string) => HistoryGet(mediaKey),
     historyDelete: (mediaKey: string) => HistoryDelete(mediaKey),
     historyClear: () => HistoryClear(),
@@ -220,11 +223,12 @@ export function initBridge(): void {
     getMediaPort: () => GetMediaPort(),
     resolveMediaURL: (url: string) => ResolveMediaURL(url),
 
-    feedList: () => FeedList(),
+    feedList: () => FeedList().then((r) => ({ ...r, feeds: r.feeds ?? [] })),
     feedAdd: (url: string) => FeedAdd(url),
     feedRemove: (id: number) => FeedRemove(id),
     feedRefresh: (id: number) => FeedRefresh(id),
-    feedEpisodes: (id: number, limit: number) => FeedEpisodes(id, limit),
+    feedEpisodes: (id: number, limit: number) =>
+      FeedEpisodes(id, limit).then((r) => ({ ...r, episodes: r.episodes ?? [] })),
     episodeDownload: (id: number) => EpisodeDownload(id),
     feedGetProxy: () => FeedGetProxy(),
     feedSetProxy: (proxy: string) => FeedSetProxy(proxy),
@@ -255,12 +259,15 @@ export function initBridge(): void {
     libraryList: () => LibraryList(),
     libraryImport: (category: string, folderId: string) => LibraryImport(category, folderId),
     libraryImportPaths: (paths: string[], folderId: string) => LibraryImportPaths(paths, folderId),
-    libraryRemove: (paths: string[]) => LibraryRemove(paths),
+    libraryRemove: (paths: string[]) => LibraryRemove(paths).then((files) => files ?? []),
     libraryRename: (path: string, newName: string) => LibraryRename(path, newName),
-    libraryMove: (paths: string[], folderId: string) => LibraryMove(paths, folderId),
-    folderCreate: (name: string, parentId: string) => FolderCreate(name, parentId),
-    folderDelete: (id: string) => FolderDelete(id),
-    folderRename: (id: string, name: string) => FolderRename(id, name),
+    libraryMove: (paths: string[], folderId: string) =>
+      LibraryMove(paths, folderId).then((files) => files ?? []),
+    folderCreate: (name: string, parentId: string) =>
+      FolderCreate(name, parentId).then((folders) => folders ?? []),
+    folderDelete: (id: string) => FolderDelete(id).then((folders) => folders ?? []),
+    folderRename: (id: string, name: string) =>
+      FolderRename(id, name).then((folders) => folders ?? []),
 
     openExternal: (path: string) => OpenExternal(path),
 
@@ -307,5 +314,6 @@ export function initBridge(): void {
         const pct = p && p.total > 0 ? Math.min(100, Math.round((p.written / p.total) * 100)) : 0
         cb(pct)
       }),
-  } as any
+  }
+  window.api = api
 }

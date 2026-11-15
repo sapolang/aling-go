@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { confirmDialog, showToast } from '@/components/feedback'
-import type { WhisperDownloadProgress } from '@/types/electron'
+import type { WhisperDownloadProgress } from '@/types/api'
 import { useThemeStore } from '@/stores/themeStore'
 import type { ThemeMode } from '@/stores/themeStore'
 import {

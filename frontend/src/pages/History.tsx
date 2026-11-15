@@ -4,7 +4,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { confirmDialog, showToast } from '@/components/feedback'
-import type { HistoryEntry } from '@/types/electron'
+import type { HistoryEntry } from '@/types/api'
 import { basename } from '@/utils/path'
 import { formatClockTime as formatTime } from '@/lib/subtitles'
 import { History as HistoryIcon, PlayCircle, Trash2 } from 'lucide-react'
@@ -80,7 +80,9 @@ export default function HistoryPage() {
       return
     }
     if (entry.kind === 'bilibili') {
-      const res = await window.api.getBilibiliStream(entry.sourceUrl)
+      // sourceUrl 是可打开的页面地址，取流仍用内部标识里的 BV 号
+      const bvid = entry.mediaKey.replace(/^bili:/, '')
+      const res = await window.api.getBilibiliStream(bvid)
       if (!res.ok || !res.url) {
         showToast(res.error || '获取 B站 播放地址失败', 'error')
         return

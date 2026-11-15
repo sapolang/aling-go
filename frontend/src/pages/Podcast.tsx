@@ -15,7 +15,7 @@ import { confirmDialog, showToast } from '@/components/feedback'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFeedStore, type FeedEpisode } from '@/stores/feedStore'
 import { usePlayerStore } from '@/stores/playerStore'
-import type { PlatformSubtitleCue, PlatformSubtitleResult } from '@/types/electron.d.ts'
+import type { PlatformSubtitleCue, PlatformSubtitleResult } from '@/types/api'
 import {
   Rss,
   Plus,
@@ -315,7 +315,7 @@ export default function PodcastPage() {
         mediaKind: 'video',
         historyKey: `bili:${bvid}`,
         cover: ep.image,
-        sourceUrl: bvid,
+        sourceUrl: `https://www.bilibili.com/video/${bvid}`,
       })
       if (res.duration > 0) player.setDuration(res.duration)
       openPlayer()
@@ -335,7 +335,7 @@ export default function PodcastPage() {
       mediaKind: 'video',
       historyKey: sourcePath,
       cover: ep.image,
-      sourceUrl: ep.link,
+      sourceUrl: `https://www.youtube.com/watch?v=${videoId}`,
     })
     openPlayer()
     loadPlatformSubtitles(ep.id, sourcePath)

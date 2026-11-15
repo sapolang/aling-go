@@ -35,13 +35,18 @@ const loadSubtitleOffset = (filePath: string | null): number => {
   return Math.round(Math.min(5, Math.max(-5, value)) * 10) / 10
 }
 
+// 应用内偏好全部落在 localStorage：隐私模式等场景写入会抛错，统一忽略
+const persist = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // 忽略持久化失败
+  }
+}
+
 const saveSubtitleOffset = (filePath: string | null, offset: number) => {
   if (!filePath) return
-  try {
-    localStorage.setItem(SUBTITLE_OFFSET_PREFIX + filePath, String(offset))
-  } catch {
-    // 忽略持久化失败（如隐私模式）
-  }
+  persist(SUBTITLE_OFFSET_PREFIX + filePath, String(offset))
 }
 
 interface SubtitleItem {
@@ -78,6 +83,8 @@ interface PlayerStore {
   historyKey: string
   historyCover: string
   historySourceUrl: string
+  // 每次 setFilePath 自增，用于区分「重新播放同一个媒体」与页面内已有的播放会话
+  playSession: number
   playing: boolean
   played: number
   duration: number
@@ -150,6 +157,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   historyKey: '',
   historyCover: '',
   historySourceUrl: '',
+  playSession: 0,
   playing: false,
   played: 0,
   duration: 0,
@@ -182,7 +190,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   subtitleFontScale: loadFontScale(),
 
   setFilePath: (filePath, title, episodeID, opts) =>
-    set({
+    set((s) => ({
       filePath,
       sourceKind: opts?.sourceKind ?? 'html5',
       mediaKind: opts?.mediaKind ?? null,
@@ -191,6 +199,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       historyKey: opts?.historyKey ?? '',
       historyCover: opts?.cover ?? '',
       historySourceUrl: opts?.sourceUrl ?? '',
+      playSession: s.playSession + 1,
       playing: false,
       played: 0,
       duration: 0,
@@ -204,7 +213,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       waveformData: [],
       waveformLoading: false,
       subtitleOffset: loadSubtitleOffset(filePath),
-    }),
+    })),
   setPlaying: (playing) => set({ playing }),
   setPlayed: (played) => set({ played }),
   setDuration: (duration) => set({ duration }),
@@ -254,76 +263,44 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     }),
   setPlayClip: (playClip) => set({ playClip }),
   setFocusMode: (focusMode) => {
-    try {
-      localStorage.setItem(FOCUS_MODE_KEY, focusMode ? '1' : '0')
-    } catch {
-      // 忽略持久化失败（如隐私模式）
-    }
+    persist(FOCUS_MODE_KEY, focusMode ? '1' : '0')
     set({ focusMode })
   },
   setAutoNextEpisode: (autoNextEpisode) => {
-    try {
-      localStorage.setItem(AUTO_NEXT_KEY, autoNextEpisode ? '1' : '0')
-    } catch {
-      // 忽略持久化失败（如隐私模式）
-    }
+    persist(AUTO_NEXT_KEY, autoNextEpisode ? '1' : '0')
     set({ autoNextEpisode })
   },
   setAutoPause: (autoPause) => {
-    try {
-      localStorage.setItem(AUTO_PAUSE_KEY, autoPause ? '1' : '0')
-    } catch {
-      // 忽略持久化失败（如隐私模式）
-    }
+    persist(AUTO_PAUSE_KEY, autoPause ? '1' : '0')
     set({ autoPause })
   },
   setHoverPause: (hoverPause) => {
-    try {
-      localStorage.setItem(HOVER_PAUSE_KEY, hoverPause ? '1' : '0')
-    } catch {
-      // 忽略持久化失败（如隐私模式）
-    }
+    persist(HOVER_PAUSE_KEY, hoverPause ? '1' : '0')
     set({ hoverPause })
   },
   setSubtitleDisplayMode: (subtitleDisplayMode) => {
-    try {
-      localStorage.setItem(SUBTITLE_MODE_KEY, subtitleDisplayMode)
-    } catch {
-      // 忽略持久化失败（如隐私模式）
-    }
+    persist(SUBTITLE_MODE_KEY, subtitleDisplayMode)
     set({ subtitleDisplayMode })
   },
   adjustVolume: (delta) =>
     set((s) => {
       const volume = Math.round(Math.min(1, Math.max(0, s.volume + delta)) * 10) / 10
       const muted = delta > 0 ? false : s.muted
-      try {
-        localStorage.setItem(VOLUME_KEY, String(volume))
-        localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
-      } catch {
-        // 忽略持久化失败（如隐私模式）
-      }
+      persist(VOLUME_KEY, String(volume))
+      persist(MUTED_KEY, muted ? '1' : '0')
       return { volume, muted }
     }),
   toggleMuted: () =>
     set((s) => {
       const muted = !s.muted
-      try {
-        localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
-      } catch {
-        // 忽略持久化失败（如隐私模式）
-      }
+      persist(MUTED_KEY, muted ? '1' : '0')
       return { muted }
     }),
   adjustSubtitleFontScale: (delta) =>
     set((s) => {
       const subtitleFontScale =
         Math.round(Math.min(1.6, Math.max(0.8, s.subtitleFontScale + delta)) * 10) / 10
-      try {
-        localStorage.setItem(FONT_SCALE_KEY, String(subtitleFontScale))
-      } catch {
-        // 忽略持久化失败（如隐私模式）
-      }
+      persist(FONT_SCALE_KEY, String(subtitleFontScale))
       return { subtitleFontScale }
     }),
 }))

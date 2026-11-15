@@ -3,7 +3,6 @@ package study
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"aling-go/internal/core"
@@ -17,6 +16,7 @@ type FavoriteService struct {
 }
 
 func NewFavoriteService(app *application.App) *FavoriteService {
+	injectLogger(app)
 	return &FavoriteService{app: app}
 }
 
@@ -50,7 +50,7 @@ func (s *FavoriteService) FavoriteList(tagID int) []FavoriteClip {
 		}
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteList: %v\n", err)
+		logger.Error("FavoriteList", "tagId", tagID, "error", err)
 		return []FavoriteClip{}
 	}
 	return clips
@@ -67,7 +67,7 @@ func (s *FavoriteService) FavoriteAdd(c FavoriteClip) int {
 		Word:      c.Word,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteAdd: %v\n", err)
+		logger.Error("FavoriteAdd", "filePath", c.FilePath, "error", err)
 		return 0
 	}
 	return id
@@ -75,7 +75,7 @@ func (s *FavoriteService) FavoriteAdd(c FavoriteClip) int {
 
 func (s *FavoriteService) FavoriteDelete(id int) {
 	if err := queries().DeleteFavoriteClip(context.Background(), id); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteDelete: %v\n", err)
+		logger.Error("FavoriteDelete", "id", id, "error", err)
 	}
 }
 
@@ -85,7 +85,7 @@ func (s *FavoriteService) FavoriteUpdateTag(id int, tagID int) {
 		TagID: tagID,
 		ID:    id,
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteUpdateTag: %v\n", err)
+		logger.Error("FavoriteUpdateTag", "id", id, "tagId", tagID, "error", err)
 	}
 }
 
@@ -95,7 +95,7 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 	ctx := context.Background()
 	reviewCount, err := queries().GetFavoriteClipReviewCount(ctx, id)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteReview: %v\n", err)
+		logger.Error("FavoriteReview lookup", "id", id, "error", err)
 		return
 	}
 	var days int
@@ -114,7 +114,7 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 		DaysModifier: fmt.Sprintf("+%d days", days),
 		ID:           id,
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteReview update: %v\n", err)
+		logger.Error("FavoriteReview update", "id", id, "error", err)
 	}
 }
 
@@ -123,7 +123,7 @@ func (s *FavoriteService) FavoriteReview(id int, rating int) {
 func (s *FavoriteService) FavoriteTagsList() []FavoriteTag {
 	rows, err := queries().ListFavoriteTags(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagsList: %v\n", err)
+		logger.Error("FavoriteTagsList", "error", err)
 		return []FavoriteTag{}
 	}
 	tags := make([]FavoriteTag, 0, len(rows))
@@ -136,7 +136,7 @@ func (s *FavoriteService) FavoriteTagsList() []FavoriteTag {
 func (s *FavoriteService) FavoriteTagAdd(name string) int {
 	id, err := queries().AddFavoriteTag(context.Background(), name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagAdd: %v\n", err)
+		logger.Error("FavoriteTagAdd", "name", name, "error", err)
 		return 0
 	}
 	return id
@@ -147,22 +147,22 @@ func (s *FavoriteService) FavoriteTagDelete(id int) {
 	ctx := context.Background()
 	tx, err := core.DB.Begin()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagDelete: %v\n", err)
+		logger.Error("FavoriteTagDelete begin tx", "id", id, "error", err)
 		return
 	}
 	q := userdb.New(tx)
 	if err := q.DetachClipsFromTag(ctx, id); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagDelete clips: %v\n", err)
+		logger.Error("FavoriteTagDelete detach clips", "id", id, "error", err)
 		_ = tx.Rollback()
 		return
 	}
 	if err := q.DeleteFavoriteTag(ctx, id); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagDelete: %v\n", err)
+		logger.Error("FavoriteTagDelete delete tag", "id", id, "error", err)
 		_ = tx.Rollback()
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		fmt.Fprintf(os.Stderr, "FavoriteTagDelete commit: %v\n", err)
+		logger.Error("FavoriteTagDelete commit", "id", id, "error", err)
 	}
 }
 

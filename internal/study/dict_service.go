@@ -13,6 +13,7 @@ type DictService struct {
 }
 
 func NewDictService(app *application.App) *DictService {
+	injectLogger(app)
 	return &DictService{app: app}
 }
 

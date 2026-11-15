@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import type { ExtendedStats, LearningStats, TypingProgress } from '@/types/electron'
+import type { ExtendedStats, LearningStats, TypingProgress } from '@/types/api'
 import {
   DailyReviewChart,
   DistributionBars,
