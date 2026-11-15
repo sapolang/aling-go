@@ -76,13 +76,17 @@ cd frontend && npm run format:check
 
 所有数据保存在本地平台配置目录，不需要账号：
 
-- **macOS**：`~/Library/Application Support/aling-go/`
-- **Windows**：`%AppData%/aling-go/`
+- **macOS**：`~/Library/Application Support/com.aling-go/`
+- **Windows**：`%AppData%/com.aling-go/`
+
+目录名与 bundle identifier 一致，卸载工具可以正确关联到应用数据。旧版本使用的 `aling-go/` 目录会在首次启动时自动整体改名迁移。
 
 | 路径 | 内容 |
 |------|------|
 | `userData.db` | 生词、标签、复习进度、收藏、历史、打字记录、AI 缓存 |
 | `library.json` | 媒体库目录结构 |
+| `settings.json` | 通用设置（Whisper 模型/语言、RSS 代理、AI 端点） |
+| `secrets.json` | 敏感凭据（AI API Key、B站 Cookie），权限 0600 |
 | `backups/` | 自动备份（保留最近 7 份） |
 | `subtitle-cache/` | 在线字幕与转录结果缓存 |
 | `whisper-models/` | 下载的 Whisper 模型 |

@@ -3,7 +3,7 @@ version: '3'
 info:
   companyName: ""
   productName: "语练"
-  productIdentifier: "com.aling.go"
+  productIdentifier: "com.aling-go"
   description: "语练 - Language Learning Tool"
   copyright: ""
   comments: ""

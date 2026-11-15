@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"aling-go/internal/config"
 	"aling-go/internal/core"
 	"aling-go/internal/store/userdb"
 
@@ -83,6 +84,7 @@ type FeedService struct {
 	app     *application.App
 	dataDir string
 	library *LibraryService
+	store   *config.Store
 
 	mu    sync.RWMutex
 	proxy string
@@ -98,15 +100,17 @@ type FeedService struct {
 	wbiExpireAt time.Time
 }
 
-func NewFeedService(app *application.App, dataDir string, library *LibraryService) *FeedService {
-	cfg := loadFeedConfig(dataDir)
+func NewFeedService(app *application.App, dataDir string, library *LibraryService, store *config.Store) *FeedService {
+	st := store.Settings()
+	secrets := store.Secrets()
 	return &FeedService{
 		app:     app,
 		dataDir: dataDir,
 		library: library,
-		proxy:   cfg.Proxy,
+		store:   store,
+		proxy:   st.FeedProxy,
 
-		biliUserCookie: cfg.BilibiliCookie,
+		biliUserCookie: secrets.BilibiliCookie,
 	}
 }
 
@@ -120,38 +124,6 @@ func (s *FeedService) ServiceStartup(ctx context.Context, options application.Se
 func (s *FeedService) ServiceShutdown() error { return nil }
 
 // --- 网络配置 ---
-
-func feedConfigPath(dataDir string) string {
-	return filepath.Join(dataDir, "feed-config.json")
-}
-
-type feedConfig struct {
-	Proxy          string `json:"proxy"`
-	BilibiliCookie string `json:"bilibiliCookie"`
-}
-
-func loadFeedConfig(dataDir string) feedConfig {
-	data, err := os.ReadFile(feedConfigPath(dataDir))
-	if err != nil {
-		return feedConfig{}
-	}
-	var cfg feedConfig
-	if json.Unmarshal(data, &cfg) != nil {
-		return feedConfig{}
-	}
-	cfg.Proxy = strings.TrimSpace(cfg.Proxy)
-	cfg.BilibiliCookie = strings.TrimSpace(cfg.BilibiliCookie)
-	return cfg
-}
-
-// saveFeedConfig 写入订阅相关配置，文件权限 0600
-func saveFeedConfig(dataDir string, cfg feedConfig) error {
-	b, err := json.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(feedConfigPath(dataDir), b, 0600)
-}
 
 // GetProxy 返回当前订阅拉取使用的代理地址
 func (s *FeedService) GetProxy() string {
@@ -172,13 +144,14 @@ func (s *FeedService) SetProxy(proxy string) ActionResult {
 	s.proxy = proxy
 	oldClient := s.client
 	s.client = nil
-	cookie := s.biliUserCookie
 	s.mu.Unlock()
 	if oldClient != nil {
 		oldClient.CloseIdleConnections()
 	}
 
-	if err := saveFeedConfig(s.dataDir, feedConfig{Proxy: proxy, BilibiliCookie: cookie}); err != nil {
+	if err := s.store.UpdateSettings(func(st *config.Settings) {
+		st.FeedProxy = proxy
+	}); err != nil {
 		return ActionResult{Error: "保存配置失败: " + err.Error()}
 	}
 	return ActionResult{OK: true}
@@ -200,10 +173,11 @@ func (s *FeedService) SetBilibiliCookie(cookie string) ActionResult {
 	}
 	s.mu.Lock()
 	s.biliUserCookie = cookie
-	proxy := s.proxy
 	s.mu.Unlock()
 
-	if err := saveFeedConfig(s.dataDir, feedConfig{Proxy: proxy, BilibiliCookie: cookie}); err != nil {
+	if err := s.store.UpdateSecrets(func(sc *config.Secrets) {
+		sc.BilibiliCookie = cookie
+	}); err != nil {
 		return ActionResult{Error: "保存配置失败: " + err.Error()}
 	}
 	return ActionResult{OK: true}

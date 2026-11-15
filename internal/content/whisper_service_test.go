@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"aling-go/internal/config"
 )
 
 func TestListWhisperModelsReturnsTypedList(t *testing.T) {
@@ -76,7 +78,13 @@ func TestDownloadModelKeepsCurrentModelOnChecksumFailure(t *testing.T) {
 }
 
 func TestWhisperConfigConcurrentAccess(t *testing.T) {
-	s := &WhisperService{dataDir: t.TempDir(), modelFile: "ggml-tiny.bin", whisperLang: "en"}
+	dir := t.TempDir()
+	s := &WhisperService{
+		dataDir:     dir,
+		store:       config.New(dir, nil),
+		modelFile:   "ggml-tiny.bin",
+		whisperLang: "en",
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
@@ -93,4 +101,9 @@ func TestWhisperConfigConcurrentAccess(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+
+	st := s.store.Settings()
+	if st.WhisperModel != "ggml-base.bin" || st.WhisperLang != "zh" {
+		t.Fatalf("设置未持久化: %+v", st)
+	}
 }

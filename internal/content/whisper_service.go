@@ -17,6 +17,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"aling-go/internal/config"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -74,6 +76,7 @@ type WhisperDownloadProgress struct {
 type WhisperService struct {
 	app     *application.App
 	dataDir string
+	store   *config.Store
 	// cfgMu 保护 modelFile 与 whisperLang：UI goroutine 写入、转录 goroutine 读取
 	cfgMu       sync.RWMutex
 	modelFile   string
@@ -85,16 +88,22 @@ type WhisperService struct {
 	dlModel     string
 }
 
-func NewWhisperService(app *application.App, dataDir string) *WhisperService {
+func NewWhisperService(app *application.App, dataDir string, store *config.Store) *WhisperService {
 	s := &WhisperService{
 		app:         app,
 		dataDir:     dataDir,
+		store:       store,
 		modelFile:   "ggml-tiny.bin",
 		whisperLang: "en",
 		dlProgress:  -1,
 	}
-	s.loadWhisperLang()
-	s.loadWhisperModel()
+	st := store.Settings()
+	if st.WhisperModel != "" {
+		s.modelFile = st.WhisperModel
+	}
+	if st.WhisperLang != "" {
+		s.whisperLang = st.WhisperLang
+	}
 	return s
 }
 
@@ -260,16 +269,10 @@ func (s *WhisperService) SetWhisperModel(name string) {
 	s.cfgMu.Lock()
 	s.modelFile = modelFile
 	s.cfgMu.Unlock()
-	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-model.txt"), []byte(modelFile), 0644)
-}
-
-func (s *WhisperService) loadWhisperModel() {
-	data, err := os.ReadFile(filepath.Join(s.dataDir, "whisper-model.txt"))
-	if err == nil {
-		m := strings.TrimSpace(string(data))
-		if m != "" {
-			s.modelFile = m
-		}
+	if err := s.store.UpdateSettings(func(st *config.Settings) {
+		st.WhisperModel = modelFile
+	}); err != nil {
+		s.app.Logger.Warn("save whisper model", "error", err)
 	}
 }
 
@@ -281,16 +284,10 @@ func (s *WhisperService) SetWhisperLang(lang string) {
 	s.cfgMu.Lock()
 	s.whisperLang = lang
 	s.cfgMu.Unlock()
-	_ = os.WriteFile(filepath.Join(s.dataDir, "whisper-lang.txt"), []byte(lang), 0644)
-}
-
-func (s *WhisperService) loadWhisperLang() {
-	data, err := os.ReadFile(filepath.Join(s.dataDir, "whisper-lang.txt"))
-	if err == nil {
-		lang := strings.TrimSpace(string(data))
-		if lang != "" {
-			s.whisperLang = lang
-		}
+	if err := s.store.UpdateSettings(func(st *config.Settings) {
+		st.WhisperLang = lang
+	}); err != nil {
+		s.app.Logger.Warn("save whisper lang", "error", err)
 	}
 }
 

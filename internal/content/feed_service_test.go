@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+
+	"aling-go/internal/config"
 )
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -240,7 +242,8 @@ func TestHTTPClientReusesConnections(t *testing.T) {
 }
 
 func TestSetProxyRebuildsHTTPClient(t *testing.T) {
-	svc := &FeedService{dataDir: t.TempDir()}
+	dir := t.TempDir()
+	svc := &FeedService{dataDir: dir, store: config.New(dir, nil)}
 	before := svc.httpClient()
 	if got := svc.httpClient(); got != before {
 		t.Fatal("httpClient should be cached")
