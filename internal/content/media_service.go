@@ -191,6 +191,12 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// 含 .. 的非绝对路径先直接拒绝，避免后续白名单比较前就发生路径穿越
+	if strings.Contains(filePath, "..") || !filepath.IsAbs(filePath) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	filePath, status := s.authorizeMediaPath(filePath)
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
