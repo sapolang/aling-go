@@ -47,7 +47,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   load: async () => {
     set({ loading: true })
     const data = await window.api.libraryList()
-    set({ files: data.files, folders: data.folders, loading: false })
+    set({ files: data.files ?? [], folders: data.folders ?? [], loading: false })
   },
 
   setCategory: (category) => set({ category, editing: false, selectedPaths: new Set() }),

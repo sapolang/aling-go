@@ -55,7 +55,7 @@
 - 后端服务注册、应用和窗口生命周期应遵循 `internal/bootstrap/` 中的现有模式。
 - 暴露给前端的 Go 服务 API 发生变化时，检查所有前端调用方和相关类型。
 - 需要更新 Wails 前端 bindings 时，使用项目当前工具链生成：
-  `wails3 generate bindings -ts`
+  `make bindings`（必须带 `-i` 生成 TS interface，参数与打包任务一致）
 - `frontend/bindings/` 是生成产物；通常不要直接手工修改生成文件。若生成产物被版本控制忽略，应按 CI 的流程重新生成并验证调用方。
 - 不要在生成 bindings 时顺带覆盖或修改其他不相关文件。
 - `main.go` 使用 `//go:embed frontend/dist`。干净 checkout 下若该目录不存在，Go 的嵌入会失败；CI 会创建占位目录用于 Go 检查。进行本地 Go 检查前应确认构建产物目录存在，优先使用正常前端构建，不要提交临时占位文件。
@@ -111,7 +111,7 @@ CI 还会检查 sqlc 生成结果是否与源文件同步，并运行 `govulnche
 
 ### Wails 与生成代码
 
-- 修改 Wails 服务 API 时，按需运行 `wails3 generate bindings -ts` 并检查前端编译。
+- 修改 Wails 服务 API 时，按需运行 `make bindings` 并检查前端编译。
 - 修改 sqlc 源文件时，运行 `make sqlc`，并确认生成代码没有未预期的差异。
 - 不要声称没有运行的检查已经通过。
 - 如果检查受操作系统、缺少 Wails CLI、平台 SDK 或 sidecar 依赖限制而无法运行，说明具体原因。
