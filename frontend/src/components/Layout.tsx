@@ -165,7 +165,7 @@ export function Layout({
           isPlayerRoute ? 'hidden' : collapsed ? 'w-14' : 'w-56'
         }`}
       >
-        <div className="p-4 border-b flex items-center justify-between">
+        <div className="px-4 pb-4 pt-10 border-b flex items-center justify-between">
           {collapsed ? (
             <h1 className="text-sm font-bold">A</h1>
           ) : (
@@ -231,7 +231,11 @@ export function Layout({
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <main className={`flex-1 overflow-y-auto ${isPlayerRoute ? 'p-3 md:p-6' : 'p-6'}`}>
+        <main
+          className={`flex-1 overflow-y-auto ${
+            isPlayerRoute ? 'px-3 pb-3 pt-10 md:px-6 md:pb-6 md:pt-10' : 'p-6'
+          }`}
+        >
           {children}
         </main>
 
