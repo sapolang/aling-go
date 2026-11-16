@@ -146,6 +146,10 @@ func newMainWindow(app *application.App) *application.WebviewWindow {
 		EnableFileDrop:   true,
 		BackgroundColour: application.RGBA{Red: 27, Green: 38, Blue: 54, Alpha: 255},
 		Mac: application.MacWindow{
+			// 隐藏标题栏但保留红绿灯，内容铺满窗口顶部，避免出现一条灰色标题条
+			TitleBar: application.MacTitleBarHidden,
+			// 顶部无标题栏区域仍可拖动窗口
+			InvisibleTitleBarHeight: 36,
 			WebviewPreferences: application.MacWebviewPreferences{
 				// WKWebView 默认要求用户手势才能播放有声媒体，打开文件后的
 				// 自动播放（canplay 回调里的 play()）会被静默拒绝
