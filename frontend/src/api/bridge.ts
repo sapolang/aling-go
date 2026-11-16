@@ -70,7 +70,6 @@ import {
 } from '../../bindings/aling-go/internal/content/libraryservice'
 
 import {
-  GetVideoThumbnail,
   GetWaveformData,
   GetMediaPort,
   GetBilibiliStream,
@@ -221,7 +220,6 @@ export function initBridge(): void {
     historyDelete: (mediaKey: string) => HistoryDelete(mediaKey),
     historyClear: () => HistoryClear(),
 
-    getVideoThumbnail: (filePath: string) => GetVideoThumbnail(filePath),
     getWaveformData: (filePath: string) => GetWaveformData(filePath).then((data) => data ?? []),
     transcodeForPlayback: (filePath: string) => TranscodeForPlayback(filePath),
     getPlatform: () => GetPlatform(),
