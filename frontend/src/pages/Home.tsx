@@ -128,6 +128,15 @@ export default function HomePage() {
     return () => clearTimeout(timer)
   }, [store.searchQuery, debouncedSearch])
 
+  // 视频封面通过本地媒体服务按需截帧，首次加载后由磁盘缓存与 HTTP 缓存复用
+  const [mediaPort, setMediaPort] = useState(0)
+  useEffect(() => {
+    window.api
+      .getMediaPort()
+      .then(setMediaPort)
+      .catch(() => {})
+  }, [])
+
   // 播放进度以播放历史为唯一来源，mediaKey 对本地文件即绝对路径
   const [progressByPath, setProgressByPath] = useState<Record<string, number>>({})
   useEffect(() => {
@@ -808,6 +817,11 @@ export default function HomePage() {
               key={file.path}
               file={file}
               lastPosition={progressByPath[file.path] ?? file.lastPosition ?? 0}
+              thumbUrl={
+                file.type === 'video' && mediaPort > 0
+                  ? `http://127.0.0.1:${mediaPort}/thumb?path=${encodeURIComponent(file.path)}`
+                  : ''
+              }
               editing={store.editing}
               selected={store.selectedPaths.has(file.path)}
               onToggle={() => store.toggleSelect(file.path)}
@@ -1079,6 +1093,7 @@ function GridFolderCard({
 function GridFileCard({
   file,
   lastPosition,
+  thumbUrl,
   editing,
   selected,
   onToggle,
@@ -1087,6 +1102,7 @@ function GridFileCard({
 }: {
   file: LibraryFile
   lastPosition: number
+  thumbUrl: string
   editing: boolean
   selected: boolean
   onToggle: () => void
@@ -1094,6 +1110,10 @@ function GridFileCard({
   onContextMenu: (x: number, y: number) => void
 }) {
   const Icon = TYPE_ICON[file.type] || FileText
+  // 截帧失败（不支持解码、文件已删除等）时退回类型图标，避免出现破图；
+  // 记录失败的具体 URL，文件变化后自动恢复尝试
+  const [failedThumbUrl, setFailedThumbUrl] = useState('')
+  const showThumb = file.type === 'video' && thumbUrl !== '' && failedThumbUrl !== thumbUrl
   const longPress = useLongPress(onContextMenu)
   const handleClick = () => {
     if (longPress.longPressTriggered.current) {
@@ -1137,7 +1157,16 @@ function GridFileCard({
         <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
       </button>
       <div className="flex flex-col items-center justify-center h-28 overflow-hidden">
-        {file.type === 'video' || file.type === 'audio' ? (
+        {showThumb ? (
+          <img
+            src={thumbUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+            onError={() => setFailedThumbUrl(thumbUrl)}
+          />
+        ) : file.type === 'video' || file.type === 'audio' ? (
           <div
             className={`w-full flex items-center justify-center ${file.type === 'audio' ? 'bg-blue-50 dark:bg-blue-950/30' : 'bg-purple-50 dark:bg-purple-950/30'}`}
             style={{ height: '100%' }}

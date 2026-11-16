@@ -189,7 +189,6 @@ export interface ElectronAPI {
   historyClear: () => Promise<void>
   cacheSubtitles: (filePath: string, subtitles: SubtitleItem[]) => Promise<void>
   getCachedSubtitles: (filePath: string) => Promise<SubtitleItem[] | null>
-  getVideoThumbnail: (filePath: string) => Promise<string | null>
   getWaveformData: (filePath: string) => Promise<number[]>
   // 把内置播放器不支持的容器转成可播格式，返回转换后的本地路径
   transcodeForPlayback: (filePath: string) => Promise<string>

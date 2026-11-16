@@ -16,7 +16,7 @@ import (
 func newTestMediaService(t *testing.T) (*MediaService, string) {
 	t.Helper()
 	dir := t.TempDir()
-	return &MediaService{dataDir: dir}, dir
+	return &MediaService{dataDir: dir, thumbSem: make(chan struct{}, 2)}, dir
 }
 
 func writeMediaFile(t *testing.T, dir, name string, size int) (string, []byte) {
@@ -125,6 +125,36 @@ func TestMediaMuxServesEncodedAbsolutePath(t *testing.T) {
 	}
 	if !bytes.Equal(rec.Body.Bytes(), content) {
 		t.Fatalf("响应体长度 = %d, 期望 %d", rec.Body.Len(), len(content))
+	}
+}
+
+func TestHandleThumbPathAllowlist(t *testing.T) {
+	svc, dataDir := newTestMediaService(t)
+	libraryVideo, _ := writeMediaFile(t, t.TempDir(), "lesson.mp4", 16)
+	libraryAudio, _ := writeMediaFile(t, t.TempDir(), "lesson.mp3", 16)
+	registerLibraryFiles(t, dataDir, libraryVideo, libraryAudio)
+	outsideVideo, _ := writeMediaFile(t, dataDir, "secret.mp4", 16)
+
+	tests := []struct {
+		name     string
+		path     string
+		wantCode int
+	}{
+		{name: "未登记的绝对路径", path: outsideVideo, wantCode: http.StatusForbidden},
+		{name: "带 .. 的路径", path: dataDir + "/../secret.mp4", wantCode: http.StatusForbidden},
+		{name: "相对路径", path: "lesson.mp4", wantCode: http.StatusForbidden},
+		{name: "非视频文件", path: libraryAudio, wantCode: http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/thumb?path="+url.QueryEscape(tt.path), nil)
+			rec := httptest.NewRecorder()
+			svc.handleThumb(rec, req)
+			if rec.Code != tt.wantCode {
+				t.Fatalf("状态码 = %d, 期望 %d", rec.Code, tt.wantCode)
+			}
+		})
 	}
 }
 
