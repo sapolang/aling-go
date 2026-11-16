@@ -1,991 +1,131 @@
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { confirmDialog, showToast } from '@/components/feedback'
-import type { BackupStatus, CacheStats, WhisperDownloadProgress } from '@/types/api'
-import { useThemeStore } from '@/stores/themeStore'
-import type { ThemeMode } from '@/stores/themeStore'
-import {
-  SHORTCUT_ACTIONS,
-  SHORTCUT_GROUP_LABELS,
-  SHORTCUT_GROUP_ORDER,
-  formatBinding,
-  sameBinding,
-  useShortcutStore,
-} from '@/stores/shortcutStore'
-import type { ShortcutActionId, ShortcutGroupId } from '@/stores/shortcutStore'
-import { useUpdateStore } from '@/stores/updateStore'
-import {
-  Download,
-  Upload,
-  Trash2,
-  Mic,
-  Loader2,
-  Sparkles,
-  Keyboard,
-  RotateCcw,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Info,
-  DatabaseBackup,
-  RefreshCw,
-  HardDrive,
-} from 'lucide-react'
+import { Suspense, useEffect, useRef } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { HardDrive, Keyboard, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { SHORTCUT_ACTIONS, sameBinding, useShortcutStore } from '@/stores/shortcutStore'
 
-interface ExportedWord {
-  word: string
-  definition: string
-  phonetic: string
-  example: string
-  tags: string
-}
+const SETTINGS_NAV = [
+  {
+    path: 'general',
+    label: '通用',
+    title: '通用',
+    description: '外观主题与应用版本。',
+    icon: SlidersHorizontal,
+  },
+  {
+    path: 'shortcuts',
+    label: '快捷键',
+    title: '快捷键',
+    description:
+      '点击键位后按下新组合键；Backspace 清除绑定，Esc 取消录制。支持单键或 Shift / Alt 组合，不支持 Cmd / Ctrl。快捷键仅在播放页生效。',
+    icon: Keyboard,
+  },
+  {
+    path: 'capability',
+    label: '语音与 AI',
+    title: '语音与 AI',
+    description: '本地转录模型与在线翻译接口，两者都只在播放页被调用。',
+    icon: Sparkles,
+  },
+  {
+    path: 'data',
+    label: '数据与存储',
+    title: '数据与存储',
+    description: '缓存会随播放自动生成；生词数据可备份、导出到 Anki，或从备份恢复。',
+    icon: HardDrive,
+  },
+] as const
 
-function escapeCSV(value: unknown): string {
-  const text = String(value ?? '')
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
-}
-
+/**
+ * 设置中心外壳：左侧二级导航，右侧只渲染当前分组。
+ * 子路由挂在 /settings 下，主侧栏的 startsWith 判断会自动保持「设置」高亮。
+ */
 export default function SettingsPage() {
-  const { mode: themeMode, setMode: setThemeMode } = useThemeStore()
-  const shortcutBindings = useShortcutStore((s) => s.bindings)
-  const setBinding = useShortcutStore((s) => s.setBinding)
-  const resetBinding = useShortcutStore((s) => s.resetBinding)
-  const resetAll = useShortcutStore((s) => s.resetAll)
-  const [appVersion, setAppVersion] = useState('dev')
-  const [recordingId, setRecordingId] = useState<ShortcutActionId | null>(null)
-  const [shortcutConflict, setShortcutConflict] = useState<{
-    actionId: ShortcutActionId
-    conflictId: ShortcutActionId
-  } | null>(null)
-  const [expandedShortcutGroups, setExpandedShortcutGroups] = useState<Set<ShortcutGroupId>>(
-    () => new Set<ShortcutGroupId>(),
-  )
-  const [importResult, setImportResult] = useState<string | null>(null)
-  const [whisperStatus, setWhisperStatus] = useState<{
-    loaded: boolean
-    loading: boolean
-    model: string
-  } | null>(null)
-  const [whisperModels, setWhisperModels] = useState<
-    { name: string; file: string; size: string; downloaded: boolean }[]
-  >([])
-  const [selectedModel, setSelectedModel] = useState('tiny')
-  const [transcribeLang, setTranscribeLang] = useState('en')
-  const [downloading, setDownloading] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState(0)
+  const { pathname } = useLocation()
+  const contentRef = useRef<HTMLDivElement>(null)
+  const bindings = useShortcutStore((s) => s.bindings)
 
-  // --- AI 翻译配置 ---
-  const [aiBaseURL, setAiBaseURL] = useState('')
-  const [aiModel, setAiModel] = useState('')
-  const [aiKey, setAiKey] = useState('')
-  const [aiTesting, setAiTesting] = useState(false)
-  const [aiTestMsg, setAiTestMsg] = useState<{ ok: boolean; message: string } | null>(null)
-
-  // --- 数据备份 ---
-  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null)
-  const [backingUp, setBackingUp] = useState(false)
-
-  // --- 缓存管理 ---
-  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
-  const [clearingCache, setClearingCache] = useState<string | null>(null)
-
-  // --- 版本更新（状态保存在全局 store，切换页面不会丢失下载进度） ---
-  const updateStep = useUpdateStore((s) => s.step)
-  const updateVersion = useUpdateStore((s) => s.latestVersion)
-  const updateProgress = useUpdateStore((s) => s.progress)
-  const updateError = useUpdateStore((s) => s.error)
-  const hasUpdateHint = useUpdateStore((s) => s.hasUpdate)
-
-  // 回到设置页时与后端真实阶段对齐（下载可能在离开期间完成）
-  useEffect(() => {
-    useUpdateStore.getState().sync()
-  }, [])
-
-  // 历史版本遗留的状态未同步时，用后台检查结果兜底展示
-  const displayStep = updateStep === 'idle' && hasUpdateHint ? 'available' : updateStep
-  const displayVersion = updateVersion
-
-  const handleUpdateAction = () => {
-    const store = useUpdateStore.getState()
-    if (displayStep === 'ready') {
-      void store.apply()
-      return
-    }
-    if (displayStep === 'available') {
-      void store.download()
-      return
-    }
-    void store.check()
-  }
-
-  const updateStatus = updateError
-    ? updateError
-    : displayStep === 'checking'
-      ? '正在检查更新…'
-      : displayStep === 'latest'
-        ? '已是最新版本'
-        : displayStep === 'available'
-          ? `发现新版本 v${displayVersion}`
-          : displayStep === 'downloading'
-            ? `正在下载更新 ${updateProgress}%`
-            : displayStep === 'ready'
-              ? '更新已就绪，重启应用后完成安装'
-              : '通过 GitHub Releases 检查新版本'
-
-  const handleBackupNow = async () => {
-    setBackingUp(true)
-    try {
-      const r = await window.api.backupNow()
-      if (r?.ok) {
-        if (r.status) setBackupStatus(r.status)
-        showToast('备份完成')
-      } else {
-        showToast('备份失败: ' + (r?.error || '未知错误'), 'error')
-      }
-    } catch (err) {
-      showToast('备份失败: ' + err, 'error')
-    } finally {
-      setBackingUp(false)
-    }
-  }
-
-  const handleExport = async () => {
-    try {
-      const jsonStr = await window.api.dbExport()
-      const filePath = await window.api.saveFile(
-        `novaling-backup-${new Date().toISOString().split('T')[0]}.json`,
-      )
-      if (filePath) {
-        await window.api.writeTextFile(filePath, jsonStr)
-        showToast('导出成功！')
-      }
-    } catch (err) {
-      showToast('导出失败: ' + err, 'error')
-    }
-  }
-
-  const handleExportCSV = async () => {
-    try {
-      const jsonStr = await window.api.dbExport()
-      const { words = [] } = JSON.parse(jsonStr)
-      const header = ['word', 'definition', 'phonetic', 'example', 'tags']
-      const rows = words.map((w: ExportedWord) => [
-        w.word,
-        w.definition,
-        w.phonetic,
-        w.example,
-        String(w.tags ?? '')
-          .split(/[,，\s]+/)
-          .filter(Boolean)
-          .join(' '),
-      ])
-      const csv = [header, ...rows].map((row: unknown[]) => row.map(escapeCSV).join(',')).join('\n')
-      const filePath = await window.api.saveFile(
-        `novaling-words-${new Date().toISOString().split('T')[0]}.csv`,
-      )
-      if (filePath) {
-        await window.api.writeTextFile(filePath, csv)
-        showToast('导出成功，可直接在 Anki 中导入')
-      }
-    } catch (err) {
-      showToast('导出失败: ' + err, 'error')
-    }
-  }
-
-  const handleImport = async () => {
-    try {
-      const filePath = await window.api.openFile('*.json')
-      if (!filePath) return
-      const content = await window.api.readTextFile(filePath)
-      const result = await window.api.dbImport(content)
-      setImportResult(`导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条（已存在）`)
-    } catch (err) {
-      showToast('导入失败: ' + err, 'error')
-    }
-  }
-
-  const loadCacheStats = async () => {
-    try {
-      setCacheStats(await window.api.cacheStats())
-    } catch (err) {
-      console.error('[cache] load stats failed', err)
-    }
-  }
-
-  const handleClearCache = async (kind: string, label: string) => {
-    const ok = await confirmDialog({
-      title: `清理${label}？`,
-      description:
-        kind === 'podcasts'
-          ? '已下载的音频文件会从磁盘删除，并同时移出媒体库。'
-          : '对应缓存文件会被删除，后续需要时会重新生成。',
-      confirmText: '清理',
-      destructive: true,
-    })
-    if (!ok) return
-    setClearingCache(kind)
-    try {
-      const res = await window.api.clearCache(kind)
-      if (res?.ok) {
-        showToast(`已清理${label}，释放 ${formatBytes(res.freed)}`)
-      } else {
-        showToast('清理失败: ' + (res?.error || '未知错误'), 'error')
-      }
-      await loadCacheStats()
-    } finally {
-      setClearingCache(null)
-    }
-  }
-
-  const handleClearAllCaches = async () => {
-    const ok = await confirmDialog({
-      title: '清理全部缓存？',
-      description:
-        '缩略图、波形、转码文件、字幕缓存、已下载音频等都会被删除；生词、收藏与播放记录不受影响。',
-      confirmText: '全部清理',
-      destructive: true,
-    })
-    if (!ok) return
-    setClearingCache('all')
-    try {
-      const res = await window.api.clearAllCaches()
-      if (res?.ok) {
-        showToast(`已清理全部缓存，释放 ${formatBytes(res.freed)}`)
-      } else {
-        showToast('清理失败: ' + (res?.error || '未知错误'), 'error')
-      }
-      await loadCacheStats()
-    } finally {
-      setClearingCache(null)
-    }
-  }
-
-  useEffect(() => {
-    window.api.whisperStatus().then((s: any) => {
-      setWhisperStatus(s)
-      const current = s.model.replace(/\.bin$/, '').replace('ggml-', '')
-      setSelectedModel(current)
-    })
-    window.api.listWhisperModels().then(setWhisperModels)
-    window.api.getWhisperLang().then(setTranscribeLang)
-
-    window.api.aiGetConfig().then((cfg: any) => {
-      setAiBaseURL(cfg.baseUrl)
-      setAiModel(cfg.model)
-      setAiKey(cfg.apiKeyMask || '')
-    })
-
-    window.api.getVersion().then(setAppVersion)
-
-    window.api.getBackupStatus().then(setBackupStatus)
-
-    window.api
-      .cacheStats()
-      .then(setCacheStats)
-      .catch((err: unknown) => console.error('[cache] load stats failed', err))
-
-    let resumeCleanup: (() => void) | null = null
-    window.api.getDownloadProgress().then((d: WhisperDownloadProgress | null) => {
-      if (d) {
-        setSelectedModel(d.model)
-        setDownloading(true)
-        setDownloadProgress(d.progress)
-        resumeCleanup = window.api.onDownloadProgress((pct: number) => setDownloadProgress(pct))
-      }
-    })
-
-    return () => {
-      resumeCleanup?.()
-    }
-  }, [])
-
-  // --- 快捷键录制：捕获阶段拦截，避免触发按钮原生行为与页面滚动 ---
-  useEffect(() => {
-    if (!recordingId) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (e.repeat) return
-      if (e.key === 'Escape') {
-        setShortcutConflict(null)
-        setRecordingId(null)
-        return
-      }
-      if (e.metaKey || e.ctrlKey) {
-        showToast('不支持 Cmd / Ctrl 组合', 'warning')
-        return
-      }
-      if (e.isComposing) return
-      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn'].includes(e.key)) return
-      if (e.code === 'Tab') {
-        showToast('Tab 键不可用', 'warning')
-        return
-      }
-      if (e.code === 'Backspace') {
-        setBinding(recordingId, null)
-        setShortcutConflict(null)
-        setRecordingId(null)
-        showToast('已清除绑定')
-        return
-      }
-
-      const binding = { code: e.code, shift: e.shiftKey, alt: e.altKey }
-      const conflict = setBinding(recordingId, binding)
-      if (conflict) {
-        setShortcutConflict({ actionId: recordingId, conflictId: conflict })
-        const label = SHORTCUT_ACTIONS.find((action) => action.id === conflict)?.label ?? conflict
-        showToast(`已被「${label}」占用`, 'warning')
-        return
-      }
-      setShortcutConflict(null)
-      setRecordingId(null)
-      showToast(`已设为 ${formatBinding(binding)}`)
-    }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [recordingId, setBinding])
-
-  const handleResetAllShortcuts = async () => {
-    // 先退出录制，避免确认框打开后按键仍被录制器捕获
-    setRecordingId(null)
-    setShortcutConflict(null)
-    const ok = await confirmDialog({
-      title: '恢复默认快捷键',
-      description: '将播放器所有快捷键恢复为默认键位，自定义设置会丢失。',
-      confirmText: '恢复默认',
-    })
-    if (!ok) return
-    resetAll()
-    showToast('已恢复默认快捷键')
-  }
-
-  const handleResetShortcut = (id: ShortcutActionId) => {
-    setRecordingId((current) => (current === id ? null : current))
-    setShortcutConflict(null)
-    resetBinding(id)
-    showToast('已恢复默认键位')
-  }
+  const current =
+    SETTINGS_NAV.find((item) => pathname === `/settings/${item.path}`) ?? SETTINGS_NAV[0]
 
   const modifiedShortcutCount = SHORTCUT_ACTIONS.filter((action) => {
-    const binding = shortcutBindings[action.id]
+    const binding = bindings[action.id]
     return binding ? !sameBinding(binding, action.defaultBinding) : true
   }).length
 
-  const toggleShortcutGroup = (group: ShortcutGroupId) => {
-    setRecordingId(null)
-    setShortcutConflict(null)
-    setExpandedShortcutGroups((current) => {
-      const next = new Set(current)
-      if (next.has(group)) next.delete(group)
-      else next.add(group)
-      return next
-    })
-  }
-
-  const allShortcutGroupsExpanded = expandedShortcutGroups.size === SHORTCUT_GROUP_ORDER.length
-  const toggleAllShortcutGroups = () => {
-    setRecordingId(null)
-    setShortcutConflict(null)
-    setExpandedShortcutGroups(
-      allShortcutGroupsExpanded ? new Set<ShortcutGroupId>() : new Set(SHORTCUT_GROUP_ORDER),
-    )
-  }
-
-  const handleDownloadModel = async (name?: string) => {
-    const modelName = name || selectedModel
-    setSelectedModel(modelName)
-    setDownloading(true)
-    setDownloadProgress(0)
-    const cleanup = window.api.onDownloadProgress((pct: number) => setDownloadProgress(pct))
-    try {
-      await window.api.downloadWhisperModel(modelName)
-      await window.api.setWhisperModel(modelName)
-      const status = await window.api.whisperStatus()
-      setWhisperStatus(status)
-      window.api.listWhisperModels().then(setWhisperModels)
-    } catch (err: any) {
-      showToast('下载失败: ' + (err?.message || String(err)), 'error')
-    } finally {
-      cleanup()
-      setDownloading(false)
-    }
-  }
-
-  // 输入框里的掩码原样提交时视为不修改，由后端保留原 Key
-  const aiKeyInput = () => (aiKey.includes('***') ? '' : aiKey.trim())
-
-  const handleAISave = async () => {
-    const res = await window.api.aiSetConfig({
-      baseUrl: aiBaseURL,
-      model: aiModel,
-      apiKey: aiKeyInput(),
-    })
-    if (!res.ok) {
-      showToast(res.error, 'error')
-      return
-    }
-    const cfg: any = await window.api.aiGetConfig()
-    setAiKey(cfg.apiKeyMask || '')
-    showToast('已保存')
-  }
-
-  const handleAITest = async () => {
-    setAiTesting(true)
-    setAiTestMsg(null)
-    const res = await window.api.aiSetConfig({
-      baseUrl: aiBaseURL,
-      model: aiModel,
-      apiKey: aiKeyInput(),
-    })
-    if (!res.ok) {
-      setAiTesting(false)
-      setAiTestMsg({ ok: false, message: res.error })
-      return
-    }
-    const cfg: any = await window.api.aiGetConfig()
-    setAiKey(cfg.apiKeyMask || '')
-    const r = await window.api.aiTest()
-    setAiTestMsg(r)
-    setAiTesting(false)
-  }
-
-  const handleClear = async () => {
-    const ok = await confirmDialog({
-      title: '清空全部数据？',
-      description: '将删除所有生词和标签，此操作不可恢复。',
-      confirmText: '确认清空',
-      destructive: true,
-    })
-    if (!ok) return
-    await window.api.dbClear()
-    showToast('已清空全部数据')
-  }
+  // 顶部标题、说明与导航固定不动，只重置内容区的滚动位置
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0
+  }, [pathname])
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">设置</h1>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">外观</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">主题</p>
-              <p className="text-sm text-muted-foreground">选择亮色、暗色，或跟随系统外观</p>
-            </div>
-            <Select value={themeMode} onValueChange={(v) => setThemeMode(v as ThemeMode)}>
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="system">跟随系统</SelectItem>
-                <SelectItem value="light">亮色</SelectItem>
-                <SelectItem value="dark">暗色</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Keyboard className="h-5 w-5" /> 播放器快捷键
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <p className="text-xs text-muted-foreground max-w-md">
-              点击键位后按下新组合键；Backspace 清除绑定，Esc 取消录制。支持单键或 Shift / Alt
-              组合，不支持 Cmd / Ctrl。快捷键仅在播放页生效。
-            </p>
-            <div className="flex items-center gap-2">
-              {modifiedShortcutCount > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  已修改 {modifiedShortcutCount} 项
-                </span>
-              )}
-              <Button variant="ghost" size="sm" onClick={toggleAllShortcutGroups}>
-                {allShortcutGroupsExpanded ? (
-                  <ChevronUp className="h-3.5 w-3.5 mr-1" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 mr-1" />
-                )}
-                {allShortcutGroupsExpanded ? '全部收起' : '全部展开'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={modifiedShortcutCount === 0}
-                onClick={handleResetAllShortcuts}
-              >
-                <RotateCcw className="h-3.5 w-3.5 mr-1" /> 恢复默认
-              </Button>
-            </div>
-          </div>
-
-          {SHORTCUT_GROUP_ORDER.map((group) => {
-            const actions = SHORTCUT_ACTIONS.filter((action) => action.group === group)
-            if (actions.length === 0) return null
-            const expanded = expandedShortcutGroups.has(group)
-            const modified = actions.filter((action) => {
-              const binding = shortcutBindings[action.id]
-              return binding ? !sameBinding(binding, action.defaultBinding) : true
-            }).length
+    // 用负边距抵消 Layout 的 p-6，让右侧内容区自己成为滚动容器：
+    // 滚动条贴窗口右缘，标题、说明与导航保持固定。
+    <div className="-my-6 -mr-6 flex h-[calc(100%+3rem)] gap-10">
+      <aside className="w-44 shrink-0 py-6">
+        <h1 className="mb-5 text-2xl font-bold tracking-tight">设置</h1>
+        <nav aria-label="设置分组" className="space-y-0.5">
+          {SETTINGS_NAV.map((item) => {
+            const Icon = item.icon
             return (
-              <div key={group} className="rounded-md border">
-                <button
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
-                  onClick={() => toggleShortcutGroup(group)}
-                >
-                  <span className="flex items-center gap-1.5 text-sm font-medium">
-                    {expanded ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
+              <NavLink
+                key={item.path}
+                to={`/settings/${item.path}`}
+                className={({ isActive }) =>
+                  cn(
+                    'relative flex items-center gap-2.5 rounded-md py-2 pl-3 pr-2 text-sm transition-colors',
+                    isActive
+                      ? 'bg-primary/10 font-medium text-primary'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-opacity',
+                        isActive ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
+                    <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.path === 'shortcuts' && modifiedShortcutCount > 0 && (
+                      <span
+                        className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums"
+                        title={`已修改 ${modifiedShortcutCount} 项快捷键`}
+                      >
+                        {modifiedShortcutCount}
+                      </span>
                     )}
-                    {SHORTCUT_GROUP_LABELS[group]}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {modified > 0 && <span className="text-primary">{modified} 项已修改 · </span>}
-                    {actions.length} 项
-                  </span>
-                </button>
-                {expanded && (
-                  <div className="space-y-1.5 px-2 pb-2">
-                    {actions.map((action) => {
-                      const binding = shortcutBindings[action.id]
-                      const recording = recordingId === action.id
-                      const isDefault = binding
-                        ? sameBinding(binding, action.defaultBinding)
-                        : false
-                      const conflictId =
-                        shortcutConflict?.actionId === action.id
-                          ? shortcutConflict.conflictId
-                          : null
-                      const conflictLabel = conflictId
-                        ? (SHORTCUT_ACTIONS.find((item) => item.id === conflictId)?.label ??
-                          '其他动作')
-                        : null
-                      return (
-                        <div key={action.id} className="rounded px-2 py-1 hover:bg-muted/40">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm">{action.label}</span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant={
-                                  recording ? (conflictId ? 'destructive' : 'default') : 'outline'
-                                }
-                                size="sm"
-                                className={`min-w-[7rem] font-mono ${recording && !conflictId ? 'animate-pulse' : ''}`}
-                                title="点击后按新键；Backspace 清除，Esc 取消"
-                                onClick={() => {
-                                  setShortcutConflict(null)
-                                  setRecordingId(recording ? null : action.id)
-                                }}
-                              >
-                                {recording
-                                  ? '按下新键…'
-                                  : binding
-                                    ? formatBinding(binding)
-                                    : '未设置'}
-                              </Button>
-                              {!isDefault && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  title="恢复默认键位"
-                                  onClick={() => handleResetShortcut(action.id)}
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          {conflictLabel && (
-                            <p className="text-xs text-destructive text-right mt-1">
-                              与「{conflictLabel}」冲突，请换一个键位
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  </>
                 )}
-              </div>
+              </NavLink>
             )
           })}
-        </CardContent>
-      </Card>
+        </nav>
+      </aside>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Mic className="h-5 w-5" /> Whisper 语音转录
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-4 px-3 py-2">
-            <div>
-              <label className="text-sm font-medium">转录语言</label>
-              <p className="text-xs text-muted-foreground mt-1">
-                默认使用 English，可按音频语言调整
-              </p>
-            </div>
-            <Select
-              value={transcribeLang}
-              onValueChange={(value) => {
-                setTranscribeLang(value)
-                window.api.setWhisperLang(value)
-              }}
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">自动检测</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="zh">中文</SelectItem>
-                <SelectItem value="ja">日本語</SelectItem>
-                <SelectItem value="ko">한국어</SelectItem>
-                <SelectItem value="fr">Français</SelectItem>
-                <SelectItem value="de">Deutsch</SelectItem>
-                <SelectItem value="es">Español</SelectItem>
-                <SelectItem value="ru">Русский</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            {whisperModels.map((m) => {
-              const active = whisperStatus?.model === m.file && m.downloaded
-              const isDownloading = downloading && selectedModel === m.name
-              return (
-                <div
-                  key={m.name}
-                  className={`px-3 py-2 rounded text-sm ${active ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/50'}`}
-                >
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                      <span className="font-medium capitalize">{m.name}</span>
-                      <span className="text-muted-foreground">{m.size}</span>
-                      {m.downloaded && (
-                        <span className="text-xs text-green-600 dark:text-green-400">✓</span>
-                      )}
-                      {active && <span className="text-xs text-primary font-medium">使用中</span>}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {isDownloading ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-primary transition-all"
-                              style={{ width: `${downloadProgress}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {downloadProgress}%
-                          </span>
-                        </div>
-                      ) : m.downloaded ? (
-                        <Button
-                          size="sm"
-                          variant={active ? 'default' : 'outline'}
-                          onClick={() => {
-                            window.api.setWhisperModel(m.name)
-                            setSelectedModel(m.name)
-                            window.api.whisperStatus().then(setWhisperStatus)
-                          }}
-                        >
-                          {active ? '使用中' : '切换'}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={downloading}
-                          onClick={() => handleDownloadModel(m.name)}
-                        >
-                          <Download className="h-3 w-3 mr-1" /> 下载
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="h-5 w-5" /> AI 翻译
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            用于播放器选句翻译与句子详解。兼容 OpenAI 协议的接口都可以接入（DeepSeek / 通义 / Kimi /
-            本地 Ollama）。
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="shrink-0 border-b border-border/50 pb-5 pr-6 pt-6">
+          <h2 className="text-xl font-semibold tracking-tight">{current.title}</h2>
+          <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-muted-foreground">
+            {current.description}
           </p>
-          <div>
-            <label className="text-sm font-medium">接口地址</label>
-            <Input
-              value={aiBaseURL}
-              onChange={(e) => setAiBaseURL(e.target.value)}
-              placeholder="https://api.deepseek.com/v1"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium">模型</label>
-            <Input
-              value={aiModel}
-              onChange={(e) => setAiModel(e.target.value)}
-              placeholder="deepseek-chat"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium">API Key</label>
-            <Input
-              value={aiKey}
-              onChange={(e) => setAiKey(e.target.value)}
-              placeholder="sk-..."
-              className="mt-1"
-            />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button onClick={handleAISave}>保存</Button>
-            <Button variant="outline" disabled={aiTesting} onClick={handleAITest}>
-              {aiTesting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} 测试连接
-            </Button>
-            {aiTestMsg && (
-              <span className={`text-xs ${aiTestMsg.ok ? 'text-green-600' : 'text-destructive'}`}>
-                {aiTestMsg.message}
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <HardDrive className="h-5 w-5" /> 缓存管理
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-xs text-muted-foreground max-w-md">
-              缩略图、波形、转码文件与字幕缓存会在播放时自动生成；转码缓存超过 2GB
-              时会自动回收最旧的文件。
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                共 {formatBytes(cacheStats?.total ?? 0)}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!cacheStats || cacheStats.total === 0 || clearingCache !== null}
-                onClick={handleClearAllCaches}
-              >
-                {clearingCache === 'all' ? (
-                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                )}
-                全部清理
-              </Button>
-            </div>
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto pb-16 pr-6">
+          <div
+            key={pathname}
+            className="max-w-3xl animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ease-out"
+          >
+            <Suspense fallback={<p className="py-16 text-sm text-muted-foreground">加载中…</p>}>
+              <Outlet />
+            </Suspense>
           </div>
-          <div className="space-y-1">
-            {(cacheStats?.entries ?? []).map((entry) => (
-              <div
-                key={entry.kind}
-                className="flex items-center justify-between gap-3 px-3 py-2 rounded hover:bg-muted/40"
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <span className="text-sm">{entry.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {entry.files} 个文件 · {formatBytes(entry.size)}
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={entry.files === 0 || clearingCache !== null}
-                  onClick={() => handleClearCache(entry.kind, entry.label)}
-                >
-                  清理
-                </Button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">数据备份</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <p className="font-medium">自动备份</p>
-              <p className="text-sm text-muted-foreground">
-                启动时若距上次备份超过 24 小时会自动备份，保留最近 7 份
-                {backupStatus?.lastBackup
-                  ? ` · 最近备份：${new Date(backupStatus.lastBackup).toLocaleString()}`
-                  : ' · 尚未备份'}
-              </p>
-              {backupStatus?.dir && (
-                <p className="text-xs text-muted-foreground font-mono break-all mt-1">
-                  {backupStatus.dir}
-                </p>
-              )}
-            </div>
-            <Button variant="outline" disabled={backingUp} onClick={handleBackupNow}>
-              {backingUp ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <DatabaseBackup className="h-4 w-4 mr-1" />
-              )}
-              立即备份
-            </Button>
-          </div>
-          <div className="border-t border-border" />
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">导出生词库</p>
-              <p className="text-sm text-muted-foreground">将全部生词数据导出为 JSON 文件</p>
-            </div>
-            <Button onClick={handleExport}>
-              <Download className="h-4 w-4 mr-1" /> 导出
-            </Button>
-          </div>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">导出为 CSV（Anki 兼容）</p>
-              <p className="text-sm text-muted-foreground">
-                字段顺序：单词、释义、音标、例句、标签
-              </p>
-            </div>
-            <Button variant="outline" onClick={handleExportCSV}>
-              <Download className="h-4 w-4 mr-1" /> CSV
-            </Button>
-          </div>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">导入生词库</p>
-              <p className="text-sm text-muted-foreground">从 JSON 文件恢复生词数据，自动去重</p>
-            </div>
-            <Button variant="outline" onClick={handleImport}>
-              <Upload className="h-4 w-4 mr-1" /> 导入
-            </Button>
-          </div>
-          {importResult && (
-            <p className="text-sm text-green-600 dark:text-green-400">{importResult}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="text-lg text-destructive">危险操作</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">清空全部数据</p>
-              <p className="text-sm text-muted-foreground">删除所有生词和标签，此操作不可恢复</p>
-            </div>
-            <Button variant="destructive" onClick={handleClear}>
-              <Trash2 className="h-4 w-4 mr-1" /> 清空
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Info className="h-5 w-5" /> 关于
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">语练</p>
-              <p className="text-sm text-muted-foreground">英语输入输出训练台</p>
-            </div>
-            <span className="text-sm font-mono text-muted-foreground">v{appVersion}</span>
-          </div>
-
-          <div className="border-t border-border" />
-
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-medium">版本更新</p>
-              <p
-                className={`text-sm ${updateError ? 'text-destructive' : 'text-muted-foreground'}`}
-              >
-                {updateStatus}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={displayStep === 'checking' || displayStep === 'downloading'}
-              onClick={handleUpdateAction}
-            >
-              {displayStep === 'checking' || displayStep === 'downloading' ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              ) : displayStep === 'ready' ? (
-                <RotateCcw className="h-3.5 w-3.5 mr-1" />
-              ) : displayStep === 'available' ? (
-                <Download className="h-3.5 w-3.5 mr-1" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5 mr-1" />
-              )}
-              {displayStep === 'checking'
-                ? '检查中…'
-                : displayStep === 'downloading'
-                  ? `下载中 ${updateProgress}%`
-                  : displayStep === 'ready'
-                    ? '重启并安装'
-                    : displayStep === 'available'
-                      ? '下载更新'
-                      : '检查更新'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

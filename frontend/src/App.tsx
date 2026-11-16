@@ -10,6 +10,10 @@ const Player = lazy(() => import('@/pages/Player'))
 const WordList = lazy(() => import('@/pages/WordList'))
 const WordCard = lazy(() => import('@/pages/WordCard'))
 const Settings = lazy(() => import('@/pages/Settings'))
+const SettingsGeneral = lazy(() => import('@/pages/settings/General'))
+const SettingsShortcuts = lazy(() => import('@/pages/settings/Shortcuts'))
+const SettingsCapability = lazy(() => import('@/pages/settings/Capability'))
+const SettingsData = lazy(() => import('@/pages/settings/Data'))
 const Dict = lazy(() => import('@/pages/DictPage'))
 const Review = lazy(() => import('@/pages/ReviewPage'))
 const ArticleList = lazy(() => import('@/pages/ArticleList'))
@@ -119,7 +123,13 @@ function AppContent() {
           <Route path="/articles/:id" element={<ArticleTyping />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/favorites" element={<Favorites />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings" element={<Settings />}>
+            <Route index element={<Navigate to="general" replace />} />
+            <Route path="general" element={<SettingsGeneral />} />
+            <Route path="shortcuts" element={<SettingsShortcuts />} />
+            <Route path="capability" element={<SettingsCapability />} />
+            <Route path="data" element={<SettingsData />} />
+          </Route>
         </Routes>
       </Suspense>
 

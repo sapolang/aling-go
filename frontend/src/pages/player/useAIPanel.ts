@@ -94,8 +94,8 @@ export function useAIPanel(): AIPanelHandle {
     const cfg = await window.api.aiGetConfig()
     if (!cfg.hasKey) {
       setAiTarget(null)
-      showToast('请先在「设置 → AI 翻译」中填写 API Key', 'warning')
-      navigate('/settings')
+      showToast('请先在「设置 → 语音与 AI」中填写 API Key', 'warning')
+      navigate('/settings/capability')
       return false
     }
     return true
