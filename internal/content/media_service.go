@@ -2,9 +2,9 @@ package content
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -39,10 +40,19 @@ type MediaService struct {
 	// 转码兜底：ffmpeg 能力探测结果，只探一次
 	capsMu sync.Mutex
 	caps   ffmpegCaps
+	// 缩略图生成按文件串行，避免同一文件的并发请求重复调用 ffmpeg；
+	// 同时用信号量限制同时运行的 ffmpeg 数量，防止列表滚动时把 CPU 打满
+	thumbLocksMu sync.Mutex
+	thumbLocks   map[string]*sync.Mutex
+	thumbSem     chan struct{}
 }
 
 func NewMediaService(app *application.App, dataDir string) *MediaService {
-	return &MediaService{app: app, dataDir: dataDir}
+	return &MediaService{
+		app:      app,
+		dataDir:  dataDir,
+		thumbSem: make(chan struct{}, 2),
+	}
 }
 
 func (s *MediaService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -64,6 +74,7 @@ func (s *MediaService) ServiceShutdown() error {
 func (s *MediaService) mediaMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media/", s.handleMediaStream)
+	mux.HandleFunc("/thumb", s.handleThumb)
 	mux.HandleFunc("/podcast-stream", s.handlePodcastStream)
 	mux.HandleFunc("/yt-embed", s.handleYTEmbed)
 	mux.HandleFunc("/bili-stream", s.handleBiliStream)
@@ -344,29 +355,132 @@ const ytEmbedPage = `<!DOCTYPE html>
 
 // --- Thumbnail ---
 
-func (s *MediaService) GetVideoThumbnail(filePath string) string {
-	cacheDir := filepath.Join(s.dataDir, "aling", "thumbnails")
-	_ = os.MkdirAll(cacheDir, 0755)
-	cacheKey := md5Hash(filePath)
-	thumbPath := filepath.Join(cacheDir, cacheKey+".jpg")
+const thumbTimeout = 10 * time.Second
 
-	if data, err := os.ReadFile(thumbPath); err == nil {
-		return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
+var errThumbUnavailable = errors.New("thumbnail unavailable")
+
+// thumbnailPath 返回缩略图的磁盘缓存路径，缓存键与波形一致，均为文件路径的 md5。
+func (s *MediaService) thumbnailPath(filePath string) string {
+	return filepath.Join(s.dataDir, "aling", "thumbnails", md5Hash(filePath)+".jpg")
+}
+
+func (s *MediaService) thumbLock(filePath string) *sync.Mutex {
+	s.thumbLocksMu.Lock()
+	defer s.thumbLocksMu.Unlock()
+	if s.thumbLocks == nil {
+		s.thumbLocks = make(map[string]*sync.Mutex)
+	}
+	lock, ok := s.thumbLocks[filePath]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.thumbLocks[filePath] = lock
+	}
+	return lock
+}
+
+// ensureThumbnail 返回缩略图缓存路径，未命中时调用 ffmpeg 截取一帧并落盘。
+// 同一文件的并发请求共享一次生成过程，避免重复解码。
+func (s *MediaService) ensureThumbnail(ctx context.Context, filePath string) (string, error) {
+	lock := s.thumbLock(filePath)
+	lock.Lock()
+	defer lock.Unlock()
+
+	thumbPath := s.thumbnailPath(filePath)
+	if stat, err := os.Stat(thumbPath); err == nil && stat.Size() > 0 {
+		return thumbPath, nil
 	}
 
+	select {
+	case s.thumbSem <- struct{}{}:
+		defer func() { <-s.thumbSem }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	return s.generateThumbnail(ctx, filePath, thumbPath)
+}
+
+func (s *MediaService) generateThumbnail(ctx context.Context, filePath, thumbPath string) (string, error) {
 	ffmpeg := findFFmpeg(s.dataDir, s.app.Logger)
 	if ffmpeg == "" {
-		return ""
+		return "", errThumbUnavailable
+	}
+	if err := os.MkdirAll(filepath.Dir(thumbPath), 0755); err != nil {
+		return "", err
 	}
 
-	cmd := exec.Command(ffmpeg, "-i", filePath, "-ss", "00:00:05", "-vframes", "1", "-q:v", "2", "-update", "1", thumbPath)
-	_ = cmd.Run()
+	// 先写临时文件再原子改名，避免中断留下半张图被后续请求当作缓存命中
+	tmpPath := thumbPath + ".tmp.jpg"
+	defer func() { _ = os.Remove(tmpPath) }()
 
-	data, err := os.ReadFile(thumbPath)
+	// -ss 放在 -i 之前是快速定位；短于 3 秒的视频截不到帧时回退到首帧
+	for _, seek := range []string{"00:00:03", "00:00:00"} {
+		cmdCtx, cancel := context.WithTimeout(ctx, thumbTimeout)
+		cmd := exec.CommandContext(cmdCtx, ffmpeg, //nolint:gosec // G702: filePath 已通过 authorizeMediaPath 白名单校验，且作为独立参数传入
+			"-ss", seek,
+			"-i", filePath,
+			"-frames:v", "1",
+			"-vf", "scale=480:-2",
+			"-q:v", "5",
+			"-update", "1",
+			"-y", tmpPath,
+		)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			s.app.Logger.Debug("video thumbnail failed", "path", filePath, "seek", seek, "error", err, "output", string(out))
+			continue
+		}
+		if stat, err := os.Stat(tmpPath); err != nil || stat.Size() == 0 {
+			continue
+		}
+		if err := os.Rename(tmpPath, thumbPath); err != nil {
+			return "", err
+		}
+		return thumbPath, nil
+	}
+	return "", errThumbUnavailable
+}
+
+// handleThumb 按文件路径返回视频缩略图，供文件库卡片以 <img> 懒加载。
+// 仅放行媒体库内的视频文件，首次请求时生成并写入磁盘缓存。
+func (s *MediaService) handleThumb(w http.ResponseWriter, r *http.Request) {
+	filePath := r.URL.Query().Get("path")
+	if strings.Contains(filePath, "..") || !filepath.IsAbs(filePath) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	resolved, status := s.authorizeMediaPath(filePath)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	if detectFileType(resolved) != "video" {
+		http.Error(w, "not a video", http.StatusForbidden)
+		return
+	}
+
+	thumbPath, err := s.ensureThumbnail(r.Context(), resolved)
 	if err != nil {
-		return ""
+		http.Error(w, "thumbnail unavailable", http.StatusNotFound)
+		return
 	}
-	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
+
+	f, err := os.Open(thumbPath)
+	if err != nil {
+		http.Error(w, "thumbnail unavailable", http.StatusNotFound)
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	stat, err := f.Stat()
+	if err != nil {
+		http.Error(w, "thumbnail unavailable", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=604800")
+	http.ServeContent(w, r, filepath.Base(thumbPath), stat.ModTime(), f)
 }
 
 const waveformSampleCount = 1000
