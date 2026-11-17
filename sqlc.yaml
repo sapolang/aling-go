@@ -114,6 +114,8 @@ sql:
             go_type: "string"
           - column: "feed_episodes.audio_url"
             go_type: "string"
+          - column: "feed_episodes.media_url"
+            go_type: "string"
           - column: "feed_episodes.link"
             go_type: "string"
           - column: "feed_episodes.duration"

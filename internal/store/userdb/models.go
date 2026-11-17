@@ -58,6 +58,7 @@ type FeedEpisode struct {
 	Title       string
 	Description string
 	AudioUrl    string
+	MediaUrl    string
 	Link        string
 	Duration    int
 	PublishedAt string

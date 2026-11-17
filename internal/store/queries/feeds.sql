@@ -33,19 +33,20 @@ DELETE FROM feed_episodes WHERE feed_id = ?;
 DELETE FROM feeds WHERE id = ?;
 
 -- name: ListFeedEpisodes :many
-SELECT id, feed_id, title, description, audio_url, link, duration, published_at, local_path, image
+SELECT id, feed_id, title, description, audio_url, media_url, link, duration, published_at, local_path, image
 FROM feed_episodes
 WHERE feed_id = ?
 ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
 LIMIT ?;
 
 -- name: UpsertFeedEpisode :exec
-INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, link, duration, published_at, image)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, media_url, link, duration, published_at, image)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(feed_id, guid) DO UPDATE SET
 	title = excluded.title,
 	description = excluded.description,
 	audio_url = excluded.audio_url,
+	media_url = excluded.media_url,
 	link = excluded.link,
 	duration = excluded.duration,
 	published_at = excluded.published_at,
@@ -64,10 +65,10 @@ SELECT feed_id, title, audio_url, local_path FROM feed_episodes WHERE id = ?;
 UPDATE feed_episodes SET local_path = ? WHERE id = ?;
 
 -- name: GetEpisodeAudioAndLocalPath :one
-SELECT audio_url, local_path FROM feed_episodes WHERE id = ?;
+SELECT audio_url, media_url, local_path FROM feed_episodes WHERE id = ?;
 
 -- name: GetEpisodeForSubtitles :one
 SELECT feed_id, title, link, audio_url FROM feed_episodes WHERE id = ?;
 
--- name: GetEpisodeAudioURL :one
-SELECT audio_url FROM feed_episodes WHERE id = ?;
+-- name: GetEpisodeStreamURL :one
+SELECT audio_url, media_url FROM feed_episodes WHERE id = ?;

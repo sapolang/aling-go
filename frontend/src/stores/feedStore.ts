@@ -18,6 +18,8 @@ export interface FeedEpisode {
   title: string
   description: string
   audioUrl: string
+  /** 订阅源给出的视频直链，在线播放但不下载 */
+  mediaUrl: string
   link: string
   duration: number
   publishedAt: string

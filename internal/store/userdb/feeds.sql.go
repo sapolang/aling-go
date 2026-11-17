@@ -80,30 +80,20 @@ func (q *Queries) DeleteFeedEpisodes(ctx context.Context, feedID int64) error {
 }
 
 const getEpisodeAudioAndLocalPath = `-- name: GetEpisodeAudioAndLocalPath :one
-SELECT audio_url, local_path FROM feed_episodes WHERE id = ?
+SELECT audio_url, media_url, local_path FROM feed_episodes WHERE id = ?
 `
 
 type GetEpisodeAudioAndLocalPathRow struct {
 	AudioUrl  string
+	MediaUrl  string
 	LocalPath string
 }
 
 func (q *Queries) GetEpisodeAudioAndLocalPath(ctx context.Context, id int64) (GetEpisodeAudioAndLocalPathRow, error) {
 	row := q.db.QueryRowContext(ctx, getEpisodeAudioAndLocalPath, id)
 	var i GetEpisodeAudioAndLocalPathRow
-	err := row.Scan(&i.AudioUrl, &i.LocalPath)
+	err := row.Scan(&i.AudioUrl, &i.MediaUrl, &i.LocalPath)
 	return i, err
-}
-
-const getEpisodeAudioURL = `-- name: GetEpisodeAudioURL :one
-SELECT audio_url FROM feed_episodes WHERE id = ?
-`
-
-func (q *Queries) GetEpisodeAudioURL(ctx context.Context, id int64) (string, error) {
-	row := q.db.QueryRowContext(ctx, getEpisodeAudioURL, id)
-	var audio_url string
-	err := row.Scan(&audio_url)
-	return audio_url, err
 }
 
 const getEpisodeDownloadInfo = `-- name: GetEpisodeDownloadInfo :one
@@ -152,6 +142,22 @@ func (q *Queries) GetEpisodeForSubtitles(ctx context.Context, id int64) (GetEpis
 	return i, err
 }
 
+const getEpisodeStreamURL = `-- name: GetEpisodeStreamURL :one
+SELECT audio_url, media_url FROM feed_episodes WHERE id = ?
+`
+
+type GetEpisodeStreamURLRow struct {
+	AudioUrl string
+	MediaUrl string
+}
+
+func (q *Queries) GetEpisodeStreamURL(ctx context.Context, id int64) (GetEpisodeStreamURLRow, error) {
+	row := q.db.QueryRowContext(ctx, getEpisodeStreamURL, id)
+	var i GetEpisodeStreamURLRow
+	err := row.Scan(&i.AudioUrl, &i.MediaUrl)
+	return i, err
+}
+
 const getFeedURL = `-- name: GetFeedURL :one
 SELECT url FROM feeds WHERE id = ?
 `
@@ -191,7 +197,7 @@ func (q *Queries) ListFeedEpisodePaths(ctx context.Context, feedID int64) ([]str
 }
 
 const listFeedEpisodes = `-- name: ListFeedEpisodes :many
-SELECT id, feed_id, title, description, audio_url, link, duration, published_at, local_path, image
+SELECT id, feed_id, title, description, audio_url, media_url, link, duration, published_at, local_path, image
 FROM feed_episodes
 WHERE feed_id = ?
 ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
@@ -209,6 +215,7 @@ type ListFeedEpisodesRow struct {
 	Title       string
 	Description string
 	AudioUrl    string
+	MediaUrl    string
 	Link        string
 	Duration    int
 	PublishedAt string
@@ -231,6 +238,7 @@ func (q *Queries) ListFeedEpisodes(ctx context.Context, arg ListFeedEpisodesPara
 			&i.Title,
 			&i.Description,
 			&i.AudioUrl,
+			&i.MediaUrl,
 			&i.Link,
 			&i.Duration,
 			&i.PublishedAt,
@@ -385,12 +393,13 @@ func (q *Queries) UpdateFeedMeta(ctx context.Context, arg UpdateFeedMetaParams) 
 }
 
 const upsertFeedEpisode = `-- name: UpsertFeedEpisode :exec
-INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, link, duration, published_at, image)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, media_url, link, duration, published_at, image)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(feed_id, guid) DO UPDATE SET
 	title = excluded.title,
 	description = excluded.description,
 	audio_url = excluded.audio_url,
+	media_url = excluded.media_url,
 	link = excluded.link,
 	duration = excluded.duration,
 	published_at = excluded.published_at,
@@ -403,6 +412,7 @@ type UpsertFeedEpisodeParams struct {
 	Title       string
 	Description string
 	AudioUrl    string
+	MediaUrl    string
 	Link        string
 	Duration    int
 	PublishedAt string
@@ -416,6 +426,7 @@ func (q *Queries) UpsertFeedEpisode(ctx context.Context, arg UpsertFeedEpisodePa
 		arg.Title,
 		arg.Description,
 		arg.AudioUrl,
+		arg.MediaUrl,
 		arg.Link,
 		arg.Duration,
 		arg.PublishedAt,

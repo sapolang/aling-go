@@ -302,6 +302,10 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) Podcast
 		return fail(fmt.Errorf("节目不存在"))
 	}
 	audioURL, localPath := info.AudioUrl, info.LocalPath
+	// 订阅源里的视频直链没有 audio_url，转录时走同一条在线音轨下载链路
+	if audioURL == "" {
+		audioURL = info.MediaUrl
+	}
 	if localPath != "" {
 		if _, err := os.Stat(localPath); err != nil {
 			localPath = ""

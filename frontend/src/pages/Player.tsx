@@ -52,6 +52,7 @@ export default function PlayerPage() {
   const mediaTitle = usePlayerStore((s) => s.mediaTitle)
   const mediaEpisodeID = usePlayerStore((s) => s.mediaEpisodeID)
   const historyKeyState = usePlayerStore((s) => s.historyKey)
+  const preferProxy = usePlayerStore((s) => s.preferProxy)
   const playSession = usePlayerStore((s) => s.playSession)
   const playing = usePlayerStore((s) => s.playing)
   const duration = usePlayerStore((s) => s.duration)
@@ -162,7 +163,9 @@ export default function PlayerPage() {
       : sourceKind === 'bilibili'
         ? filePath
         : /^https?:\/\//i.test(filePath)
-          ? filePath.startsWith('https://') || !mediaEpisodeID || !mediaPort
+          ? // 订阅源视频直链始终走本地代理（复用播客页代理配置）；
+            // 音频只在 http 时走代理，https 由系统网络直接流式播放
+            !mediaEpisodeID || !mediaPort || (!preferProxy && filePath.startsWith('https://'))
             ? filePath
             : `http://127.0.0.1:${mediaPort}/podcast-stream?id=${mediaEpisodeID}`
           : mediaPort

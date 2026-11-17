@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS feed_episodes (
 	title TEXT DEFAULT '',
 	description TEXT DEFAULT '',
 	audio_url TEXT DEFAULT '',
+	media_url TEXT DEFAULT '',
 	link TEXT DEFAULT '',
 	duration INTEGER DEFAULT 0,
 	published_at TEXT DEFAULT '',

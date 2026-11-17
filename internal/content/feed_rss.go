@@ -37,17 +37,20 @@ func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedE
 		}
 		group := mediaGroup(it)
 		link := strings.TrimSpace(it.Link)
-		// 播客源有 enclosure（音频直链），YouTube/B站 只有 link（视频页面），
-		// 两种都要保留，后续根据 audioURL 是否为空决定走「下载」还是「在线精听」
-		audioURL := episodeAudioURL(it, group)
-		if audioURL == "" && link == "" {
+		// 播客源有 enclosure（音频直链），视频源可能给出视频直链，
+		// YouTube/B站 只有 link（视频页面），三种都要保留，后续按地址类型决定播放方式
+		audioURL, mediaURL := episodeMediaURLs(it, group)
+		if audioURL == "" && mediaURL == "" && link == "" {
 			continue
 		}
 		guid := strings.TrimSpace(it.GUID)
 		if guid == "" {
-			if audioURL != "" {
+			switch {
+			case audioURL != "":
 				guid = audioURL
-			} else {
+			case mediaURL != "":
+				guid = mediaURL
+			default:
 				guid = link
 			}
 		}
@@ -55,6 +58,7 @@ func parseRSS(data []byte) (title, desc, image, siteURL string, episodes []FeedE
 			Title:       strings.TrimSpace(it.Title),
 			Description: stripHTML(itemDescription(it, group)),
 			AudioURL:    audioURL,
+			MediaURL:    mediaURL,
 			Link:        link,
 			Duration:    itemDuration(it),
 			PublishedAt: itemPublishedAt(it),
@@ -126,22 +130,51 @@ func extensionAttr(it *gofeed.Item, ns, name, attr string) string {
 	return strings.TrimSpace(nodes[0].Attrs[attr])
 }
 
-// episodeAudioURL 取音频直链：优先 enclosure，Atom 源退回 media:content
-func episodeAudioURL(it *gofeed.Item, group *ext.Extension) string {
+// episodeMediaURLs 提取节目媒体地址：audioURL 用于下载与音频播放，
+// mediaURL 是发布方给出的视频直链（如 media:content type="video/mp4"），
+// 播放页地址（YouTube/B站 等）两者都不返回。
+func episodeMediaURLs(it *gofeed.Item, group *ext.Extension) (audioURL, mediaURL string) {
+	// enclosure 优先：音频归 audioURL，视频文件归 mediaURL
 	for _, enc := range it.Enclosures {
 		if enc == nil {
 			continue
 		}
-		if u := strings.TrimSpace(enc.URL); u != "" {
-			return u
+		u := strings.TrimSpace(enc.URL)
+		if u == "" || isMediaPageURL(u, enc.Type) {
+			continue
+		}
+		if isDirectVideoURL(u, enc.Type) {
+			if mediaURL == "" {
+				mediaURL = u
+			}
+			continue
+		}
+		if audioURL == "" {
+			audioURL = u
 		}
 	}
-	// YouTube 的 media:content 是视频播放页地址，直接下载只会拿到 HTML
-	u := mediaAttr(group, "content", "url")
-	if isVideoMediaURL(u, mediaAttr(group, "content", "type")) {
-		return ""
+	if audioURL != "" {
+		return audioURL, mediaURL
 	}
-	return u
+
+	// media:content 在 YouTube Atom 里位于 media:group，普通 RSS 直接挂在条目上
+	for _, content := range [][2]string{
+		{mediaAttr(group, "content", "url"), mediaAttr(group, "content", "type")},
+		{extensionAttr(it, "media", "content", "url"), extensionAttr(it, "media", "content", "type")},
+	} {
+		u, t := content[0], content[1]
+		switch {
+		case u == "" || isMediaPageURL(u, t):
+			continue
+		case isDirectVideoURL(u, t):
+			if mediaURL == "" {
+				mediaURL = u
+			}
+		case audioURL == "":
+			audioURL = u
+		}
+	}
+	return audioURL, mediaURL
 }
 
 // itemDescription 按 media:group → description → content 的顺序取简介
