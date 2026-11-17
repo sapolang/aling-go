@@ -4,8 +4,10 @@ vars:
   APP_NAME: "aling-go"
   BIN_DIR: "bin"
   # 版本号唯一来源：build/config.yml 的 info.version（发布时由 CI 按 tag 注入）
+  # 注意：参数里不能出现引号字符。Windows 上 Task 通过 CreateProcess 传递参数，
+  # 内嵌的 " 会被转义丢失（曾导致 cut -d'"' 取到空分隔符而失败）。
   APP_VERSION:
-    sh: "grep -m1 '^  version:' build/config.yml | cut -d'\"' -f2"
+    sh: "grep -m1 ^[[:space:]][[:space:]]version: build/config.yml | cut -d: -f2 | tr -cd 0-9."
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
   # Target OS for build/package/run. Defaults to the host OS, and is overridden
