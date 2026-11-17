@@ -55,10 +55,11 @@ zip: dmg
 	@echo "ZIP: $(ZIP_FILE)"
 	du -sh $(ZIP_FILE)
 
+# 需要 Windows + NSIS 环境，并先构建 sidecar（sidecar/ffmpeg.exe、sidecar/whisper-sidecar.exe）
+# 产物：bin/$(APP_NAME)-$(VERSION)-$(ARCH)-installer.exe
 exe:
-	wails3 build
-	@echo "EXE: bin/$(APP_NAME).exe"
-	@echo "使用 build/windows/installer/ 下的安装程序脚本打包为 .exe 安装包"
+	wails3 task windows:package INSTALL_SCOPE=user
+	@echo "INSTALLER: bin/$(APP_NAME)-$(VERSION)-$(ARCH)-installer.exe"
 
 dist: sidecar package
 	install -d "bin/$(APP_NAME).app/Contents/Resources"

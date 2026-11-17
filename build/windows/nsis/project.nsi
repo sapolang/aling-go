@@ -72,7 +72,7 @@ ManifestDPIAware true
 #!finalize 'signtool --file "%1"'
 
 Name "${INFO_PRODUCTNAME}"
-OutFile "..\..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
+OutFile "..\..\..\bin\${INFO_PROJECTNAME}-${INFO_PRODUCTVERSION}-${ARCH}-installer.exe" # Name of the installer's file.
 !if "${WAILS_INSTALL_SCOPE}" == "user"
     InstallDir "$LOCALAPPDATA\Programs\${INFO_PRODUCTNAME}"
 !else
@@ -92,6 +92,18 @@ Section
     SetOutPath $INSTDIR
     
     !insertmacro wails.files
+
+    ## sidecar 与只读数据库安装到 exe 同目录，Windows 上应用从这里读取。
+    ## 两个 define 由 Taskfile 传入；手工 makensis 时可缺省。
+    !ifdef ARG_WAILS_SIDECAR_DIR
+        File "${ARG_WAILS_SIDECAR_DIR}\ffmpeg.exe"
+        File "${ARG_WAILS_SIDECAR_DIR}\whisper-sidecar.exe"
+    !endif
+
+    !ifdef ARG_WAILS_DATA_DIR
+        File "${ARG_WAILS_DATA_DIR}\dict.db"
+        File "${ARG_WAILS_DATA_DIR}\articles.db"
+    !endif
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
