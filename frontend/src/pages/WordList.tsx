@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from 'react'
-import { FixedSizeList as List } from 'react-window'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Virtuoso } from 'react-virtuoso'
 import { useWordStore } from '@/stores/wordStore'
+import type { Word } from '@/types/api'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -18,6 +19,71 @@ import AddWordModal from '@/components/AddWordModal'
 
 const levelLabels = ['待学习', '遗忘', '模糊', '熟悉']
 
+interface WordRowProps {
+  word: Word
+  selected: boolean
+  onToggleSelect: (id: number) => void
+  onEdit: (word: Word) => void
+  onDelete: (word: Word) => void
+}
+
+// 列表行保持顶层定义并 memo，父级重渲染（如勾选、搜索）时只有属性变化的行才重渲染
+const WordRow = memo(function WordRow({
+  word,
+  selected,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}: WordRowProps) {
+  return (
+    <div className="px-1 pb-1">
+      <Card>
+        <div className="p-3 flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(word.id)}
+            className="accent-primary"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">{word.word}</span>
+              {word.phonetic && (
+                <span className="text-xs text-muted-foreground">{word.phonetic}</span>
+              )}
+              <Badge variant="outline" className="text-xs">
+                {levelLabels[word.level] || '待学习'}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground truncate">{word.definition}</p>
+          </div>
+          <div className="hidden md:flex gap-1 items-center flex-wrap justify-end">
+            {word.tags
+              .split(',')
+              .filter(Boolean)
+              .map((tag) => (
+                <Badge key={tag} variant="secondary" className="text-xs">
+                  {tag.trim()}
+                </Badge>
+              ))}
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(word)}>
+              <Edit className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive"
+              onClick={() => onDelete(word)}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+})
+
 export default function WordListPage() {
   const {
     words,
@@ -33,20 +99,12 @@ export default function WordListPage() {
   } = useWordStore()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [showAdd, setShowAdd] = useState(false)
-  const [editWord, setEditWord] = useState<any>(null)
-  const [listHeight, setListHeight] = useState(600)
-
-  useEffect(() => {
-    const update = () => setListHeight(Math.max(240, window.innerHeight - 280))
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [])
+  const [editWord, setEditWord] = useState<Word | null>(null)
 
   useEffect(() => {
     loadWords()
     loadTags()
-  }, [])
+  }, [loadWords, loadTags])
 
   const filteredWords = useMemo(() => {
     let result = words
@@ -65,12 +123,29 @@ export default function WordListPage() {
     return result
   }, [words, searchQuery, selectedTag])
 
-  const toggleSelect = (id: number) => {
-    const next = new Set(selectedIds)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setSelectedIds(next)
-  }
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleEdit = useCallback((word: Word) => setEditWord(word), [])
+
+  const handleDelete = useCallback(
+    async (word: Word) => {
+      const ok = await confirmDialog({
+        title: '删除这个生词？',
+        description: `${word.word} 将被移除，此操作不可撤销。`,
+        confirmText: '删除',
+        destructive: true,
+      })
+      if (ok) await deleteWord(word.id)
+    },
+    [deleteWord],
+  )
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredWords.length) {
@@ -91,68 +166,6 @@ export default function WordListPage() {
     if (!ok) return
     deleteBatch(Array.from(selectedIds))
     setSelectedIds(new Set())
-  }
-
-  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const w = filteredWords[index]
-    return (
-      <div style={style}>
-        <Card className="mx-1 mb-1">
-          <div className="p-3 flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={selectedIds.has(w.id)}
-              onChange={() => toggleSelect(w.id)}
-              className="accent-primary"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">{w.word}</span>
-                {w.phonetic && <span className="text-xs text-muted-foreground">{w.phonetic}</span>}
-                <Badge variant="outline" className="text-xs">
-                  {levelLabels[w.level] || '待学习'}
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground truncate">{w.definition}</p>
-            </div>
-            <div className="hidden md:flex gap-1 items-center flex-wrap justify-end">
-              {w.tags
-                .split(',')
-                .filter(Boolean)
-                .map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag.trim()}
-                  </Badge>
-                ))}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setEditWord(w)}
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive"
-                onClick={async () => {
-                  const ok = await confirmDialog({
-                    title: '删除这个生词？',
-                    description: `${w.word} 将被移除，此操作不可撤销。`,
-                    confirmText: '删除',
-                    destructive: true,
-                  })
-                  if (ok) deleteWord(w.id)
-                }}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
-    )
   }
 
   return (
@@ -205,15 +218,26 @@ export default function WordListPage() {
         </div>
       )}
 
-      <div className="flex-1">
+      <div className="flex-1 min-h-0">
         {filteredWords.length === 0 ? (
           <Card className="py-12 text-center text-muted-foreground">
             <p>{searchQuery ? '没有匹配结果' : '生词库为空'}</p>
           </Card>
         ) : (
-          <List height={listHeight} itemCount={filteredWords.length} itemSize={80} width="100%">
-            {Row}
-          </List>
+          <Virtuoso
+            style={{ height: '100%' }}
+            data={filteredWords}
+            computeItemKey={(_, w) => w.id}
+            itemContent={(_, w) => (
+              <WordRow
+                word={w}
+                selected={selectedIds.has(w.id)}
+                onToggleSelect={toggleSelect}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            )}
+          />
         )}
       </div>
 
