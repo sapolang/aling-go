@@ -1,6 +1,7 @@
 package content
 
 import (
+	"database/sql"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	"aling-go/internal/config"
+	"aling-go/internal/core"
+	"aling-go/internal/store"
 )
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -342,5 +345,169 @@ func TestBilibiliMidFromURLBoundaries(t *testing.T) {
 	fake := "https://evil.example/?next=space.bilibili.com/12345"
 	if got := bilibiliMidFromURL(fake); got != "" {
 		t.Errorf("bilibiliMidFromURL(%q) = %q, want empty", fake, got)
+	}
+}
+
+const sampleRSSWithVideo = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Video Pod</title>
+    <link>https://example.com</link>
+    <item>
+      <title>Direct video</title>
+      <guid>v-1</guid>
+      <link>https://example.com/watch/1</link>
+      <media:content url="https://cdn.example.com/clips/1.mp4" type="video/mp4"/>
+    </item>
+    <item>
+      <title>Video enclosure</title>
+      <guid>v-2</guid>
+      <enclosure url="https://cdn.example.com/clips/2.webm" type="video/webm"/>
+    </item>
+    <item>
+      <title>Page only</title>
+      <guid>v-3</guid>
+      <link>https://vimeo.com/12345</link>
+      <media:content url="https://vimeo.com/12345" type="text/html"/>
+    </item>
+  </channel>
+</rss>`
+
+func TestParseRSSKeepsDirectVideoURL(t *testing.T) {
+	_, _, _, _, episodes, err := parseRSS([]byte(sampleRSSWithVideo))
+	if err != nil {
+		t.Fatalf("parseRSS error: %v", err)
+	}
+	if len(episodes) != 3 {
+		t.Fatalf("episodes = %d, want 3", len(episodes))
+	}
+	// media:content 的直链视频要保留为 mediaUrl，不能当成音频或丢弃
+	if episodes[0].MediaURL != "https://cdn.example.com/clips/1.mp4" {
+		t.Errorf("episode 0 mediaUrl = %q", episodes[0].MediaURL)
+	}
+	if episodes[0].AudioURL != "" {
+		t.Errorf("episode 0 audioUrl = %q, want empty", episodes[0].AudioURL)
+	}
+	// enclosure 指向视频文件时同样归入 mediaUrl
+	if episodes[1].MediaURL != "https://cdn.example.com/clips/2.webm" {
+		t.Errorf("episode 1 mediaUrl = %q", episodes[1].MediaURL)
+	}
+	if episodes[1].AudioURL != "" {
+		t.Errorf("episode 1 audioUrl = %q, want empty", episodes[1].AudioURL)
+	}
+	// 视频播放页既不是音频也不是可播放的直链
+	if episodes[2].MediaURL != "" || episodes[2].AudioURL != "" {
+		t.Errorf("page episode URLs = (%q, %q), want empty", episodes[2].AudioURL, episodes[2].MediaURL)
+	}
+}
+
+func TestDirectVideoURLChecks(t *testing.T) {
+	videoCases := []struct {
+		raw  string
+		typ  string
+		want bool
+	}{
+		{"https://cdn.example.com/v/1.mp4", "", true},
+		{"https://cdn.example.com/v/1.webm?token=abc", "", true},
+		{"https://cdn.example.com/stream/1", "video/mp4", true},
+		{"https://cdn.example.com/watch/1", "video/mp4", true},
+		{"https://cdn.example.com/page.html", "video/mp4", false},
+		{"https://www.youtube.com/watch?v=abc", "video/mp4", false},
+		{"https://cdn.example.com/a.mp3", "audio/mpeg", false},
+	}
+	for _, tt := range videoCases {
+		if got := isDirectVideoURL(tt.raw, tt.typ); got != tt.want {
+			t.Errorf("isDirectVideoURL(%q, %q) = %v, want %v", tt.raw, tt.typ, got, tt.want)
+		}
+	}
+
+	pageCases := []struct {
+		raw  string
+		typ  string
+		want bool
+	}{
+		{"https://www.youtube.com/watch?v=abc", "", true},
+		{"https://www.youtube.com/watch?v=abc", "video/mp4", true},
+		{"https://www.youtube.com/v/abc?version=3", "application/x-shockwave-flash", true},
+		{"https://vimeo.com/12345", "text/html", true},
+		{"https://cdn.example.com/v/1.mp4", "", false},
+		{"https://cdn.example.com/a.mp3", "", false},
+		{"https://cdn.example.com/clips/1.mp4", "video/mp4", false},
+	}
+	for _, tt := range pageCases {
+		if got := isMediaPageURL(tt.raw, tt.typ); got != tt.want {
+			t.Errorf("isMediaPageURL(%q, %q) = %v, want %v", tt.raw, tt.typ, got, tt.want)
+		}
+	}
+}
+
+// setupFeedTestDB 替换全局用户库，供需要查询节目表的处理函数测试使用
+func setupFeedTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	prev := core.DB
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	if _, err := db.Exec(store.Schema); err != nil {
+		_ = db.Close()
+		t.Fatalf("create schema: %v", err)
+	}
+	core.DB = db
+	t.Cleanup(func() {
+		core.DB = prev
+		_ = db.Close()
+	})
+	return db
+}
+
+func TestPodcastStreamRejectsUnknownEpisode(t *testing.T) {
+	setupFeedTestDB(t)
+	s := &MediaService{remoteClientFn: func() *http.Client { return http.DefaultClient }}
+
+	recorder := httptest.NewRecorder()
+	s.handlePodcastStream(recorder, httptest.NewRequest(http.MethodGet, "/podcast-stream?id=99", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}
+
+func TestPodcastStreamForwardsRangeForMediaURL(t *testing.T) {
+	db := setupFeedTestDB(t)
+
+	var gotRange string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRange = r.Header.Get("Range")
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Range", "bytes 0-3/100")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("data"))
+	}))
+	defer upstream.Close()
+
+	if _, err := db.Exec(`INSERT INTO feeds (url, title) VALUES ('https://feed.example/rss', 'Feed')`); err != nil {
+		t.Fatalf("insert feed: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO feed_episodes (feed_id, guid, title, media_url) VALUES (1, 'ep-1', 'Ep', ?)`,
+		upstream.URL+"/video.mp4",
+	); err != nil {
+		t.Fatalf("insert episode: %v", err)
+	}
+
+	s := &MediaService{remoteClientFn: func() *http.Client { return http.DefaultClient }}
+	request := httptest.NewRequest(http.MethodGet, "/podcast-stream?id=1", nil)
+	request.Header.Set("Range", "bytes=0-3")
+	recorder := httptest.NewRecorder()
+	s.handlePodcastStream(recorder, request)
+
+	if gotRange != "bytes=0-3" {
+		t.Errorf("upstream Range = %q, want bytes=0-3", gotRange)
+	}
+	if recorder.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusPartialContent)
+	}
+	if recorder.Body.String() != "data" {
+		t.Errorf("body = %q, want data", recorder.Body.String())
 	}
 }

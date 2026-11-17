@@ -138,28 +138,83 @@ func (s *FeedService) EpisodeDownload(episodeID int64) EpisodeDownloadResult {
 	return EpisodeDownloadResult{OK: true, Path: dest}
 }
 
-// isVideoMediaURL 判断 media:content 指向的是视频播放页而非音频直链。
-// YouTube/B站 的视频页需要走在线精听，下载下来只会得到 HTML。
-func isVideoMediaURL(rawURL, mediaType string) bool {
+// 可识别的音频/视频文件后缀，用于区分「媒体直链」与「视频播放页」
+var (
+	audioFileExts = map[string]bool{
+		".mp3": true, ".m4a": true, ".aac": true, ".ogg": true, ".opus": true,
+		".wav": true, ".flac": true, ".wma": true,
+	}
+	videoFileExts = map[string]bool{
+		".mp4": true, ".m4v": true, ".webm": true, ".mkv": true, ".mov": true,
+		".avi": true, ".flv": true, ".ogv": true, ".ts": true,
+	}
+	// 网页后缀：带这些后缀的地址不可能是可播放的媒体文件
+	pageFileExts = map[string]bool{
+		".html": true, ".htm": true, ".php": true, ".asp": true, ".aspx": true,
+		".jsp": true, ".cgi": true,
+	}
+)
+
+// isVideoPageHost 判断域名是否为只提供视频播放页的站点
+func isVideoPageHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, videoHost := range []string{"youtube.com", "youtu.be", "bilibili.com", "b23.tv"} {
+		if host == videoHost || strings.HasSuffix(host, "."+videoHost) {
+			return true
+		}
+	}
+	return false
+}
+
+// isDirectVideoURL 判断地址是否指向可直接播放的视频文件：
+// 已知视频后缀，或发布方明确标注 video/* 且地址形如文件。
+func isDirectVideoURL(rawURL, mediaType string) bool {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return false
 	}
-	mt := strings.ToLower(strings.TrimSpace(mediaType))
-	if strings.HasPrefix(mt, "video/") || strings.Contains(mt, "shockwave-flash") {
-		return true
-	}
 	u, err := url.Parse(rawURL)
-	if err != nil {
+	if err != nil || u.Host == "" {
 		return false
 	}
-	host := strings.ToLower(u.Hostname())
-	for _, videoHost := range []string{"youtube.com", "youtu.be", "bilibili.com", "b23.tv"} {
-		if host == videoHost || strings.HasSuffix(host, "."+videoHost) {
-			return !isAudioExt(filepath.Ext(u.Path))
-		}
+	ext := strings.ToLower(filepath.Ext(u.Path))
+	if videoFileExts[ext] {
+		return true
 	}
-	return false
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(mediaType)), "video/") {
+		return false
+	}
+	// video/* 但后缀是网页或命中视频播放页站点时仍然不是直链
+	return !pageFileExts[ext] && !isVideoPageHost(u.Hostname())
+}
+
+// isMediaPageURL 判断地址指向的是视频播放页而非可直接播放/下载的媒体文件。
+// YouTube/B站 的视频页，以及 YouTube Atom 源的 application/x-shockwave-flash 都属于这种情况。
+func isMediaPageURL(rawURL, mediaType string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return false
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(u.Path))
+	// 带媒体文件后缀的地址始终按直链处理
+	if audioFileExts[ext] || videoFileExts[ext] {
+		return false
+	}
+	// 视频站点的非文件地址都是播放页，即使发布方标注了 video/*
+	if isVideoPageHost(u.Hostname()) {
+		return true
+	}
+	mt := strings.ToLower(strings.TrimSpace(mediaType))
+	// 发布方明确标注为音视频资源时，不按播放页处理
+	if strings.HasPrefix(mt, "video/") || strings.HasPrefix(mt, "audio/") {
+		return false
+	}
+	return strings.Contains(mt, "html") || strings.Contains(mt, "json") ||
+		strings.Contains(mt, "xml") || strings.Contains(mt, "shockwave-flash")
 }
 
 // isWebPageContentType 判断响应是否为网页而非音频文件

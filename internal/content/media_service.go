@@ -194,7 +194,7 @@ func (s *MediaService) handleMediaStream(w http.ResponseWriter, r *http.Request)
 	http.ServeContent(w, r, filepath.Base(filePath), stat.ModTime(), f)
 }
 
-// handlePodcastStream 代理已订阅节目的在线音频，避免 HTTP 混合内容并复用订阅代理设置。
+// handlePodcastStream 代理已订阅节目的在线音视频，避免 HTTP 混合内容并复用订阅代理设置。
 // 只接受数据库中的节目 ID，不代理前端提供的任意 URL；仅转发播放请求，不落盘。
 func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Request) {
 	if s.remoteClientFn == nil {
@@ -206,8 +206,17 @@ func (s *MediaService) handlePodcastStream(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid episode id", http.StatusBadRequest)
 		return
 	}
-	raw, err := q().GetEpisodeAudioURL(r.Context(), episodeID)
-	if err != nil || raw == "" {
+	info, err := q().GetEpisodeStreamURL(r.Context(), episodeID)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	// 视频直链优先：这类节目没有 audio_url
+	raw := info.MediaUrl
+	if raw == "" {
+		raw = info.AudioUrl
+	}
+	if raw == "" {
 		http.Error(w, "episode not found", http.StatusNotFound)
 		return
 	}

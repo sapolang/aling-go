@@ -53,6 +53,15 @@ function formatDate(value: string): string {
   return `${d.getFullYear()}-${mm}-${dd}`
 }
 
+// siteHost 提取链接域名用于提示文案，解析失败时回退为原始文本
+function siteHost(link: string): string {
+  try {
+    return new URL(link).host
+  } catch {
+    return link
+  }
+}
+
 function formatDuration(seconds: number): string {
   if (!seconds) return ''
   const minutes = Math.round(seconds / 60)
@@ -350,6 +359,17 @@ export default function PodcastPage() {
   }
 
   const handleEpisodeClick = async (ep: FeedEpisode) => {
+    // 订阅源直接给出的视频直链：交给统一播放页在线播放，复用播客页代理配置
+    if (ep.mediaUrl) {
+      player.setFilePath(ep.mediaUrl, ep.title, ep.id, {
+        mediaKind: 'video',
+        preferProxy: true,
+        cover: ep.image,
+        sourceUrl: ep.link,
+      })
+      openPlayer()
+      return
+    }
     const isOnlineOnly = !ep.audioUrl && !!ep.link
     // 在线视频：B站 和 YouTube 都进统一播放页
     if (isOnlineOnly) {
@@ -363,8 +383,14 @@ export default function PodcastPage() {
         playYouTubeEpisode(ep, yt[1])
         return
       }
-      // 识别不出视频 ID 的站点暂不支持播放
-      showToast('暂不支持该站点的视频，目前仅支持 B站 与 YouTube', 'error')
+      // 其余站点无法在应用内播放，给出可执行的兜底操作
+      const openInBrowser = await confirmDialog({
+        title: '暂不支持该站点的视频',
+        description: `该节目链接指向 ${siteHost(ep.link)} 的视频页面，应用内暂不支持直接播放，可在浏览器中打开。`,
+        confirmText: '在浏览器中打开',
+        cancelText: '取消',
+      })
+      if (openInBrowser) await window.api.openExternal(ep.link)
       return
     }
     // 已下载的音频优先播放本地文件，未下载的直接在线播放
@@ -605,6 +631,7 @@ export default function PodcastPage() {
                     const pct = downloadProgress[ep.id]
                     const downloading = pct !== undefined
                     const isOnlineOnly = !ep.audioUrl && !!ep.link
+                    const isVideo = !!ep.mediaUrl || isOnlineOnly
                     const thumb = ep.image || selectedFeed?.image || ''
                     const meta = [formatDate(ep.publishedAt), formatDuration(ep.duration)]
                       .filter(Boolean)
@@ -644,7 +671,7 @@ export default function PodcastPage() {
                               </div>
                             </div>
                           )}
-                          {isOnlineOnly && (
+                          {isVideo && (
                             <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
                               <PlayCircle className="h-3 w-3" />
                               视频

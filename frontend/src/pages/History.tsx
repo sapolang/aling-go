@@ -27,6 +27,8 @@ const KIND_LABELS: Record<string, string> = {
 }
 
 const IS_REMOTE = /^https?:\/\//i
+// 旧历史条目没有记录媒体形态，按扩展名兜底推断视频直链
+const VIDEO_URL = /\.(?:mp4|m4v|webm|mkv|mov|avi|flv|ogv|ts)(?:[?#]|$)/i
 
 export default function HistoryPage() {
   const navigate = useNavigate()
@@ -97,7 +99,14 @@ export default function HistoryPage() {
       navigate('/player', { state: { from: '/history' } })
       return
     }
-    player.setFilePath(entry.mediaKey, entry.title, entry.episodeId, meta)
+    // 媒体形态与代理偏好以历史记录为准；旧条目没有这两个字段时按扩展名兜底
+    const isDirectVideo =
+      entry.mediaKind === 'video' || (entry.mediaKind === '' && VIDEO_URL.test(entry.mediaKey))
+    player.setFilePath(entry.mediaKey, entry.title, entry.episodeId, {
+      ...meta,
+      ...(isDirectVideo ? { mediaKind: 'video' as const } : {}),
+      ...(entry.preferProxy || isDirectVideo ? { preferProxy: true } : {}),
+    })
     navigate('/player', { state: { from: '/history' } })
     if (IS_REMOTE.test(entry.mediaKey)) return
     player.setWaveformLoading(true)

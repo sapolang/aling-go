@@ -40,6 +40,8 @@ type FeedEpisode struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	AudioURL    string `json:"audioUrl"`
+	// MediaURL 是订阅源给出的视频直链，在线播放但不下载
+	MediaURL    string `json:"mediaUrl"`
 	Link        string `json:"link"`
 	Duration    int    `json:"duration"`
 	PublishedAt string `json:"publishedAt"`
@@ -111,6 +113,7 @@ func (s *FeedService) ServiceStartup(ctx context.Context, options application.Se
 	// 建表由 core 统一执行 store.Schema 完成，这里只补齐老版本缺失的列。
 	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN link TEXT DEFAULT ''`)
 	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN image TEXT DEFAULT ''`)
+	_, _ = core.DB.Exec(`ALTER TABLE feed_episodes ADD COLUMN media_url TEXT DEFAULT ''`)
 	return nil
 }
 
@@ -386,15 +389,22 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) FeedEpisodesResult {
 			Title:       row.Title,
 			Description: row.Description,
 			AudioURL:    row.AudioUrl,
+			MediaURL:    row.MediaUrl,
 			Link:        row.Link,
 			Duration:    row.Duration,
 			PublishedAt: row.PublishedAt,
 			LocalPath:   row.LocalPath,
 			Image:       row.Image,
 		}
-		// 兼容历史数据：旧版本把 YouTube 播放页当成了音频地址，下载结果是网页；
-		// 没有音频直链的在线节目同样不应展示"已下载"
-		if isVideoMediaURL(e.AudioURL, "") || (e.Link != "" && e.AudioURL == "") {
+		// 兼容历史数据：旧版本把视频直链写进了 audio_url，也没有 media_url 列；
+		// 播放页地址（YouTube/B站 视频页）既不能播放也不能下载，清掉避免误显示"已下载"
+		if e.MediaURL == "" && isDirectVideoURL(e.AudioURL, "") {
+			e.MediaURL = e.AudioURL
+		}
+		if isMediaPageURL(e.AudioURL, "") {
+			e.AudioURL = ""
+		}
+		if e.MediaURL != "" {
 			e.AudioURL = ""
 			e.LocalPath = ""
 		}
@@ -460,6 +470,7 @@ func (s *FeedService) saveEpisodes(feedID int64, episodes []FeedEpisode) {
 			Title:       e.Title,
 			Description: e.Description,
 			AudioUrl:    e.AudioURL,
+			MediaUrl:    e.MediaURL,
 			Link:        e.Link,
 			Duration:    e.Duration,
 			PublishedAt: e.PublishedAt,

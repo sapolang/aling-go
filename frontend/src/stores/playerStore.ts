@@ -81,6 +81,8 @@ interface PlayerStore {
   mediaEpisodeID: number
   // 播放历史的稳定标识：B站流地址每次会话都会变，用 bili:<bvid> 代替代理地址
   historyKey: string
+  // 订阅源里的视频直链统一走本地代理，复用播客页配置的网络代理
+  preferProxy: boolean
   historyCover: string
   historySourceUrl: string
   // 每次 setFilePath 自增，用于区分「重新播放同一个媒体」与页面内已有的播放会话
@@ -120,6 +122,7 @@ interface PlayerStore {
       historyKey?: string
       cover?: string
       sourceUrl?: string
+      preferProxy?: boolean
     },
   ) => void
   setPlaying: (playing: boolean) => void
@@ -155,6 +158,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   mediaTitle: '',
   mediaEpisodeID: 0,
   historyKey: '',
+  preferProxy: false,
   historyCover: '',
   historySourceUrl: '',
   playSession: 0,
@@ -197,6 +201,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       mediaTitle: title || '',
       mediaEpisodeID: episodeID || 0,
       historyKey: opts?.historyKey ?? '',
+      preferProxy: opts?.preferProxy ?? false,
       historyCover: opts?.cover ?? '',
       historySourceUrl: opts?.sourceUrl ?? '',
       playSession: s.playSession + 1,
@@ -235,6 +240,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       mediaTitle: '',
       mediaEpisodeID: 0,
       historyKey: '',
+      preferProxy: false,
       historyCover: '',
       historySourceUrl: '',
       playing: false,
