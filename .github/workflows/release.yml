@@ -136,7 +136,8 @@ jobs:
         run: choco install nsis -y --no-progress
       # 安装程序会带上 exe、sidecar 与只读数据库；安装范围为当前用户，无需管理员权限
       - name: Build NSIS installer
-        run: wails3 task windows:package INSTALL_SCOPE=user
+        shell: bash
+        run: wails3 task windows:package INSTALL_SCOPE=user APP_VERSION="${APP_VERSION#v}"
       - name: Verify installer output
         shell: bash
         run: |
