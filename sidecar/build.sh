@@ -1,16 +1,8 @@
 #!/bin/bash
 set -e
 cd "$(dirname "$0")"
+source ./versions.sh
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-
-# 固定 whisper.cpp 稳定版本。升级时改这里即可，CI 缓存 key 基于本文件哈希会自动失效。
-# 不要用 main：其 Metal shader 源码可能与旧版 macOS 的 Metal 编译器不兼容，
-# 运行时编译失败会导致 sidecar 直接 abort。
-WHISPER_CPP_REF="${WHISPER_CPP_REF:-v1.9.5}"
-
-# ffmpeg 同样固定到官方稳定发布版，并校验下载完整性
-FFMPEG_VERSION="${FFMPEG_VERSION:-8.1.2}"
-FFMPEG_SHA256="${FFMPEG_SHA256:-464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c}"
 
 need_whisper_build() {
     [ -f "whisper-sidecar" ] || return 0

@@ -69,6 +69,10 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # Windows 发布链路回归：应用为纯 Go 依赖，交叉编译 main 包即可覆盖全部代码
+      - name: Cross-compile Windows binary
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/aling-go.exe" .
+
       # sqlc 生成代码已提交，校验其与 schema.sql / query.sql 保持同步
       - name: Cache sqlc
         id: cache-sqlc

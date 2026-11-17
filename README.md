@@ -32,9 +32,11 @@
 |------|------|------|
 | macOS（Apple Silicon） | `aling-go-<version>-arm64.dmg` | 安装用，推荐 |
 | macOS（Apple Silicon） | `aling-go-<version>-darwin-arm64.zip` | 应用内更新使用的格式 |
-| Windows / Intel Mac | — | 暂未提供预编译包，可按下方步骤从源码构建 |
+| Windows（x64） | `aling-go-<version>-amd64-installer.exe` | 安装用，当前用户安装，无需管理员权限 |
+| Windows（x64） | `aling-go-<version>-windows-amd64.zip` | 应用内更新使用的格式，仅含 exe |
 
 > 应用使用 ad-hoc 签名、未经 Apple 公证。首次打开若被 Gatekeeper 拦截，请右键点击应用 → 打开。
+> Windows 安装包未做代码签名，SmartScreen 会提示“未知发布者”，选择“仍要运行”即可。
 
 ## 快速开始
 
@@ -52,13 +54,28 @@ make dev                # 开发模式（热重载）
 make build              # 当前平台产物
 make dmg                # macOS .dmg
 make zip                # macOS 更新包 + SHA256SUMS
-make exe                # Windows .exe
+make exe                # Windows NSIS 安装包（需 Windows + NSIS，见下）
 make dist               # .app + sidecar
 make clean              # 清理构建产物
 make upgrade-wails      # 升级 Wails CLI / Go 依赖 / 前端 runtime
 ```
 
 macOS 应用启动时会从 `Resources/` 读取 `whisper-sidecar`、`ffmpeg`、`dict.db`、`articles.db`，打包目标已包含这一步。
+
+### Windows 构建
+
+```bash
+# 1. 在 MSYS2 MINGW64 下构建 sidecar（首次编译较慢）
+bash sidecar/build-windows.sh
+
+# 2. 安装 NSIS 并加入 PATH，然后打包当前用户范围的安装程序
+make exe
+# 产物：bin/aling-go-<version>-amd64-installer.exe
+```
+
+安装程序装到 `%LOCALAPPDATA%\Programs\语练`，不需要管理员权限，因此应用内自动更新可以直接替换 exe。安装包会把 `aling-go.exe`、`ffmpeg.exe`、`whisper-sidecar.exe`、`dict.db`、`articles.db` 放在同一目录，应用从 exe 所在目录读取这些资源。
+
+应用内自动更新只替换 `aling-go.exe`；sidecar 与数据库不会随自动更新升级，需要更新时请重新下载安装包覆盖安装。
 
 ## 测试与检查
 
