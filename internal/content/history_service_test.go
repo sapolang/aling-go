@@ -72,6 +72,36 @@ func TestHistoryUpsertAccumulatesPlayCount(t *testing.T) {
 	}
 }
 
+func TestHistoryPersistsMediaKindAndProxy(t *testing.T) {
+	setupHistoryDB(t)
+	s := &HistoryService{}
+
+	// 无扩展名的视频直链只能靠写入时的媒体形态判断，不能按 URL 后缀推断
+	mediaKey := "https://cdn.example.com/stream/1"
+	s.Upsert(HistoryUpsertInput{
+		MediaKey:    mediaKey,
+		Kind:        HistoryKindPodcast,
+		MediaKind:   "video",
+		PreferProxy: true,
+		Title:       "视频节目",
+		EpisodeID:   7,
+	})
+
+	got := s.Get(mediaKey)
+	if got.MediaKind != "video" {
+		t.Fatalf("mediaKind = %q, want video", got.MediaKind)
+	}
+	if !got.PreferProxy {
+		t.Fatal("preferProxy 未持久化")
+	}
+	// 再次播放时只更新进度，不能把已有偏好清空
+	s.Upsert(HistoryUpsertInput{MediaKey: mediaKey, Kind: HistoryKindPodcast})
+	again := s.Get(mediaKey)
+	if again.MediaKind != "video" || !again.PreferProxy {
+		t.Fatalf("重复写入后 mediaKind=%q preferProxy=%v，偏好被清空", again.MediaKind, again.PreferProxy)
+	}
+}
+
 func TestTrimHistoryKeepsNewestEntries(t *testing.T) {
 	setupHistoryDB(t)
 	ctx := context.Background()

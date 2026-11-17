@@ -110,6 +110,8 @@ CREATE TABLE IF NOT EXISTS dict_progress (
 CREATE TABLE IF NOT EXISTS play_history (
 	media_key TEXT PRIMARY KEY,
 	kind TEXT NOT NULL DEFAULT 'local',
+	media_kind TEXT NOT NULL DEFAULT '',
+	prefer_proxy INTEGER NOT NULL DEFAULT 0,
 	title TEXT NOT NULL DEFAULT '',
 	cover TEXT NOT NULL DEFAULT '',
 	source_url TEXT NOT NULL DEFAULT '',

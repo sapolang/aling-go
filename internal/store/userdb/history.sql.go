@@ -28,7 +28,7 @@ func (q *Queries) DeleteHistory(ctx context.Context, mediaKey string) error {
 }
 
 const getHistory = `-- name: GetHistory :one
-SELECT media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
+SELECT media_key, kind, media_kind, prefer_proxy, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
 FROM play_history
 WHERE media_key = ?
 `
@@ -39,6 +39,8 @@ func (q *Queries) GetHistory(ctx context.Context, mediaKey string) (PlayHistory,
 	err := row.Scan(
 		&i.MediaKey,
 		&i.Kind,
+		&i.MediaKind,
+		&i.PreferProxy,
 		&i.Title,
 		&i.Cover,
 		&i.SourceUrl,
@@ -52,7 +54,7 @@ func (q *Queries) GetHistory(ctx context.Context, mediaKey string) (PlayHistory,
 }
 
 const listContinueLearning = `-- name: ListContinueLearning :many
-SELECT media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
+SELECT media_key, kind, media_kind, prefer_proxy, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
 FROM play_history
 WHERE duration > 0 AND position > 30 AND position < duration * 0.95
 ORDER BY last_played_at DESC
@@ -71,6 +73,8 @@ func (q *Queries) ListContinueLearning(ctx context.Context, lim int64) ([]PlayHi
 		if err := rows.Scan(
 			&i.MediaKey,
 			&i.Kind,
+			&i.MediaKind,
+			&i.PreferProxy,
 			&i.Title,
 			&i.Cover,
 			&i.SourceUrl,
@@ -94,7 +98,7 @@ func (q *Queries) ListContinueLearning(ctx context.Context, lim int64) ([]PlayHi
 }
 
 const listHistory = `-- name: ListHistory :many
-SELECT media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
+SELECT media_key, kind, media_kind, prefer_proxy, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
 FROM play_history
 WHERE (CAST(?1 AS TEXT) = '' OR kind = CAST(?1 AS TEXT))
 ORDER BY last_played_at DESC
@@ -119,6 +123,8 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([]Pla
 		if err := rows.Scan(
 			&i.MediaKey,
 			&i.Kind,
+			&i.MediaKind,
+			&i.PreferProxy,
 			&i.Title,
 			&i.Cover,
 			&i.SourceUrl,
@@ -173,10 +179,12 @@ func (q *Queries) UpdateHistoryPosition(ctx context.Context, arg UpdateHistoryPo
 }
 
 const upsertHistory = `-- name: UpsertHistory :one
-INSERT INTO play_history (media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
+INSERT INTO play_history (media_key, kind, media_kind, prefer_proxy, title, cover, source_url, episode_id, position, duration, play_count, last_played_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
 ON CONFLICT(media_key) DO UPDATE SET
 	kind = excluded.kind,
+	media_kind = CASE WHEN excluded.media_kind <> '' THEN excluded.media_kind ELSE play_history.media_kind END,
+	prefer_proxy = CASE WHEN excluded.prefer_proxy <> 0 THEN excluded.prefer_proxy ELSE play_history.prefer_proxy END,
 	title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE play_history.title END,
 	cover = CASE WHEN excluded.cover <> '' THEN excluded.cover ELSE play_history.cover END,
 	source_url = CASE WHEN excluded.source_url <> '' THEN excluded.source_url ELSE play_history.source_url END,
@@ -184,24 +192,28 @@ ON CONFLICT(media_key) DO UPDATE SET
 	duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE play_history.duration END,
 	play_count = play_history.play_count + 1,
 	last_played_at = datetime('now','localtime')
-RETURNING media_key, kind, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
+RETURNING media_key, kind, media_kind, prefer_proxy, title, cover, source_url, episode_id, position, duration, play_count, last_played_at
 `
 
 type UpsertHistoryParams struct {
-	MediaKey  string
-	Kind      string
-	Title     string
-	Cover     string
-	SourceUrl string
-	EpisodeID int64
-	Position  float64
-	Duration  float64
+	MediaKey    string
+	Kind        string
+	MediaKind   string
+	PreferProxy int
+	Title       string
+	Cover       string
+	SourceUrl   string
+	EpisodeID   int64
+	Position    float64
+	Duration    float64
 }
 
 func (q *Queries) UpsertHistory(ctx context.Context, arg UpsertHistoryParams) (PlayHistory, error) {
 	row := q.db.QueryRowContext(ctx, upsertHistory,
 		arg.MediaKey,
 		arg.Kind,
+		arg.MediaKind,
+		arg.PreferProxy,
 		arg.Title,
 		arg.Cover,
 		arg.SourceUrl,
@@ -213,6 +225,8 @@ func (q *Queries) UpsertHistory(ctx context.Context, arg UpsertHistoryParams) (P
 	err := row.Scan(
 		&i.MediaKey,
 		&i.Kind,
+		&i.MediaKind,
+		&i.PreferProxy,
 		&i.Title,
 		&i.Cover,
 		&i.SourceUrl,

@@ -70,6 +70,8 @@ type FeedEpisode struct {
 type PlayHistory struct {
 	MediaKey     string
 	Kind         string
+	MediaKind    string
+	PreferProxy  int
 	Title        string
 	Cover        string
 	SourceUrl    string

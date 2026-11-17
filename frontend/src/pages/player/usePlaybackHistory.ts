@@ -21,6 +21,8 @@ export function usePlaybackHistory(
     window.api.historyUpsert({
       mediaKey: historyKey,
       kind: historyKindOf(st.sourceKind, st.mediaEpisodeID),
+      mediaKind: st.mediaKind ?? '',
+      preferProxy: st.preferProxy,
       title: st.mediaTitle || basename(st.filePath || ''),
       cover: st.historyCover,
       sourceUrl: st.historySourceUrl,
