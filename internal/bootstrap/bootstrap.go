@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	goRuntime "runtime"
 
 	"aling-go/internal/config"
 	"aling-go/internal/content"
@@ -169,10 +170,16 @@ func newMainWindow(app *application.App) *application.WebviewWindow {
 
 func setupTray(app *application.App, win *application.WebviewWindow, iconSrc []byte) {
 	tray := app.SystemTray.New()
-	if icon, err := system.TrayTemplateIcon(iconSrc); err == nil {
-		tray.SetTemplateIcon(icon)
+	// 模板图标只在 macOS 生效；Windows/Linux 上 SetTemplateIcon 是空实现，
+	// 必须改用原始彩色图标，否则托盘会没有图标。
+	if goRuntime.GOOS == "darwin" {
+		if icon, err := system.TrayTemplateIcon(iconSrc); err == nil {
+			tray.SetTemplateIcon(icon)
+		} else {
+			fmt.Fprintf(os.Stderr, "tray icon: %v\n", err)
+			tray.SetIcon(iconSrc)
+		}
 	} else {
-		fmt.Fprintf(os.Stderr, "tray icon: %v\n", err)
 		tray.SetIcon(iconSrc)
 	}
 	tray.SetTooltip("语练")

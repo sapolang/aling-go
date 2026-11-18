@@ -12,7 +12,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
-    "prepare": "cd .. && frontend/node_modules/.bin/lefthook install"
+    "prepare": "cd .. && node frontend/node_modules/lefthook/bin/index.js install"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.1",

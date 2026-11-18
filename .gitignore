@@ -9,6 +9,8 @@ aling-go
 sidecar/.whisper-cpp
 sidecar/whisper-sidecar
 sidecar/ffmpeg
+sidecar/whisper-sidecar.exe
+sidecar/ffmpeg.exe
 sidecar/ggml-*.bin
 bin/
 whisper-models/
