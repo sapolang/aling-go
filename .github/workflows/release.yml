@@ -133,7 +133,14 @@ jobs:
         shell: msys2 {0}
         run: bash sidecar/build-windows.sh
       - name: Install NSIS
-        run: choco install nsis -y --no-progress
+        run: |
+          choco install nsis -y --no-progress
+          # Chocolatey 的安装目录不会自动进入后续 Git Bash 的 PATH。
+          $nsisDir = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          if (-not (Test-Path (Join-Path $nsisDir 'makensis.exe'))) {
+            throw "makensis.exe not found in $nsisDir"
+          }
+          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       # 安装程序会带上 exe、sidecar 与只读数据库；安装范围为当前用户，无需管理员权限
       - name: Build NSIS installer
         shell: bash
