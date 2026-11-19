@@ -536,6 +536,13 @@
   gap: 10px;
   height: 100%;
   padding: 24px 30px;
+  /* 文字层不拦截点击，否则会盖住底部控制条 */
+  pointer-events: none;
+}
+
+/* 当前句需要保留查词、朗读等交互 */
+.pp-deck-sentence {
+  pointer-events: auto;
 }
 
 .pp-deck-top {
@@ -709,6 +716,7 @@
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 8px;

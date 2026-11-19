@@ -381,7 +381,7 @@ export default function PlayerPage() {
   const togglePlay = () => runAction('playPause')
 
   const showDeck = isAudio || focusMode
-  const hasTranscript = subtitles.length > 0 || transcribing
+  const hasTranscript = subtitles.length > 0
   const showTranscript = transcriptChoice?.path === filePath ? transcriptChoice.open : hasTranscript
   const setTranscriptOpen = (open: boolean) => setTranscriptChoice({ path: filePath, open })
   const deckPlaying = playing && (isYouTube || (!!filePath && activeMediaPath === filePath))

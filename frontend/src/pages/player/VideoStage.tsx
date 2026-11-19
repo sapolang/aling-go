@@ -49,10 +49,8 @@ function VideoSubtitleOverlay({ renderWords }: VideoSubtitleOverlayProps) {
     const observer = new ResizeObserver(update)
     observer.observe(el)
     return () => observer.disconnect()
-    // 句子变化时重新测量（无字幕时组件返回 null，首次有字幕才挂载 pill）
+    // 句子变化时重新测量（无字幕句子时 pill 不挂载，遮罩仍保留）
   }, [sub?.id, text, fontScale])
-
-  if (!sub || !text) return null
 
   const startResize = (e: ReactPointerEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -75,7 +73,10 @@ function VideoSubtitleOverlay({ renderWords }: VideoSubtitleOverlayProps) {
     setDragHeight(null)
   }
 
-  const overlayHeight = Math.max(dragHeight ?? bandHeight, contentHeight)
+  const overlayHeight = Math.max(dragHeight ?? bandHeight, sub && text ? contentHeight : 0)
+
+  // 整个文件没有字幕时不显示底部遮罩；有了字幕后遮罩常驻，仅文字按句切换
+  if (subtitles.length === 0) return null
 
   return (
     <div
@@ -100,13 +101,15 @@ function VideoSubtitleOverlay({ renderWords }: VideoSubtitleOverlayProps) {
         onPointerUp={endResize}
         onPointerCancel={endResize}
       />
-      <span
-        ref={pillRef}
-        className="pp-sub-pill"
-        style={{ fontSize: `calc(clamp(20px, 2.4vw, 36px) * ${fontScale})` }}
-      >
-        {renderWords(text, sub.text, `video-${sub.id}`)}
-      </span>
+      {sub && text && (
+        <span
+          ref={pillRef}
+          className="pp-sub-pill"
+          style={{ fontSize: `calc(clamp(20px, 2.4vw, 36px) * ${fontScale})` }}
+        >
+          {renderWords(text, sub.text, `video-${sub.id}`)}
+        </span>
+      )}
     </div>
   )
 }
