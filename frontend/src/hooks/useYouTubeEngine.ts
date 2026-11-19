@@ -18,6 +18,8 @@ interface YouTubeStatusMessage {
  */
 export function useYouTubeEngine(active: boolean, videoId: string, mediaPort: number) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  // 记录正片时长：广告播放时 getDuration 会临时变成广告时长，用来识别广告
+  const videoDurationRef = useRef(0)
   const playing = usePlayerStore((s) => s.playing)
   const playbackRate = usePlayerStore((s) => s.playbackRate)
   const volume = usePlayerStore((s) => s.volume)
@@ -28,6 +30,10 @@ export function useYouTubeEngine(active: boolean, videoId: string, mediaPort: nu
     iframeRef.current?.contentWindow?.postMessage({ source: 'aling', ...payload }, '*')
   }, [])
 
+  useEffect(() => {
+    videoDurationRef.current = 0
+  }, [active, videoId])
+
   // 进度回写：未开始和已就绪状态下 getCurrentTime 恒为 0，不能拿来更新字幕
   useEffect(() => {
     if (!active) return
@@ -35,11 +41,17 @@ export function useYouTubeEngine(active: boolean, videoId: string, mediaPort: nu
       const data = event.data as YouTubeStatusMessage | undefined
       if (!data || data.source !== 'yt-embed' || data.event !== 'status') return
       const st = usePlayerStore.getState()
+      const duration = typeof data.duration === 'number' ? data.duration : 0
+      // 广告期间时长会骤降（正片 → 广告），此时暂停时间轴回写，避免字幕跳到错误位置
+      const isAd =
+        videoDurationRef.current > 0 && duration > 0 && duration < videoDurationRef.current - 5
+      if (isAd) return
+      if (duration > 0) videoDurationRef.current = duration
       if (data.state !== -1 && data.state !== 5 && typeof data.currentTime === 'number') {
         st.setPlayed(data.currentTime)
       }
-      if (typeof data.duration === 'number' && data.duration > 0) {
-        st.setDuration(data.duration)
+      if (duration > 0) {
+        st.setDuration(duration)
       }
       // 视频播完时同步播放状态，避免按钮一直停留在「播放中」
       if (data.state === 0 && st.playing) st.setPlaying(false)
@@ -55,6 +67,8 @@ export function useYouTubeEngine(active: boolean, videoId: string, mediaPort: nu
 
   useEffect(() => {
     if (!active || seekTo === null || seekTo < 0) return
+    // 先本地推进时间轴，避免中转页响应慢时点击字幕看起来没反应
+    usePlayerStore.getState().setPlayed(seekTo)
     post({ command: 'seek', time: seekTo, playing })
     usePlayerStore.getState().requestSeek(-1)
   }, [active, seekTo, playing, post])

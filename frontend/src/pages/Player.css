@@ -197,31 +197,46 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* 舞台右侧字幕开关：展开时显示「隐藏字幕」，收起时显示「字幕」 */
+/* 舞台右缘的竖排细条：默认低透明度，悬停时恢复清晰 */
 .pp-transcript-fab {
   position: absolute;
-  top: 56px;
-  right: 12px;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
   z-index: 6;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--pp-space-1);
-  padding: 8px var(--pp-space-3);
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(15, 23, 42, 0.72);
+  gap: 6px;
+  padding: 10px 4px;
+  border-radius: 8px 0 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: none;
+  background: rgba(15, 23, 42, 0.78);
   color: #f8fafc;
-  font-size: var(--pp-text-xs);
+  font-size: 12px;
+  opacity: 0.92;
   backdrop-filter: blur(8px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+    opacity 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease;
 }
 
-.pp-transcript-fab:hover {
-  background: rgba(15, 23, 42, 0.92);
-  border-color: rgba(255, 255, 255, 0.26);
+/* 逐字竖排：每个字一个块，容器高度随字数自适应，不会折行或溢出 */
+.pp-transcript-fab-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.15;
+}
+
+.pp-transcript-fab:hover,
+.pp-transcript-fab:focus-visible {
+  opacity: 1;
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .pp-left {
@@ -614,32 +629,57 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 84px;
+  bottom: 0;
+  /* 字幕在遮罩内水平、垂直居中（内联样式同步兜底） */
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 0 24px;
+  /* 高度由内联 style 控制，且保证不小于句子高度 */
+  padding: 16px 24px;
   pointer-events: none;
-  transition: bottom 0.2s ease;
+  background: rgba(2, 5, 8, 0.88);
 }
 
-.pp-sub-overlay.is-controls-hidden {
-  bottom: 28px;
+/* 顶部的细微拖拽条：上下拖动调整遮罩高度 */
+.pp-sub-resizer {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 76px;
+  height: 12px;
+  transform: translateX(-50%);
+  border: none;
+  background: transparent;
+  cursor: ns-resize;
+  pointer-events: auto;
+}
+
+.pp-sub-resizer::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 12px;
+  right: 12px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 0.15s ease;
+}
+
+.pp-sub-resizer:hover::after {
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .pp-sub-pill {
   pointer-events: auto;
-  max-width: min(900px, 92%);
-  padding: 10px 20px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(4, 7, 10, 0.56);
-  backdrop-filter: blur(10px);
+  max-width: min(940px, 94%);
+  padding: 8px 16px;
   font-family: var(--pp-serif);
-  font-size: clamp(18px, 2vw, 30px);
+  font-size: clamp(20px, 2.4vw, 36px);
   line-height: 1.42;
   text-align: center;
   color: #fff;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
   white-space: pre-line;
 }
 

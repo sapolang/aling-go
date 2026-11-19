@@ -504,7 +504,11 @@ export default function PlayerPage() {
                 onClick={() => setTranscriptOpen(!showTranscript)}
               >
                 <Captions className="h-4 w-4" />
-                <span>{showTranscript ? '隐藏字幕' : '字幕'}</span>
+                <span className="pp-transcript-fab-label">
+                  {Array.from(showTranscript ? '字幕关' : '字幕').map((ch, i) => (
+                    <span key={i}>{ch}</span>
+                  ))}
+                </span>
               </button>
             </section>
 

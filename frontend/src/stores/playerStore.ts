@@ -9,6 +9,7 @@ const SUBTITLE_OFFSET_PREFIX = 'aling.subtitleOffset:'
 const VOLUME_KEY = 'aling.volume'
 const MUTED_KEY = 'aling.muted'
 const FONT_SCALE_KEY = 'aling.subtitleFontScale'
+const BAND_HEIGHT_KEY = 'aling.subtitleBandHeight'
 
 // 音量：0~1，默认满音量
 const loadVolume = (): number => {
@@ -24,6 +25,14 @@ const loadFontScale = (): number => {
   const value = parseFloat(localStorage.getItem(FONT_SCALE_KEY) ?? '')
   if (!Number.isFinite(value)) return 1
   return Math.round(Math.min(1.6, Math.max(0.8, value)) * 10) / 10
+}
+
+// 视频字幕遮罩高度：用于盖住画面里烧录的字幕，可拖动调整
+const loadBandHeight = (): number => {
+  if (typeof localStorage === 'undefined') return 168
+  const value = parseInt(localStorage.getItem(BAND_HEIGHT_KEY) ?? '', 10)
+  if (!Number.isFinite(value)) return 168
+  return Math.round(Math.min(520, Math.max(64, value)))
 }
 
 // 字幕偏移按文件记住，换回同一个文件时无需重新对准
@@ -111,6 +120,8 @@ interface PlayerStore {
   volume: number
   muted: boolean
   subtitleFontScale: number
+  /** 视频字幕遮罩高度（px），可拖动，用于压住烧录字幕 */
+  subtitleBandHeight: number
 
   setFilePath: (
     path: string | null,
@@ -152,6 +163,7 @@ interface PlayerStore {
   setVolume: (volume: number) => void
   toggleMuted: () => void
   adjustSubtitleFontScale: (delta: number) => void
+  setSubtitleBandHeight: (height: number) => void
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -195,6 +207,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   volume: loadVolume(),
   muted: typeof localStorage !== 'undefined' && localStorage.getItem(MUTED_KEY) === '1',
   subtitleFontScale: loadFontScale(),
+  subtitleBandHeight: loadBandHeight(),
 
   setFilePath: (filePath, title, episodeID, opts) =>
     set((s) => ({
@@ -339,5 +352,11 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
         Math.round(Math.min(1.6, Math.max(0.8, s.subtitleFontScale + delta)) * 10) / 10
       persist(FONT_SCALE_KEY, String(subtitleFontScale))
       return { subtitleFontScale }
+    }),
+  setSubtitleBandHeight: (height) =>
+    set(() => {
+      const subtitleBandHeight = Math.round(Math.min(520, Math.max(64, height)))
+      persist(BAND_HEIGHT_KEY, String(subtitleBandHeight))
+      return { subtitleBandHeight }
     }),
 }))

@@ -1,4 +1,11 @@
-import { useEffect, useState, type ReactNode, type RefObject } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { Loader2, Pin, PinOff } from 'lucide-react'
 import { usePlayerStore } from '@/stores/playerStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
@@ -10,29 +17,94 @@ import useStageControls from './useStageControls'
 import { filterSubtitleText } from './constants'
 
 interface VideoSubtitleOverlayProps {
-  controlsShown: boolean
   renderWords: (text: string, sentence: string, keyPrefix: string) => ReactNode
 }
 
 // 视频底部悬浮字幕：独立订阅播放进度，避免高频字段影响整个播放页
-function VideoSubtitleOverlay({ controlsShown, renderWords }: VideoSubtitleOverlayProps) {
+function VideoSubtitleOverlay({ renderWords }: VideoSubtitleOverlayProps) {
   const played = usePlayerStore((s) => s.played)
   const subtitles = usePlayerStore((s) => s.subtitles)
   const subtitleOffset = usePlayerStore((s) => s.subtitleOffset)
   const displayMode = usePlayerStore((s) => s.subtitleDisplayMode)
   const fontScale = usePlayerStore((s) => s.subtitleFontScale)
-
+  const bandHeight = usePlayerStore((s) => s.subtitleBandHeight)
+  const setBandHeight = usePlayerStore((s) => s.setSubtitleBandHeight)
   const idx = findCueIndexAt(subtitles, played - subtitleOffset)
   const sub = idx >= 0 ? subtitles[idx] : null
   const text = sub ? filterSubtitleText(sub.text, displayMode) : ''
+
+  // 拖动过程中只更新本地高度，松手后再落盘，避免高频写 localStorage
+  const [dragHeight, setDragHeight] = useState<number | null>(null)
+  const dragStartRef = useRef<{ y: number; height: number } | null>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const pillRef = useRef<HTMLSpanElement>(null)
+  // 句子实际高度：遮罩至少要比它高，否则文字会贴边、看起来没居中
+  const [contentHeight, setContentHeight] = useState(0)
+
+  useEffect(() => {
+    const el = pillRef.current
+    if (!el) return
+    const update = () => setContentHeight(el.offsetHeight + 32)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+    // 句子变化时重新测量（无字幕时组件返回 null，首次有字幕才挂载 pill）
+  }, [sub?.id, text, fontScale])
+
   if (!sub || !text) return null
+
+  const startResize = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    // 以当前实际高度为基准，避免句子撑高后拖动出现死区
+    dragStartRef.current = { y: e.clientY, height: overlayRef.current?.offsetHeight ?? bandHeight }
+  }
+
+  const moveResize = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const start = dragStartRef.current
+    if (!start) return
+    // 向上拖动增高遮罩，向下拖动收窄
+    setDragHeight(Math.round(Math.min(520, Math.max(64, start.height + start.y - e.clientY))))
+  }
+
+  const endResize = () => {
+    if (dragHeight !== null) setBandHeight(dragHeight)
+    dragStartRef.current = null
+    setDragHeight(null)
+  }
+
+  const overlayHeight = Math.max(dragHeight ?? bandHeight, contentHeight)
 
   return (
     <div
-      className={`pp-sub-overlay ${controlsShown ? '' : 'is-controls-hidden'}`}
+      ref={overlayRef}
+      className="pp-sub-overlay"
+      style={{
+        height: overlayHeight,
+        // 内联兜底：确保字幕在遮罩内水平、垂直居中，不受外部样式覆盖影响
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
       onClick={(e) => e.stopPropagation()}
     >
-      <span className="pp-sub-pill" style={{ fontSize: `${1.875 * fontScale}rem` }}>
+      <button
+        type="button"
+        className="pp-sub-resizer"
+        aria-label="拖动调整字幕遮罩高度"
+        title="拖动调整字幕遮罩高度"
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+      />
+      <span
+        ref={pillRef}
+        className="pp-sub-pill"
+        style={{ fontSize: `calc(clamp(20px, 2.4vw, 36px) * ${fontScale})` }}
+      >
         {renderWords(text, sub.text, `video-${sub.id}`)}
       </span>
     </div>
@@ -135,7 +207,7 @@ export default function VideoStage({
       ) : (
         <video ref={mediaRef} src={mediaUrl} className="pp-video-el" playsInline />
       )}
-      {!hidden && <VideoSubtitleOverlay controlsShown={controlsShown} renderWords={renderWords} />}
+      {!hidden && <VideoSubtitleOverlay renderWords={renderWords} />}
       {!hidden && buffering && !stalled && !playError && !converting && (
         <div className="pp-stage-status" aria-live="polite">
           <Loader2 className="h-4 w-4 animate-spin" />
