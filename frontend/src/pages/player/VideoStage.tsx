@@ -50,6 +50,8 @@ interface VideoStageProps {
   ytEmbedUrl: string
   converting: boolean
   playError: string | null
+  /** 播放中时间冻结超过 8 秒 */
+  stalled: boolean
   onRetryPlayback: () => void
   onTranscode: () => void
   onTogglePlay: () => void
@@ -71,6 +73,7 @@ export default function VideoStage({
   ytEmbedUrl,
   converting,
   playError,
+  stalled,
   onRetryPlayback,
   onTranscode,
   onTogglePlay,
@@ -178,10 +181,18 @@ export default function VideoStage({
         <video ref={mediaRef} src={mediaUrl} className="pp-video-el" playsInline />
       )}
       {!hidden && <VideoSubtitleOverlay controlsShown={controlsShown} renderWords={renderWords} />}
-      {!hidden && buffering && !playError && !converting && (
+      {!hidden && buffering && !stalled && !playError && !converting && (
         <div className="pp-stage-status" aria-live="polite">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>正在缓冲…</span>
+        </div>
+      )}
+      {!hidden && stalled && !playError && !converting && (
+        <div className="pp-stage-status is-warning" role="status">
+          <span>播放好像卡住了</span>
+          <button type="button" className="pp-play-error-btn" onClick={onRetryPlayback}>
+            重新加载
+          </button>
         </div>
       )}
       {!hidden && converting && (

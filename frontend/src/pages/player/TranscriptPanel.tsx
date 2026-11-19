@@ -8,7 +8,15 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { Captions, Download, FileDown, MoreHorizontal, RotateCcw, X as XIcon } from 'lucide-react'
+import {
+  Captions,
+  Download,
+  FileDown,
+  Loader2,
+  MoreHorizontal,
+  RotateCcw,
+  X as XIcon,
+} from 'lucide-react'
 import { usePlayerStore, type SubtitleDisplayMode } from '@/stores/playerStore'
 import type { SubtitleCue, SubtitleListHandle } from '@/components/SubtitleList'
 import SubtitleList from '@/components/SubtitleList'
@@ -34,6 +42,9 @@ interface TranscriptPanelProps {
   onTranscribe: () => void
   onExport: () => void
   onRetranscribe: () => void
+  transcribing: boolean
+  transcribingLabel: string
+  transcriptionProgress: number
   renderWords: (text: string, sentence: string, keyPrefix: string) => ReactNode
 }
 
@@ -49,6 +60,9 @@ export default function TranscriptPanel({
   onTranscribe,
   onExport,
   onRetranscribe,
+  transcribing,
+  transcribingLabel,
+  transcriptionProgress,
   renderWords,
 }: TranscriptPanelProps) {
   const subtitles = usePlayerStore((s) => s.subtitles)
@@ -181,6 +195,15 @@ export default function TranscriptPanel({
           <span className="pp-transcript-title">字幕</span>
           {displaySubtitles.length > 0 && (
             <span className="pp-transcript-count">{displaySubtitles.length}</span>
+          )}
+          {transcribing && (
+            <span className="pp-transcribing-chip" role="status">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span className="pp-transcribing-text">
+                Whisper {transcribingLabel}
+                {transcriptionProgress >= 0 ? ` ${transcriptionProgress}%` : ''}
+              </span>
+            </span>
           )}
         </div>
         <div className="pp-transcript-tools">
@@ -318,6 +341,9 @@ export default function TranscriptPanel({
         onDragHover={handleCueDragHover}
         onImportSrt={onImportSrt}
         onTranscribe={onTranscribe}
+        transcribing={transcribing}
+        transcribingLabel={transcribingLabel}
+        transcriptionProgress={transcriptionProgress}
         onShowAllSubtitles={() => usePlayerStore.getState().setSubtitleDisplayMode('all')}
         renderText={renderText}
       />

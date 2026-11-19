@@ -3,16 +3,11 @@ import { useThemeStore } from '@/stores/themeStore'
 import Waveform from '@/components/Waveform'
 import Scrubber from './Scrubber'
 
-interface TimelineProps {
-  showDeck: boolean
-  isYouTube: boolean
-}
-
 /**
- * 波形 dock：只订阅时间相关字段，播放时不影响页面其他区域。
- * 视频模式下进度条已经内嵌在画面控制层里，这里只保留波形，避免同一屏出现两条进度条。
+ * 音频 / 专注模式的波形 dock：视频模式不再渲染它，
+ * 进度和波形都收进画面内控制层，避免画面下方重复一条进度条。
  */
-export default function Timeline({ showDeck, isYouTube }: TimelineProps) {
+export default function Timeline() {
   const played = usePlayerStore((s) => s.played)
   const duration = usePlayerStore((s) => s.duration)
   const subtitleOffset = usePlayerStore((s) => s.subtitleOffset)
@@ -24,7 +19,7 @@ export default function Timeline({ showDeck, isYouTube }: TimelineProps) {
   const focusMode = usePlayerStore((s) => s.focusMode)
   const themeDark = useThemeStore((s) => s.dark)
 
-  const waveClass = showDeck ? (focusMode ? 'pp-wave--focus' : 'pp-wave--audio') : 'pp-wave--video'
+  const waveClass = focusMode ? 'pp-wave--focus' : 'pp-wave--audio'
 
   return (
     <div className="pp-timeline">
@@ -43,15 +38,11 @@ export default function Timeline({ showDeck, isYouTube }: TimelineProps) {
         />
         {waveformData.length === 0 && (
           <span className="pp-wave-note">
-            {waveformLoading
-              ? '生成波形…'
-              : isYouTube
-                ? '在线视频无波形 · 可拖动画面内进度条'
-                : '暂无波形 · 可拖动画面内进度条'}
+            {waveformLoading ? '生成波形…' : '暂无波形 · 可拖动下方进度条'}
           </span>
         )}
       </div>
-      {showDeck && <Scrubber />}
+      <Scrubber />
     </div>
   )
 }

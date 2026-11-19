@@ -20,6 +20,22 @@
     sans-serif;
   --pp-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 
+  /* 播放页刻度：间距 / 圆角 / 字号统一从这套 token 取值，避免随手写 7、9、13px */
+  --pp-space-1: 4px;
+  --pp-space-2: 6px;
+  --pp-space-3: 8px;
+  --pp-space-4: 10px;
+  --pp-space-5: 12px;
+  --pp-space-6: 16px;
+  --pp-radius-xs: 6px;
+  --pp-radius-sm: 8px;
+  --pp-radius-md: var(--radius);
+  --pp-radius-lg: calc(var(--radius) + 4px);
+  --pp-text-2xs: 10px;
+  --pp-text-xs: 11px;
+  --pp-text-sm: 12px;
+  --pp-text-md: 13px;
+
   position: relative;
   height: 100%;
   min-height: 0;
@@ -310,6 +326,14 @@
 .pp-play-error-btn:hover {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* 看门狗提示：可交互，直接提供重新加载 */
+.pp-stage-status.is-warning {
+  pointer-events: auto;
+  gap: var(--pp-space-3);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgba(24, 10, 12, 0.88);
 }
 
 /* 缓冲 / 转码中的轻量状态提示 */
@@ -663,6 +687,19 @@
   flex-wrap: wrap;
 }
 
+/* 三档视觉：播放键最强，普通图标更安静，开关态用强调色 */
+.pp-transport .pp-icon-btn {
+  color: var(--pp-dim);
+}
+
+.pp-transport .pp-icon-btn:hover {
+  color: var(--pp-ink);
+}
+
+.pp-transport .pp-icon-btn.is-active {
+  color: var(--pp-accent);
+}
+
 .pp-transport--video {
   color: #fff;
 }
@@ -681,7 +718,7 @@
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: var(--pp-radius-sm);
   border: 1px solid transparent;
   color: var(--pp-muted);
   background: transparent;
@@ -715,13 +752,19 @@
 }
 
 .pp-transport--video .pp-icon-btn {
-  color: rgba(255, 255, 255, 0.76);
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .pp-transport--video .pp-icon-btn:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.14);
   border-color: transparent;
+}
+
+.pp-transport--video .pp-icon-btn.is-active {
+  color: var(--pp-accent);
+  background: var(--pp-accent-soft);
+  border-color: hsl(var(--primary) / 0.32);
 }
 
 .pp-play {
@@ -773,8 +816,8 @@
   bottom: calc(100% + 10px);
   z-index: 40;
   width: 236px;
-  padding: 6px;
-  border-radius: var(--radius);
+  padding: var(--pp-space-2);
+  border-radius: var(--pp-radius-md);
   border: 1px solid var(--pp-line-strong);
   background: var(--pp-panel-solid);
   box-shadow: 0 16px 40px -18px hsl(var(--foreground) / 0.32);
@@ -851,7 +894,7 @@
   width: 24px;
   text-align: right;
   font-family: var(--pp-mono);
-  font-size: 10px;
+  font-size: var(--pp-text-2xs);
   color: var(--pp-dim);
 }
 
@@ -988,7 +1031,7 @@
   place-items: center;
   pointer-events: none;
   font-family: var(--pp-mono);
-  font-size: 10px;
+  font-size: var(--pp-text-2xs);
   letter-spacing: 0.08em;
   color: var(--pp-dim);
 }
@@ -1010,7 +1053,7 @@
   align-items: center;
   gap: 10px;
   font-family: var(--pp-mono);
-  font-size: 10px;
+  font-size: var(--pp-text-2xs);
   letter-spacing: 0.04em;
   color: var(--pp-dim);
 }
@@ -1087,36 +1130,27 @@
   border-radius: 999px;
 }
 
-/* ---------- Transcription progress ---------- */
-
-.pp-transcribing {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid hsl(var(--primary) / 0.18);
-  background: hsl(var(--primary) / 0.06);
-  font-size: 11px;
-  color: var(--pp-muted);
-}
-
-.pp-transcribing-track {
-  flex: 1;
-  height: 2px;
-  border-radius: 999px;
-  background: hsl(var(--muted));
-  overflow: hidden;
-}
-
-.pp-transcribing-fill {
-  height: 100%;
-  background: var(--pp-accent);
-  transition: width 0.3s ease;
-}
-
 /* ---------- Transcript ---------- */
+
+/* 转录状态统一放在右侧字幕面板头部，左列不再重复提示 */
+.pp-transcribing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pp-space-1);
+  min-width: 0;
+  max-width: 200px;
+  padding: 1px var(--pp-space-2);
+  border-radius: 999px;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-size: var(--pp-text-2xs);
+}
+
+.pp-transcribing-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .pp-transcript {
   display: flex;
@@ -1143,6 +1177,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   color: var(--pp-muted);
 }
 
@@ -1188,8 +1223,8 @@
   min-width: 26px;
   height: 21px;
   padding: 0 5px;
-  border-radius: 6px;
-  font-size: 10px;
+  border-radius: var(--pp-radius-xs);
+  font-size: var(--pp-text-2xs);
   color: var(--pp-dim);
   transition:
     color 0.14s ease,
@@ -1267,7 +1302,7 @@
   display: block;
   width: 100%;
   padding: 10px 64px 10px 46px;
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: var(--pp-radius-sm);
   border-left: 2px solid transparent;
   text-align: left;
   font-family: var(--pp-serif);
@@ -1301,12 +1336,17 @@
   background: linear-gradient(90deg, hsl(var(--primary) / 0.16), hsl(var(--primary) / 0.02));
 }
 
+.pp-cue:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
 .pp-cue-time {
   position: absolute;
   left: 12px;
   top: 13px;
   font-family: var(--pp-mono);
-  font-size: 9px;
+  font-size: var(--pp-text-2xs);
   letter-spacing: 0.04em;
   color: var(--pp-dim);
   cursor: grab;
@@ -1339,7 +1379,7 @@
   place-items: center;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--pp-radius-xs);
   color: var(--pp-muted);
 }
 
@@ -1503,6 +1543,76 @@
   margin-top: 6px;
 }
 
+/* 空播放器的最近播放入口：避免空页成为死胡同 */
+.pp-empty-recent {
+  width: 100%;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--pp-line);
+  text-align: left;
+}
+
+.pp-empty-recent-title {
+  margin-bottom: var(--pp-space-2);
+  font-size: var(--pp-text-xs);
+  letter-spacing: 0.08em;
+  color: var(--pp-dim);
+}
+
+.pp-empty-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-empty-recent-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-space-3);
+  width: 100%;
+  padding: 7px var(--pp-space-3);
+  border-radius: var(--pp-radius-sm);
+  border: 1px solid transparent;
+  color: var(--pp-muted);
+  text-align: left;
+  transition:
+    color 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.pp-empty-recent-item:hover {
+  color: var(--pp-ink);
+  border-color: var(--pp-line);
+  background: var(--pp-hover);
+}
+
+.pp-empty-recent-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--pp-dim);
+}
+
+.pp-empty-recent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--pp-text-sm);
+}
+
+.pp-empty-recent-meta {
+  flex-shrink: 0;
+  font-family: var(--pp-mono);
+  font-size: var(--pp-text-2xs);
+  color: var(--pp-dim);
+}
+
 .pp-primary-btn {
   display: inline-flex;
   align-items: center;
@@ -1551,6 +1661,27 @@
   display: flex;
   gap: 6px;
   margin-top: 2px;
+}
+
+/* 转录中：右栏展示实时进度，而不是空白等待 */
+.pp-transcript-empty-track {
+  width: min(200px, 100%);
+  height: 3px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+
+.pp-transcript-empty-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pp-accent);
+  transition: width 0.3s ease;
+}
+
+.pp-transcript-empty-note {
+  font-size: var(--pp-text-xs);
+  color: var(--pp-dim);
 }
 
 .pp-mini-btn {

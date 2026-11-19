@@ -4,6 +4,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
 import type { SubtitleCue, SubtitleListHandle } from '@/components/SubtitleList'
+import type { RecentEntry } from '@/types/api'
 import { showToast } from '@/components/feedback'
 import WordHoverCard from '@/components/WordHoverCard'
 import WordLookupModal from '@/components/WordLookupModal'
@@ -13,7 +14,7 @@ import { extOf } from '@/lib/mediaFormats'
 import { loadSrtFile, openLocalMedia } from '@/lib/openMedia'
 import { formatClockTime } from '@/lib/subtitles'
 import { useYouTubeEngine } from '@/hooks/useYouTubeEngine'
-import { ArrowLeft, AudioLines, Keyboard, Loader2, Subtitles } from 'lucide-react'
+import { ArrowLeft, AudioLines, FileAudio, FileVideo, Keyboard, Subtitles } from 'lucide-react'
 import TransportControls from './player/TransportControls'
 import VideoStage from './player/VideoStage'
 import AudioDeck from './player/AudioDeck'
@@ -66,8 +67,24 @@ export default function PlayerPage() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
   const [mediaPort, setMediaPort] = useState(0)
+  const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([])
   const subtitleListRef = useRef<SubtitleListHandle>(null)
   const dragStateRef = useRef({ active: false, anchor: -1, current: -1 })
+
+  // 空播放器不再是无路可走的死胡同：拉取最近播放，点一下即可继续
+  useEffect(() => {
+    if (filePath) return
+    let cancelled = false
+    window.api
+      .recentList()
+      .then((rows) => {
+        if (!cancelled) setRecentEntries(rows.slice(0, 5))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [filePath])
 
   const isAudio = resolveIsAudio(filePath, mediaKind)
   const ext = extOf(filePath || '')
@@ -99,6 +116,7 @@ export default function PlayerPage() {
     converting,
     fallbackPath,
     activeMediaPath,
+    stalled,
     clearPlayError,
     retryPlayback,
     transcodeNow,
@@ -379,6 +397,7 @@ export default function PlayerPage() {
                 ytEmbedUrl={ytEmbedUrl}
                 converting={converting}
                 playError={playError}
+                stalled={stalled}
                 onRetryPlayback={retryPlayback}
                 onTranscode={transcodeNow}
                 onTogglePlay={togglePlay}
@@ -402,7 +421,7 @@ export default function PlayerPage() {
                 />
               )}
 
-              <Timeline showDeck={showDeck} isYouTube={isYouTube} />
+              {showDeck && <Timeline />}
 
               {showDeck && (
                 <div className="pp-dock">
@@ -412,21 +431,6 @@ export default function PlayerPage() {
                     onHelp={() => setShowShortcutHelp(true)}
                     aiActive={!!ai.aiTarget}
                   />
-                </div>
-              )}
-
-              {transcribing && transcriptionProgress >= 0 && (
-                <div className="pp-transcribing">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>
-                    Whisper {transcribingLabel} {transcriptionProgress}%
-                  </span>
-                  <div className="pp-transcribing-track">
-                    <div
-                      className="pp-transcribing-fill"
-                      style={{ width: `${transcriptionProgress}%` }}
-                    />
-                  </div>
                 </div>
               )}
             </section>
@@ -445,6 +449,9 @@ export default function PlayerPage() {
               onTranscribe={transcribe}
               onExport={() => void exportSubtitles()}
               onRetranscribe={transcribe}
+              transcribing={transcribing}
+              transcribingLabel={transcribingLabel}
+              transcriptionProgress={transcriptionProgress}
               renderWords={hover.renderWords}
             />
           </div>
@@ -466,6 +473,37 @@ export default function PlayerPage() {
                   返回{backLabel}
                 </button>
               </div>
+              {recentEntries.length > 0 && (
+                <div className="pp-empty-recent">
+                  <div className="pp-empty-recent-title">从最近播放继续</div>
+                  <ul className="pp-empty-recent-list">
+                    {recentEntries.map((item) => (
+                      <li key={item.path}>
+                        <button
+                          type="button"
+                          className="pp-empty-recent-item"
+                          onClick={() => void openLocalMedia(item.path)}
+                          title={item.path}
+                        >
+                          <span className="pp-empty-recent-icon">
+                            {item.type === 'audio' ? (
+                              <FileAudio className="h-4 w-4" />
+                            ) : (
+                              <FileVideo className="h-4 w-4" />
+                            )}
+                          </span>
+                          <span className="pp-empty-recent-name">{item.name}</span>
+                          {!!item.lastPosition && item.lastPosition > 0 && (
+                            <span className="pp-empty-recent-meta">
+                              {formatClockTime(item.lastPosition)}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         )}
