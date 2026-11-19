@@ -149,6 +149,7 @@ interface PlayerStore {
   setHoverPause: (v: boolean) => void
   setSubtitleDisplayMode: (mode: SubtitleDisplayMode) => void
   adjustVolume: (delta: number) => void
+  setVolume: (volume: number) => void
   toggleMuted: () => void
   adjustSubtitleFontScale: (delta: number) => void
 }
@@ -313,6 +314,15 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((s) => {
       const volume = Math.round(Math.min(1, Math.max(0, s.volume + delta)) * 10) / 10
       const muted = delta > 0 ? false : s.muted
+      persist(VOLUME_KEY, String(volume))
+      persist(MUTED_KEY, muted ? '1' : '0')
+      return { volume, muted }
+    }),
+  setVolume: (value) =>
+    set(() => {
+      const volume = Math.round(Math.min(1, Math.max(0, value)) * 100) / 100
+      // 拖动音量条即视为调整音量，归零时自动静音、非零时自动取消静音
+      const muted = volume === 0
       persist(VOLUME_KEY, String(volume))
       persist(MUTED_KEY, muted ? '1' : '0')
       return { volume, muted }

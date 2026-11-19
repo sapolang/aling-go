@@ -17,6 +17,10 @@ export interface MediaElementHandle {
   fallbackPath: string | null
   activeMediaPath: string | null
   clearPlayError: () => void
+  /** 播放失败后重新加载媒体源 */
+  retryPlayback: () => void
+  /** 用户手动触发一次转码兜底（仅本地文件） */
+  transcodeNow: () => void
 }
 
 /**
@@ -280,5 +284,49 @@ export function useMediaElement({ filePath, onEnded }: UseMediaElementOptions): 
     fallbackPath,
     activeMediaPath,
     clearPlayError: () => setPlayError(null),
+    retryPlayback: () => {
+      const el = mediaRef.current
+      const st = usePlayerStore.getState()
+      if (!el || !st.filePath) return
+      const resumeTime = el.currentTime
+      setPlayError(null)
+      el.load()
+      // 重载后尽量回到失败前的位置，避免用户从头再听一遍
+      if (resumeTime > 0) {
+        el.addEventListener(
+          'loadedmetadata',
+          () => {
+            if (usePlayerStore.getState().filePath !== st.filePath) return
+            el.currentTime = resumeTime
+            usePlayerStore.getState().setPlayed(resumeTime)
+          },
+          { once: true },
+        )
+      }
+      if (st.playing) el.play().catch(() => {})
+    },
+    transcodeNow: () => {
+      const st = usePlayerStore.getState()
+      const fp = st.filePath
+      const el = mediaRef.current
+      if (!fp || !el) return
+      if (st.sourceKind !== 'html5' || /^https?:\/\//i.test(fp)) return
+      setPlayError(null)
+      setConvertingFile(fp)
+      fallbackResumeRef.current = { file: fp, time: el.currentTime }
+      window.api
+        .transcodeForPlayback(fp)
+        .then((out: string) => {
+          if (usePlayerStore.getState().filePath !== fp) return
+          setFallback({ file: fp, path: out })
+          showPlayerHud('已转换为可播格式')
+        })
+        .catch((e: unknown) => {
+          if (usePlayerStore.getState().filePath !== fp) return
+          fallbackResumeRef.current = null
+          setPlayError(e instanceof Error ? e.message : String(e))
+        })
+        .finally(() => setConvertingFile(null))
+    },
   }
 }

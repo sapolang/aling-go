@@ -229,10 +229,14 @@
   background: #000;
 }
 
-/* 跨域 iframe 吞掉鼠标事件，透明层负责把点击和移动冒泡给舞台 */
+/* 跨域 iframe 会吞掉鼠标事件：透明层只覆盖画面中部，
+   让 YouTube 自带的进度条、清晰度与设置按钮保持可点击 */
 .pp-yt-hit {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: 48px;
+  bottom: 72px;
   cursor: pointer;
 }
 
@@ -254,8 +258,75 @@
   padding: 24px;
   text-align: center;
   font-size: 13px;
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.pp-play-error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  padding: 18px 20px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: rgba(24, 10, 12, 0.88);
+}
+
+.pp-play-error-title {
+  font-size: 13px;
+  font-weight: 600;
   color: #fecaca;
-  background: rgba(0, 0, 0, 0.82);
+}
+
+.pp-play-error-detail {
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(254, 202, 202, 0.78);
+  word-break: break-word;
+}
+
+.pp-play-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pp-play-error-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 12px;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.pp-play-error-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* 缓冲 / 转码中的轻量状态提示 */
+.pp-stage-status {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #f8fafc;
+  font-size: 12px;
+  pointer-events: none;
 }
 
 /* 专注模式里没有视频舞台，转码/失败提示直接落在面板内 */
@@ -554,6 +625,9 @@
   left: 0;
   right: 0;
   bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 34px 14px 12px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.35) 58%, transparent);
   transition: opacity 0.22s ease;
@@ -561,8 +635,8 @@
 
 .pp-pin {
   position: absolute;
-  right: 12px;
-  top: 8px;
+  right: 10px;
+  top: 6px;
   display: grid;
   place-items: center;
   width: 26px;
@@ -715,6 +789,70 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
+}
+
+/* 「更多」浮层顶部的音量行：静音按钮 + 滑块 + 百分比 */
+.pp-more-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 7px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--pp-line);
+}
+
+.pp-more-volume .pp-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.pp-volume-range {
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pp-volume-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--pp-accent) 0%,
+    var(--pp-accent) var(--pp-progress, 0%),
+    hsl(var(--muted)) var(--pp-progress, 0%),
+    hsl(var(--muted)) 100%
+  );
+}
+
+.pp-volume-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--pp-accent);
+}
+
+.pp-transport--video .pp-volume-range::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--pp-accent) 0%,
+    var(--pp-accent) var(--pp-progress, 0%),
+    rgba(255, 255, 255, 0.26) var(--pp-progress, 0%),
+    rgba(255, 255, 255, 0.26) 100%
+  );
+}
+
+.pp-volume-value {
+  width: 24px;
+  text-align: right;
+  font-family: var(--pp-mono);
+  font-size: 10px;
+  color: var(--pp-dim);
 }
 
 .pp-tool {
@@ -886,6 +1024,32 @@
   text-align: right;
 }
 
+/* 视频画面内的进度条：右侧留出固定控制条的按钮位置 */
+.pp-time-row--stage {
+  padding: 0 36px 0 6px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.pp-time-row--stage > span {
+  width: 42px;
+}
+
+.pp-time-row--stage .pp-range::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--pp-accent) 0%,
+    var(--pp-accent) var(--pp-progress, 0%),
+    rgba(255, 255, 255, 0.26) var(--pp-progress, 0%),
+    rgba(255, 255, 255, 0.26) 100%
+  );
+}
+
+.pp-time-row--stage .pp-range::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+  margin-top: -3.5px;
+}
+
 .pp-range {
   flex: 1;
   height: 14px;
@@ -1009,6 +1173,36 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* 字幕显示模式：从二级菜单提到面板头部一级入口 */
+.pp-mode-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.6);
+}
+
+.pp-mode-seg button {
+  min-width: 26px;
+  height: 21px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--pp-dim);
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
+}
+
+.pp-mode-seg button:hover {
+  color: var(--pp-ink);
+}
+
+.pp-mode-seg button.is-active {
+  color: var(--pp-accent-ink);
+  background: var(--pp-accent);
 }
 
 .pp-text-btn {

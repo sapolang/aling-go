@@ -15,11 +15,11 @@ import SubtitleList from '@/components/SubtitleList'
 import { showPlayerHud } from '@/components/PlayerHud'
 import { filterSubtitleText } from './constants'
 
-const MODE_OPTIONS: [SubtitleDisplayMode, string][] = [
-  ['all', '全部'],
-  ['en', '仅英'],
-  ['zh', '仅中'],
-  ['off', '隐藏'],
+const MODE_OPTIONS: [SubtitleDisplayMode, string, string][] = [
+  ['all', '全部', '显示原文与翻译'],
+  ['en', '英', '仅显示英文'],
+  ['zh', '中', '仅显示中文'],
+  ['off', '关', '隐藏字幕'],
 ]
 
 interface TranscriptPanelProps {
@@ -184,6 +184,19 @@ export default function TranscriptPanel({
           )}
         </div>
         <div className="pp-transcript-tools">
+          <div className="pp-mode-seg" role="group" aria-label="字幕显示模式">
+            {MODE_OPTIONS.map(([m, label, title]) => (
+              <button
+                key={m}
+                className={displayMode === m ? 'is-active' : ''}
+                title={title}
+                aria-pressed={displayMode === m}
+                onClick={() => usePlayerStore.getState().setSubtitleDisplayMode(m)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {!autoFollow && (
             <button className="pp-text-btn" onClick={resumeFollow}>
               回到当前句
@@ -220,22 +233,6 @@ export default function TranscriptPanel({
                 >
                   <FileDown className="h-3.5 w-3.5" /> 导入 SRT
                 </button>
-                <div className="pp-menu-section">
-                  <div className="pp-menu-label" title="快捷键 E 循环切换">
-                    <span>显示模式</span>
-                  </div>
-                  <div className="pp-menu-seg">
-                    {MODE_OPTIONS.map(([m, label]) => (
-                      <button
-                        key={m}
-                        className={displayMode === m ? 'is-active' : ''}
-                        onClick={() => usePlayerStore.getState().setSubtitleDisplayMode(m)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <div className="pp-menu-section">
                   <button
                     className="pp-menu-item"

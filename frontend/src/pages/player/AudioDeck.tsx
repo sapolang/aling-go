@@ -78,7 +78,7 @@ export default function AudioDeck({
       {subtitles.length > 0 && <DeckOrbit playing={deckPlaying} />}
       <div className="pp-deck-body">
         <div className="pp-deck-top">
-          <span className="pp-eyebrow">{isAudio ? 'Audio session' : 'Focus session'}</span>
+          <span className="pp-eyebrow">{isAudio ? '音频精听' : '专注模式'}</span>
           <span className="pp-badge">
             {isAudio ? (ext ? ext.toUpperCase() : 'AUDIO') : 'FOCUS'}
           </span>

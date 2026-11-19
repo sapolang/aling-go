@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Pin, PinOff } from 'lucide-react'
+import { Loader2, Pin, PinOff } from 'lucide-react'
 import { usePlayerStore } from '@/stores/playerStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
 import { findCueIndexAt } from '@/lib/subtitles'
 import { PlayerHud } from '@/components/PlayerHud'
 import TransportControls from './TransportControls'
+import Scrubber from './Scrubber'
 import { filterSubtitleText } from './constants'
 
 interface VideoSubtitleOverlayProps {
@@ -49,6 +50,8 @@ interface VideoStageProps {
   ytEmbedUrl: string
   converting: boolean
   playError: string | null
+  onRetryPlayback: () => void
+  onTranscode: () => void
   onTogglePlay: () => void
   onAction: (action: ShortcutActionId) => void
   onHelp: () => void
@@ -68,6 +71,8 @@ export default function VideoStage({
   ytEmbedUrl,
   converting,
   playError,
+  onRetryPlayback,
+  onTranscode,
   onTogglePlay,
   onAction,
   onHelp,
@@ -75,10 +80,36 @@ export default function VideoStage({
   renderWords,
 }: VideoStageProps) {
   const playing = usePlayerStore((s) => s.playing)
+  const sourceKind = usePlayerStore((s) => s.sourceKind)
   const [pinned, setPinned] = useState(false)
   const [visible, setVisible] = useState(true)
+  // 缓冲中状态：原生视频卡顿时给出明确反馈，避免用户以为界面卡死
+  const [buffering, setBuffering] = useState(false)
   const pinnedRef = useRef(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const canOpenExternal = !!filePath && /^https?:\/\//i.test(filePath)
+  const canTranscode = sourceKind === 'html5' && !!filePath && !/^https?:\/\//i.test(filePath)
+
+  useEffect(() => {
+    const el = mediaRef.current
+    if (!el || isYouTube || hidden) {
+      setBuffering(false)
+      return
+    }
+    const onWaiting = () => setBuffering(true)
+    const onReady = () => setBuffering(false)
+    el.addEventListener('waiting', onWaiting)
+    el.addEventListener('playing', onReady)
+    el.addEventListener('canplay', onReady)
+    el.addEventListener('pause', onReady)
+    return () => {
+      el.removeEventListener('waiting', onWaiting)
+      el.removeEventListener('playing', onReady)
+      el.removeEventListener('canplay', onReady)
+      el.removeEventListener('pause', onReady)
+    }
+  }, [filePath, hidden, isYouTube, mediaRef])
 
   const clearTimer = () => {
     if (hideTimerRef.current) {
@@ -147,8 +178,45 @@ export default function VideoStage({
         <video ref={mediaRef} src={mediaUrl} className="pp-video-el" playsInline />
       )}
       {!hidden && <VideoSubtitleOverlay controlsShown={controlsShown} renderWords={renderWords} />}
-      {!hidden && converting && <div className="pp-play-error">正在转换为可播格式…</div>}
-      {!hidden && playError && <div className="pp-play-error">播放失败：{playError}</div>}
+      {!hidden && buffering && !playError && !converting && (
+        <div className="pp-stage-status" aria-live="polite">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>正在缓冲…</span>
+        </div>
+      )}
+      {!hidden && converting && (
+        <div className="pp-stage-status" aria-live="polite">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>正在转换为可播格式…</span>
+        </div>
+      )}
+      {!hidden && playError && (
+        <div className="pp-play-error" onClick={(e) => e.stopPropagation()}>
+          <div className="pp-play-error-card">
+            <p className="pp-play-error-title">播放失败</p>
+            <p className="pp-play-error-detail">{playError}</p>
+            <div className="pp-play-error-actions">
+              <button type="button" className="pp-play-error-btn" onClick={onRetryPlayback}>
+                重新加载
+              </button>
+              {canTranscode && (
+                <button type="button" className="pp-play-error-btn" onClick={onTranscode}>
+                  转码后播放
+                </button>
+              )}
+              {canOpenExternal && filePath && (
+                <button
+                  type="button"
+                  className="pp-play-error-btn"
+                  onClick={() => void window.api.openExternal(filePath)}
+                >
+                  在浏览器打开
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {!hidden && <PlayerHud />}
       {!hidden && filePath && (
         <div
@@ -158,6 +226,7 @@ export default function VideoStage({
           onPointerDown={holdControls}
           onClick={(e) => e.stopPropagation()}
         >
+          <Scrubber variant="stage" />
           <TransportControls
             variant="video"
             onAction={onAction}
@@ -168,6 +237,7 @@ export default function VideoStage({
             type="button"
             className="pp-pin"
             title={pinned ? '取消固定控制条' : '固定控制条'}
+            aria-label={pinned ? '取消固定控制条' : '固定控制条'}
             onClick={(e) => {
               e.stopPropagation()
               togglePin()

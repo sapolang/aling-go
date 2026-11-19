@@ -93,8 +93,16 @@ export default function PlayerPage() {
     })
   }
 
-  const { mediaRef, playError, converting, fallbackPath, activeMediaPath, clearPlayError } =
-    useMediaElement({ filePath, onEnded: handleEnded })
+  const {
+    mediaRef,
+    playError,
+    converting,
+    fallbackPath,
+    activeMediaPath,
+    clearPlayError,
+    retryPlayback,
+    transcodeNow,
+  } = useMediaElement({ filePath, onEnded: handleEnded })
 
   // 生词库词表：已收藏的词在字幕中高亮显示
   const savedWordList = useWordStore((s) => s.words)
@@ -305,12 +313,12 @@ export default function PlayerPage() {
             </button>
             <div className="pp-heading">
               <span className="pp-eyebrow">
-                {filePath ? `Now playing · ${isAudio ? 'Audio' : 'Video'}` : 'Player'}
+                {filePath ? `正在播放 · ${isAudio ? '音频' : '视频'}` : '播放器'}
               </span>
               <h1 className="pp-title">{filePath ? title : '选择一段素材开始'}</h1>
               {filePath && (
                 <div className="pp-meta">
-                  <span>{isAudio ? 'Audio' : 'Video'}</span>
+                  <span>{isAudio ? '音频' : '视频'}</span>
                   {duration > 0 && (
                     <>
                       <span className="pp-meta-dot">·</span>
@@ -320,13 +328,13 @@ export default function PlayerPage() {
                   {displayCount > 0 && (
                     <>
                       <span className="pp-meta-dot">·</span>
-                      <span>{displayCount} sentences</span>
+                      <span>{displayCount} 条字幕</span>
                     </>
                   )}
                   {subtitleOffset !== 0 && (
                     <>
                       <span className="pp-meta-dot">·</span>
-                      <span>offset {subtitleOffset.toFixed(1)}s</span>
+                      <span>偏移 {subtitleOffset.toFixed(1)}s</span>
                     </>
                   )}
                 </div>
@@ -342,7 +350,7 @@ export default function PlayerPage() {
                 title="加载 SRT 字幕"
               >
                 <Subtitles />
-                <span>字幕</span>
+                <span>导入字幕</span>
               </button>
             )}
             <button
@@ -371,6 +379,8 @@ export default function PlayerPage() {
                 ytEmbedUrl={ytEmbedUrl}
                 converting={converting}
                 playError={playError}
+                onRetryPlayback={retryPlayback}
+                onTranscode={transcodeNow}
                 onTogglePlay={togglePlay}
                 onAction={runAction}
                 onHelp={() => setShowShortcutHelp(true)}
