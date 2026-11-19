@@ -290,6 +290,11 @@ type SubtitleCue struct {
 	Text  string  `json:"text"`
 }
 
+// podcastSubtitleEventKey 返回播客增量字幕事件的稳定标识，与前端 isPodcast 分支一致。
+func podcastSubtitleEventKey(episodeID int64) string {
+	return fmt.Sprintf("podcast:%d", episodeID)
+}
+
 // TranscribePodcast 转录 RSS 节目。已下载节目直接使用本地文件；在线节目临时下载音频，
 // 转录完成后删除临时文件。字幕按本地路径或音频 URL 缓存，force 用于显式重新转录。
 func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) PodcastTranscribeResult {
@@ -332,13 +337,16 @@ func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) Podcast
 	if err := s.checkWhisperReady(); err != nil {
 		return fail(err)
 	}
+	// 增量事件用 episodeID 作为稳定 key：在线节目可能同时有 audio_url 和 media_url，
+	// 前端只拿得到实际播放地址，用缓存 key 会因后端选了另一条地址而对不上。
+	eventKey := podcastSubtitleEventKey(episodeID)
 	var cues []SubtitleCue
 	if localPath != "" {
-		cues, err = s.transcribeAudioFile(localPath)
+		cues, err = s.transcribeAudioFile(localPath, eventKey)
 	} else {
 		s.app.Event.Emit("whisper:progress", whisperProgress{Progress: 0, Status: "downloading"})
 		// 与 YouTube/B站一致：yt-dlp 下载到临时目录，函数返回前自动清理。
-		cues, err = s.transcribeAudio(audioURL)
+		cues, err = s.transcribeAudio(audioURL, eventKey)
 	}
 	if err != nil {
 		return fail(err)

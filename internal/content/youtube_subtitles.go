@@ -5,14 +5,17 @@
 package content
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"html"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"regexp"
@@ -41,21 +44,77 @@ func findYtDlp() string {
 	return ""
 }
 
-// runYtDlp 执行 yt-dlp，代理复用订阅拉取的配置
-func (s *PlatformService) runYtDlp(timeout time.Duration, args ...string) error {
+// runYtDlp 执行 yt-dlp，代理复用订阅拉取的配置。
+// onProgress 非空时，会解析 stdout 中的 [download] xx.x% 行回调百分比；
+// 字幕下载等不需要进度的场景传 nil。
+//
+// yt-dlp 把进度和普通日志写到 stdout，错误写到 stderr，因此两个流都要并行读完：
+// 只读 stderr 会拿不到进度，只读 stdout 又会在长时间下载时让 stderr 管道写满。
+func (s *PlatformService) runYtDlp(timeout time.Duration, onProgress func(int), args ...string) error {
 	bin := findYtDlp()
 	if bin == "" {
 		return fmt.Errorf("未找到 yt-dlp，请先安装（brew install yt-dlp）")
 	}
-	base := []string{"--no-warnings", "--no-progress", "--no-playlist", "--no-mtime"}
+	// --newline 让 yt-dlp 每行输出一个进度，便于流式解析；--no-warnings 减少噪音
+	base := []string{"--no-warnings", "--no-playlist", "--no-mtime", "--newline"}
 	if proxy := strings.TrimSpace(s.feed.GetProxy()); proxy != "" {
 		base = append(base, "--proxy", proxy)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, append(base, args...)...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, bin, append(base, args...)...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
+		return fmt.Errorf("yt-dlp stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("yt-dlp stderr pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("启动 yt-dlp 失败: %w", err)
+	}
+
+	var (
+		wg       sync.WaitGroup
+		errLines []string
+	)
+	wg.Add(2)
+
+	// stderr: 只保留尾部少量行用于报错展示，避免长视频占内存
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stderr)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			errLines = append(errLines, scanner.Text())
+			if len(errLines) > 20 {
+				errLines = errLines[len(errLines)-20:]
+			}
+		}
+	}()
+
+	// stdout: 解析下载百分比并透传给前端
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		lastPct := -1
+		for scanner.Scan() {
+			if onProgress == nil {
+				continue
+			}
+			if pct, ok := parseYtDlpProgress(scanner.Text()); ok && pct != lastPct {
+				lastPct = pct
+				onProgress(pct)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	if err := cmd.Wait(); err != nil {
+		msg := strings.TrimSpace(strings.Join(errLines, "\n"))
 		if i := strings.LastIndex(msg, "\n"); i >= 0 {
 			msg = msg[i+1:]
 		}
@@ -70,6 +129,27 @@ func (s *PlatformService) runYtDlp(timeout time.Duration, args ...string) error 
 	return nil
 }
 
+// parseYtDlpProgress 从 yt-dlp 输出行里解析下载百分比。
+// 典型行：[download]  42.5% of 3.45MiB at 1.23MiB/s ETA 00:02
+func parseYtDlpProgress(line string) (int, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "[download]") {
+		return 0, false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "[download]"))
+	// 取第一个 % 前的数字
+	end := strings.IndexByte(rest, '%')
+	if end <= 0 {
+		return 0, false
+	}
+	pctStr := strings.TrimSpace(rest[:end])
+	var pct float64
+	if _, err := fmt.Sscanf(pctStr, "%f", &pct); err != nil {
+		return 0, false
+	}
+	return int(math.Round(pct)), true
+}
+
 // fetchYouTubeSubtitlesViaYtDlp 用 yt-dlp 下载字幕文件，不下载视频
 func (s *PlatformService) fetchYouTubeSubtitlesViaYtDlp(videoID string) ([]SubtitleCue, error) {
 	dir, err := os.MkdirTemp("", "aling-yt-sub-*")
@@ -78,7 +158,7 @@ func (s *PlatformService) fetchYouTubeSubtitlesViaYtDlp(videoID string) ([]Subti
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	runErr := s.runYtDlp(90*time.Second,
+	runErr := s.runYtDlp(90*time.Second, nil,
 		"--skip-download", "--write-subs", "--write-auto-subs",
 		"--sub-langs", ytDlpSubtitleLangs, "--sub-format", "vtt",
 		"-o", filepath.Join(dir, "%(id)s"),
@@ -119,9 +199,23 @@ func pickSubtitleFile(files []string) string {
 	return files[0]
 }
 
+// platformSubtitleEventKey 返回增量字幕事件使用的稳定标识。
+// 必须与前端 store 的 historyKey 约定一致（yt:<videoID> / bili:<bvid>），
+// 否则前端会把它当成切换媒体后的过期事件丢弃。
+func platformSubtitleEventKey(kind platformKind, id string) string {
+	switch kind {
+	case platformYouTube:
+		return "yt:" + id
+	case platformBilibili:
+		return "bili:" + id
+	}
+	return id
+}
+
 // transcribeYouTubeAudio 没有字幕时下载音轨，交给本地 Whisper 转录
 func (s *PlatformService) transcribeYouTubeAudio(videoID string) ([]SubtitleCue, error) {
-	return s.transcribeAudio("https://www.youtube.com/watch?v=" + videoID)
+	url := "https://www.youtube.com/watch?v=" + videoID
+	return s.transcribeAudio(url, platformSubtitleEventKey(platformYouTube, videoID))
 }
 
 // transcribeBilibiliAudio 通过临时 Netscape Cookie 文件携带登录态，避免把 Cookie 暴露在进程参数中。
@@ -135,7 +229,8 @@ func (s *PlatformService) transcribeBilibiliAudio(bvid string) ([]SubtitleCue, e
 		defer func() { _ = os.Remove(cookiePath) }()
 		extraArgs = append(extraArgs, "--cookies", cookiePath)
 	}
-	return s.transcribeAudio("https://www.bilibili.com/video/"+bvid, extraArgs...)
+	url := "https://www.bilibili.com/video/" + bvid
+	return s.transcribeAudio(url, platformSubtitleEventKey(platformBilibili, bvid), extraArgs...)
 }
 
 func bilibiliYtDlpCookieFile(cookie string) (string, error) {
@@ -182,7 +277,7 @@ func (s *PlatformService) checkWhisperReady() error {
 	return nil
 }
 
-func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) ([]SubtitleCue, error) {
+func (s *PlatformService) transcribeAudio(videoURL, eventKey string, extraArgs ...string) ([]SubtitleCue, error) {
 	if err := s.checkWhisperReady(); err != nil {
 		return nil, err
 	}
@@ -193,13 +288,21 @@ func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) 
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
+	// Whisper 只需要 16kHz 单声道，优先选低码率音轨减少下载量；逐级回退保证总有东西可下
 	args := []string{
-		"-f", "bestaudio/best", "--no-part",
+		"-f", "bestaudio[abr<=64]/bestaudio[abr<=128]/bestaudio/best",
+		"--no-part",
 		"-o", filepath.Join(dir, "audio.%(ext)s"),
 	}
 	args = append(args, extraArgs...)
 	args = append(args, videoURL)
-	if err := s.runYtDlp(15*time.Minute, args...); err != nil {
+
+	// 下载阶段：把 yt-dlp 的百分比透传给前端，避免长时间无反馈
+	s.app.Event.Emit("whisper:progress", whisperProgress{Progress: 0, Status: "downloading"})
+	downloadCB := func(pct int) {
+		s.app.Event.Emit("whisper:progress", whisperProgress{Progress: pct, Status: "downloading"})
+	}
+	if err := s.runYtDlp(15*time.Minute, downloadCB, args...); err != nil {
 		return nil, err
 	}
 
@@ -208,11 +311,13 @@ func (s *PlatformService) transcribeAudio(videoURL string, extraArgs ...string) 
 		return nil, fmt.Errorf("下载音频失败")
 	}
 	// 下载到的多为 webm/opus，内置 whisper 只带 miniaudio，解码不了这类封装
+	// 转码阶段很快（几秒），不单独发进度，统一标为准备转录
+	s.app.Event.Emit("whisper:progress", whisperProgress{Progress: 0, Status: "transcribing"})
 	wavPath := filepath.Join(dir, "audio-16k.wav")
 	if err := s.transcodeToWav(files[0], wavPath); err != nil {
 		return nil, err
 	}
-	return s.transcribeAudioFile(wavPath)
+	return s.transcribeAudioFile(wavPath, eventKey)
 }
 
 // transcodeToWav 把下载到的音轨转成 whisper 需要的 16kHz 单声道 PCM
@@ -239,8 +344,8 @@ func (s *PlatformService) transcodeToWav(input, output string) error {
 	return nil
 }
 
-func (s *PlatformService) transcribeAudioFile(path string) ([]SubtitleCue, error) {
-	items := s.whisper.Transcribe(path)
+func (s *PlatformService) transcribeAudioFile(path, eventKey string) ([]SubtitleCue, error) {
+	items := s.whisper.TranscribeWithKey(path, eventKey)
 	cues := make([]SubtitleCue, 0, len(items))
 	for _, it := range items {
 		if it.Text == "" {

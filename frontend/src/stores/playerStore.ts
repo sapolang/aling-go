@@ -130,6 +130,8 @@ interface PlayerStore {
   setDuration: (duration: number) => void
   setPlaybackRate: (rate: number) => void
   setSubtitles: (subs: SubtitleItem[]) => void
+  /** 增量追加字幕：只增不删，按 startTime+text 去重后排序 */
+  appendSubtitles: (subs: SubtitleItem[]) => void
   setSubtitlePath: (path: string | null) => void
   setCurrentSubtitleIndex: (index: number) => void
   setLoop: (start: number | null, end: number | null) => void
@@ -226,6 +228,25 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   // 字幕入库统一按开始时间排序，供播放进度二分定位与跳句逻辑使用
   setSubtitles: (subtitles) =>
     set({ subtitles: sortByStartTime(subtitles), currentSubtitleIndex: -1 }),
+  // 增量字幕：Whisper stdout 逐段吐出来时用；只增不删，避免切文件时残留。
+  // 用毫秒整数做去重键：stdout 解析的秒数与最终 JSON 的 offsets/1000 浮点表示可能不同，
+  // 直接比较原始浮点会让同一句在重新转录时无法去重。
+  appendSubtitles: (incoming) =>
+    set((s) => {
+      if (incoming.length === 0) return {}
+      const keyOf = (it: SubtitleItem) => `${Math.round(it.startTime * 1000)}|${it.text}`
+      const seen = new Set(s.subtitles.map(keyOf))
+      const fresh = incoming.filter((it) => {
+        const key = keyOf(it)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      if (fresh.length === 0) return {}
+      return {
+        subtitles: sortByStartTime([...s.subtitles, ...fresh]),
+      }
+    }),
   setSubtitlePath: (subtitlePath) => set({ subtitlePath }),
   setCurrentSubtitleIndex: (currentSubtitleIndex) => set({ currentSubtitleIndex }),
   setLoop: (loopStart, loopEnd) => set({ loopStart, loopEnd }),

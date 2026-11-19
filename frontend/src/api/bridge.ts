@@ -197,6 +197,8 @@ export function initBridge(): void {
     setWhisperLang: (lang: string) => SetWhisperLang(lang),
     onWhisperProgress: (cb: (data: any) => void) =>
       Events.On('whisper:progress', (e: any) => cb(e.data)),
+    onWhisperSegments: (cb: (data: any) => void) =>
+      Events.On('whisper:segments', (e: any) => cb(e.data)),
     onDownloadProgress: (cb: (pct: number) => void) =>
       Events.On('whisper:download-progress', (e: any) => cb(e.data)),
     getDownloadProgress: () => GetDownloadProgress(),

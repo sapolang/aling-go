@@ -59,6 +59,10 @@ export default function TranscriptPanel({
   const hoverPause = usePlayerStore((s) => s.hoverPause)
   const loopStart = usePlayerStore((s) => s.loopStart)
   const loopEnd = usePlayerStore((s) => s.loopEnd)
+  const mediaPath = usePlayerStore((s) => s.filePath)
+  const subtitlePath = usePlayerStore((s) => s.subtitlePath)
+  // 字幕源标识：切文件或导入新字幕时才变，流式追加不会变
+  const subtitleSourceKey = `${mediaPath ?? ''}|${subtitlePath ?? ''}`
 
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [autoFollow, setAutoFollow] = useState(true)
@@ -120,10 +124,10 @@ export default function TranscriptPanel({
     return () => window.removeEventListener('mouseup', onUp)
   }, [])
 
-  // 切换文件或字幕时回到列表顶部
+  // 切换文件或字幕源时重新开启自动跟随；流式转录追加时不打断用户浏览
   useEffect(() => {
     setAutoFollow(true)
-  }, [subtitles])
+  }, [subtitleSourceKey])
 
   useEffect(() => {
     if (!showSubMenu) return
@@ -302,6 +306,7 @@ export default function TranscriptPanel({
       <SubtitleList
         ref={listRef}
         subtitles={subtitles}
+        sourceKey={subtitleSourceKey}
         cues={displaySubtitles}
         played={played}
         offset={subtitleOffset}
