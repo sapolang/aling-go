@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useState, type ReactNode, type RefObject } from 'react'
 import { Loader2, Pin, PinOff } from 'lucide-react'
 import { usePlayerStore } from '@/stores/playerStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
@@ -6,6 +6,7 @@ import { findCueIndexAt } from '@/lib/subtitles'
 import { PlayerHud } from '@/components/PlayerHud'
 import TransportControls from './TransportControls'
 import Scrubber from './Scrubber'
+import useStageControls from './useStageControls'
 import { filterSubtitleText } from './constants'
 
 interface VideoSubtitleOverlayProps {
@@ -84,12 +85,10 @@ export default function VideoStage({
 }: VideoStageProps) {
   const playing = usePlayerStore((s) => s.playing)
   const sourceKind = usePlayerStore((s) => s.sourceKind)
-  const [pinned, setPinned] = useState(false)
-  const [visible, setVisible] = useState(true)
   // 缓冲中状态：原生视频卡顿时给出明确反馈，避免用户以为界面卡死
   const [buffering, setBuffering] = useState(false)
-  const pinnedRef = useRef(false)
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { pinned, controlsShown, showControls, holdControls, scheduleHide, togglePin } =
+    useStageControls(playing)
 
   const canOpenExternal = !!filePath && /^https?:\/\//i.test(filePath)
   const canTranscode = sourceKind === 'html5' && !!filePath && !/^https?:\/\//i.test(filePath)
@@ -113,50 +112,6 @@ export default function VideoStage({
       el.removeEventListener('pause', onReady)
     }
   }, [filePath, hidden, isYouTube, mediaRef])
-
-  const clearTimer = () => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current)
-      hideTimerRef.current = null
-    }
-  }
-
-  const showControls = () => {
-    setVisible(true)
-    clearTimer()
-    if (!pinnedRef.current) {
-      hideTimerRef.current = setTimeout(() => setVisible(false), 2000)
-    }
-  }
-
-  // 指针停在控制条上时保持显示，避免 2 秒后按钮在指针下淡出
-  const holdControls = () => {
-    setVisible(true)
-    clearTimer()
-  }
-
-  const scheduleHide = () => {
-    clearTimer()
-    if (!pinnedRef.current && playing) {
-      hideTimerRef.current = setTimeout(() => setVisible(false), 2000)
-    }
-  }
-
-  const togglePin = () => {
-    const next = !pinnedRef.current
-    pinnedRef.current = next
-    setPinned(next)
-    if (next) {
-      clearTimer()
-      setVisible(true)
-    } else {
-      showControls()
-    }
-  }
-
-  useEffect(() => clearTimer, [])
-
-  const controlsShown = pinned || !playing || visible
 
   return (
     <div

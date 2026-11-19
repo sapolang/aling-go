@@ -185,13 +185,47 @@
 .pp-main {
   flex: 1;
   min-height: 0;
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(320px, 32vw, 480px);
   gap: 16px;
   padding: 18px 0 0;
 }
 
+/* 右栏收起时舞台铺满 */
+.pp-main--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 舞台右侧字幕开关：展开时显示「隐藏字幕」，收起时显示「字幕」 */
+.pp-transcript-fab {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pp-space-1);
+  padding: 8px var(--pp-space-3);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-size: var(--pp-text-xs);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pp-transcript-fab:hover {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
 .pp-left {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -201,8 +235,7 @@
 
 /* ---------- Video stage ---------- */
 
-.pp-stage,
-.pp-deck {
+.pp-stage {
   --pp-ink: #f8fafc;
   --pp-muted: #aab4c2;
   --pp-dim: #748196;
@@ -225,6 +258,22 @@
   background: #000;
   box-shadow: 0 16px 36px -24px rgba(15, 23, 42, 0.55);
   animation: pp-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* 音频舞台：和视频共用舞台壳，背景换成声纹风格的深色渐变 */
+.pp-stage--audio {
+  background:
+    radial-gradient(90% 120% at 50% 130%, hsl(var(--primary) / 0.2), transparent 62%),
+    radial-gradient(70% 90% at 105% -10%, hsl(var(--primary) / 0.16), transparent 60%), #070b10;
+  cursor: pointer;
+}
+
+.pp-audio-body {
+  padding-bottom: 150px;
+}
+
+.pp-stage--audio .pp-wave--audio {
+  height: 72px;
 }
 
 .pp-video-el {
@@ -370,20 +419,6 @@
 }
 
 /* ---------- Audio / focus deck ---------- */
-
-.pp-deck {
-  position: relative;
-  flex: 1;
-  min-height: 280px;
-  border-radius: var(--radius);
-  border: 1px solid var(--pp-line);
-  overflow: hidden;
-  background:
-    radial-gradient(90% 120% at 50% 130%, hsl(var(--primary) / 0.2), transparent 62%),
-    radial-gradient(70% 90% at 105% -10%, hsl(var(--primary) / 0.16), transparent 60%), #070b10;
-  cursor: pointer;
-  animation: pp-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
 
 .pp-deck-orbit {
   position: absolute;
@@ -573,21 +608,6 @@
   letter-spacing: 0.04em;
 }
 
-.pp-deck-foot {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 4px;
-}
-
-.pp-deck-hint {
-  margin-left: auto;
-  font-family: var(--pp-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--pp-dim);
-}
-
 /* ---------- Subtitle overlay ---------- */
 
 .pp-sub-overlay {
@@ -702,13 +722,6 @@
 
 .pp-transport--video {
   color: #fff;
-}
-
-.pp-dock {
-  display: flex;
-  justify-content: center;
-  padding-top: 2px;
-  flex-shrink: 0;
 }
 
 .pp-icon-btn {
@@ -983,18 +996,7 @@
   color: #fca5a5;
 }
 
-/* ---------- Timeline ---------- */
-
-.pp-timeline {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px 8px;
-  border-radius: var(--radius);
-  border: 1px solid var(--pp-line);
-  background: var(--pp-panel);
-}
+/* ---------- Waveform ---------- */
 
 .pp-wave {
   position: relative;
@@ -1036,16 +1038,8 @@
   color: var(--pp-dim);
 }
 
-.pp-wave--video {
-  height: 54px;
-}
-
 .pp-wave--audio {
   height: 104px;
-}
-
-.pp-wave--focus {
-  height: 136px;
 }
 
 .pp-time-row {
@@ -1851,12 +1845,12 @@
     flex: none;
   }
 
-  .pp-wave--audio {
-    height: 84px;
+  .pp-stage--audio .pp-wave--audio {
+    height: 64px;
   }
 
-  .pp-wave--focus {
-    height: 108px;
+  .pp-audio-body {
+    padding: 18px 20px 138px;
   }
 
   .pp-transcript {
@@ -1899,12 +1893,12 @@
     padding: 18px;
   }
 
-  .pp-deck-sentence {
-    font-size: 22px;
+  .pp-audio-body {
+    padding: 14px 16px 140px;
   }
 
-  .pp-deck-hint {
-    display: none;
+  .pp-deck-sentence {
+    font-size: 22px;
   }
 
   .pp-transport {

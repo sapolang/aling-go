@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react'
+import { Loader2, Pin, PinOff } from 'lucide-react'
 import { usePlayerStore } from '@/stores/playerStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
 import { findCueIndexAt } from '@/lib/subtitles'
 import { PlayerHud } from '@/components/PlayerHud'
+import Waveform from '@/components/Waveform'
+import TransportControls from './TransportControls'
+import Scrubber from './Scrubber'
+import useStageControls from './useStageControls'
 import { filterSubtitleText } from './constants'
 
 // 有字幕时靠边展示，无字幕时复用为中央主视觉
@@ -30,36 +34,52 @@ function DeckOrbit({ playing }: { playing: boolean }) {
   )
 }
 
-interface AudioDeckProps {
+interface AudioStageProps {
   isAudio: boolean
   ext: string
   title: string
+  filePath: string | null
   converting: boolean
   playError: string | null
   /** 原生媒体实际出声，用于驱动声纹与缓冲提示 */
   deckPlaying: boolean
   onTogglePlay: () => void
   onAction: (action: ShortcutActionId) => void
+  onHelp: () => void
+  aiActive: boolean
   renderWords: (text: string, sentence: string, keyPrefix: string) => ReactNode
 }
 
-/** 音频 / 专注模式的 deck：大号当前句 + 圆形播放键 + 上下句切换 */
-export default function AudioDeck({
+/**
+ * 音频 / 专注模式舞台：与视频共用同一套深色舞台壳，
+ * 中部是当前句，底部是波形 + 进度 + 控制条。
+ */
+export default function AudioStage({
   isAudio,
   ext,
   title,
+  filePath,
   converting,
   playError,
   deckPlaying,
   onTogglePlay,
   onAction,
+  onHelp,
+  aiActive,
   renderWords,
-}: AudioDeckProps) {
+}: AudioStageProps) {
   const playing = usePlayerStore((s) => s.playing)
   const subtitles = usePlayerStore((s) => s.subtitles)
   const played = usePlayerStore((s) => s.played)
+  const duration = usePlayerStore((s) => s.duration)
   const subtitleOffset = usePlayerStore((s) => s.subtitleOffset)
   const displayMode = usePlayerStore((s) => s.subtitleDisplayMode)
+  const loopStart = usePlayerStore((s) => s.loopStart)
+  const loopEnd = usePlayerStore((s) => s.loopEnd)
+  const waveformData = usePlayerStore((s) => s.waveformData)
+  const waveformLoading = usePlayerStore((s) => s.waveformLoading)
+  const { pinned, controlsShown, showControls, holdControls, scheduleHide, togglePin } =
+    useStageControls(playing)
 
   const idx = findCueIndexAt(subtitles, played - subtitleOffset)
   const activeSub = idx >= 0 ? subtitles[idx] : null
@@ -72,11 +92,13 @@ export default function AudioDeck({
 
   return (
     <div
-      className={`pp-deck ${deckPlaying ? 'is-playing' : ''} ${deckLoading ? 'is-loading' : ''}`}
+      className={`pp-stage pp-stage--audio ${deckPlaying ? 'is-playing' : ''}`}
+      onMouseMove={showControls}
+      onMouseLeave={scheduleHide}
       onClick={onTogglePlay}
     >
       {subtitles.length > 0 && <DeckOrbit playing={deckPlaying} />}
-      <div className="pp-deck-body">
+      <div className="pp-deck-body pp-audio-body">
         <div className="pp-deck-top">
           <span className="pp-eyebrow">{isAudio ? '音频精听' : '专注模式'}</span>
           <span className="pp-badge">
@@ -108,47 +130,62 @@ export default function AudioDeck({
             </div>
           ) : null}
         </div>
-        <div className="pp-deck-foot">
+      </div>
+      {deckLoading && !converting && !playError && (
+        <div className="pp-stage-status" aria-live="polite">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>正在缓冲…</span>
+        </div>
+      )}
+      <PlayerHud />
+      {filePath && (
+        <div
+          className={`pp-video-controls transition-opacity duration-200 ${controlsShown ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          onMouseEnter={holdControls}
+          onMouseLeave={scheduleHide}
+          onPointerDown={holdControls}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="pp-wave pp-wave--audio">
+            <div className="pp-wave-grid" aria-hidden="true" />
+            <Waveform
+              data={waveformData}
+              duration={duration}
+              currentTime={played - subtitleOffset}
+              subtitles={subtitles}
+              loading={waveformLoading}
+              dark
+              loopStart={loopStart !== null ? loopStart - subtitleOffset : null}
+              loopEnd={loopEnd !== null ? loopEnd - subtitleOffset : null}
+              onSeek={(t) => usePlayerStore.getState().requestSeek(t)}
+            />
+            {waveformData.length === 0 && (
+              <span className="pp-wave-note">
+                {waveformLoading ? '生成波形…' : '暂无波形 · 可拖动下方进度条'}
+              </span>
+            )}
+          </div>
+          <Scrubber variant="stage" />
+          <TransportControls
+            variant="video"
+            onAction={onAction}
+            onHelp={onHelp}
+            aiActive={aiActive}
+          />
           <button
             type="button"
-            className="pp-play pp-play--lg"
-            title="播放 / 暂停（Space）"
+            className="pp-pin"
+            title={pinned ? '取消固定控制条' : '固定控制条'}
+            aria-label={pinned ? '取消固定控制条' : '固定控制条'}
             onClick={(e) => {
               e.stopPropagation()
-              onTogglePlay()
+              togglePin()
             }}
           >
-            {playing ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7" />}
+            {pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
           </button>
-          <span
-            onClick={(e) => e.stopPropagation()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
-          >
-            <button
-              type="button"
-              className="pp-icon-btn"
-              title="上一句（↑）"
-              aria-label="上一句（↑）"
-              disabled={subtitles.length === 0}
-              onClick={() => onAction('prevSentence')}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className="pp-icon-btn"
-              title="下一句（↓）"
-              aria-label="下一句（↓）"
-              disabled={subtitles.length === 0}
-              onClick={() => onAction('nextSentence')}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </span>
-          <span className="pp-deck-hint">Space 播放 / 暂停 · ← → 快退快进</span>
         </div>
-      </div>
-      <PlayerHud />
+      )}
     </div>
   )
 }
