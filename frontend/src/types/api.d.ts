@@ -130,6 +130,14 @@ export interface WhisperProgress {
   status: string
 }
 
+/** whisper:segments 事件载荷：后端 stdout 解析到的增量字幕 */
+export interface WhisperSegmentsEvent {
+  key: string
+  items: SubtitleItem[]
+  /** 为 true 时丢弃该 key 已接收的增量（如 GPU 失败后改用 CPU 重试） */
+  reset?: boolean
+}
+
 /** 新增收藏片段时前端提供的字段，其余字段由后端按默认值补齐 */
 export type FavoriteAddInput = Pick<
   FavoriteClip,
@@ -172,6 +180,7 @@ export interface ElectronAPI {
   getWhisperLang: () => Promise<string>
   setWhisperLang: (lang: string) => Promise<void>
   onWhisperProgress: (callback: (data: WhisperProgress) => void) => () => void
+  onWhisperSegments: (callback: (data: WhisperSegmentsEvent) => void) => () => void
   onDownloadProgress: (callback: (pct: number) => void) => () => void
   getDownloadProgress: () => Promise<WhisperDownloadProgress | null>
 

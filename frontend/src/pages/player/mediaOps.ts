@@ -1,6 +1,11 @@
 import { usePlayerStore } from '@/stores/playerStore'
 import type { LibraryFile } from '@/stores/libraryStore'
-import type { PlatformSubtitleCue, PlatformSubtitleResult, SubtitleItem } from '@/types/api'
+import type {
+  PlatformSubtitleCue,
+  PlatformSubtitleResult,
+  SubtitleItem,
+  WhisperSegmentsEvent,
+} from '@/types/api'
 import { showToast } from '@/components/feedback'
 
 /** 媒体库同文件夹内按名称自然排序，取当前文件的下一个（自动下一集） */
@@ -63,10 +68,39 @@ export async function startTranscription(
   st.setTranscribing(true)
   st.setTranscriptionProgress(0)
   setLabel(isPodcast || platformVideo ? '下载音频' : '转录中')
+
+  // 增量字幕：后端 Whisper stdout 逐段吐出来，边转边显示。
+  // 平台视频用 historyKey（yt:<id> / bili:<bvid>），播客用 episodeID，本地文件用播放路径，
+  // 分别对应后端的 platformSubtitleEventKey / podcastSubtitleEventKey / 文件路径。
+  const eventKey = platformVideo
+    ? st.historyKey || filePath
+    : isPodcast
+      ? `podcast:${st.mediaEpisodeID}`
+      : filePath
+  const session = st.playSession
+  const previousSubtitles = st.subtitles
+  const isCurrent = () => {
+    const cur = usePlayerStore.getState()
+    return cur.playSession === session && cur.filePath === filePath
+  }
+  // 重新转录时先清空旧字幕，避免流式结果和旧字幕混排；失败时在 catch 里恢复
+  if (previousSubtitles.length > 0) st.setSubtitles([])
+
   const cleanup = window.api.onWhisperProgress((d: { progress: number; status: string }) => {
     st.setTranscriptionProgress(d.progress)
     if (d.status === 'downloading') setLabel('下载音频')
     if (d.status === 'transcribing') setLabel('转录中')
+  })
+  // 收尾后忽略迟到的增量/重置事件，避免 reset 覆盖刚写入的最终结果
+  let finished = false
+  const incCleanup = window.api.onWhisperSegments((d: WhisperSegmentsEvent) => {
+    if (finished || d.key !== eventKey || !isCurrent()) return
+    if (d.reset) {
+      usePlayerStore.getState().setSubtitles([])
+      return
+    }
+    if (d.items.length === 0) return
+    usePlayerStore.getState().appendSubtitles(d.items)
   })
   try {
     let subs: SubtitleItem[]
@@ -93,11 +127,17 @@ export async function startTranscription(
       subs = await window.api.whisperTranscribe(filePath)
       window.api.cacheSubtitles(filePath, subs)
     }
+    finished = true
+    // 用户已切到别的文件时丢弃旧任务的结果，避免写进当前字幕
+    if (!isCurrent()) return
     if (subs.length === 0) {
       showToast('转录完成，但未识别到语音。请在设置页检查模型和语言设置是否正确', 'warning')
     }
     st.setSubtitles(subs)
   } catch (err: any) {
+    finished = true
+    if (!isCurrent()) return
+    st.setSubtitles(previousSubtitles)
     const msg = err?.message || String(err)
     st.setTranscriptionProgress(-1)
     if (msg.includes('fetch'))
@@ -105,6 +145,7 @@ export async function startTranscription(
     else showToast(`转录失败: ${msg}`, 'error')
   } finally {
     cleanup()
+    incCleanup()
     st.setTranscribing(false)
     setLabel('')
   }

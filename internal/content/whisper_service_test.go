@@ -77,6 +77,142 @@ func TestDownloadModelKeepsCurrentModelOnChecksumFailure(t *testing.T) {
 	}
 }
 
+func TestParseWhisperSegmentLine(t *testing.T) {
+	tests := []struct {
+		name      string
+		line      string
+		wantOK    bool
+		wantStart float64
+		wantEnd   float64
+		wantText  string
+	}{
+		{
+			name:      "标准行",
+			line:      "[00:00:01.000 --> 00:00:05.500]  Hello world",
+			wantOK:    true,
+			wantStart: 1.0,
+			wantEnd:   5.5,
+			wantText:  "Hello world",
+		},
+		{
+			name:      "带毫秒",
+			line:      "[00:01:23.456 --> 00:01:28.999]  a longer Chinese text here",
+			wantOK:    true,
+			wantStart: 83.456,
+			wantEnd:   88.999,
+			wantText:  "a longer Chinese text here",
+		},
+		{
+			name:   "非字幕行（stderr 被误送进来）",
+			line:   "whisper_full_with_state: processing 'foo.wav' ...",
+			wantOK: false,
+		},
+		{
+			name:   "空文本段",
+			line:   "[00:00:10.000 --> 00:00:15.000]",
+			wantOK: false,
+		},
+		{
+			name:   "无方括号",
+			line:   "00:00:01.000 --> 00:00:05.500  foo",
+			wantOK: false,
+		},
+		{
+			name:   "时间戳非法",
+			line:   "[00:60:00.000 --> 00:60:05.000]  bad",
+			wantOK: false,
+		},
+		{
+			name:      "含 CR 的 Windows 输出",
+			line:      "[00:00:01.000 --> 00:00:02.000]  hi\r",
+			wantOK:    true,
+			wantStart: 1.0,
+			wantEnd:   2.0,
+			wantText:  "hi",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			item, ok := parseWhisperSegmentLine(tt.line)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v (item=%+v)", ok, tt.wantOK, item)
+			}
+			if !ok {
+				return
+			}
+			if item.StartTime != tt.wantStart {
+				t.Errorf("start = %v, want %v", item.StartTime, tt.wantStart)
+			}
+			if item.EndTime != tt.wantEnd {
+				t.Errorf("end = %v, want %v", item.EndTime, tt.wantEnd)
+			}
+			if item.Text != tt.wantText {
+				t.Errorf("text = %q, want %q", item.Text, tt.wantText)
+			}
+		})
+	}
+}
+
+func TestParseWhisperTimestamp(t *testing.T) {
+	tests := []struct {
+		input string
+		want  float64
+		ok    bool
+	}{
+		{"00:00:00.000", 0, true},
+		{"00:00:01.500", 1.5, true},
+		{"00:01:30.000", 90, true},
+		{"01:02:03.456", 3723.456, true},
+		{"00:00:00,000", 0, true}, // SRT 风格逗号
+		{"", 0, false},
+		{"abc", 0, false},
+		{"00:60:00.000", 0, false}, // 非法分
+		{"00:00:60.000", 0, false}, // 非法秒
+	}
+	for _, tt := range tests {
+		got, ok := parseWhisperTimestamp(tt.input)
+		if ok != tt.ok {
+			t.Errorf("%q: ok = %v, want %v", tt.input, ok, tt.ok)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("%q: got %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestParseYtDlpProgress(t *testing.T) {
+	tests := []struct {
+		line   string
+		want   int
+		wantOK bool
+	}{
+		{"[download]  42.5% of 3.45MiB at 1.23MiB/s ETA 00:02", 43, true},
+		{"[download] 100% of 3.45MiB", 100, true},
+		{"[download]   0.0% of ~3.45MiB", 0, true},
+		{"[info] Some info message", 0, false},
+		{"[download] Downloading webpage", 0, false}, // 有 [download] 但没百分比
+		{"[download]  99.9%", 100, true},
+		{"", 0, false},
+	}
+	for _, tt := range tests {
+		got, ok := parseYtDlpProgress(tt.line)
+		if ok != tt.wantOK {
+			t.Errorf("%q: ok=%v, want %v", tt.line, ok, tt.wantOK)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("%q: got %d, want %d", tt.line, got, tt.want)
+		}
+	}
+}
+
 func TestWhisperConfigConcurrentAccess(t *testing.T) {
 	dir := t.TempDir()
 	s := &WhisperService{

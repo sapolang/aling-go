@@ -132,10 +132,20 @@ func (s *WhisperService) ServiceShutdown() error { return nil }
 
 // --- Transcribe ---
 
-// Transcribe 先用 GPU 转录；部分机器上 sidecar 的 Metal 后端初始化会直接 abort
-// （ggml_metal_library_compile_all 失败后 op 全为 NONE），此时禁用 GPU 重试一次。
+// Transcribe 转录本地文件，增量事件的 key 为文件路径（供前端过滤）。
 func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
-	s.app.Logger.Debug("Transcribe start", "filePath", filePath)
+	return s.transcribeWithKey(filePath, filePath)
+}
+
+// TranscribeWithKey 转录文件，但用自定义 key 作为事件标识。
+// 播客/在线视频等场景下，实际转的是临时 WAV 文件，但前端用原始 URL 过滤事件，
+// 因此需要把原始标识作为 key 穿透下去。
+func (s *WhisperService) TranscribeWithKey(filePath, key string) []SubtitleItem {
+	return s.transcribeWithKey(filePath, key)
+}
+
+func (s *WhisperService) transcribeWithKey(filePath, key string) []SubtitleItem {
+	s.app.Logger.Debug("Transcribe start", "filePath", filePath, "key", key)
 	wavPath := extractAudio(s.dataDir, s.app.Logger, filePath)
 	s.app.Logger.Debug("Transcribe wavPath", "wavPath", wavPath)
 	if wavPath == "" {
@@ -145,7 +155,7 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 
 	// Metal 后端一旦失败，后续转录直接走 CPU，避免每次都先崩溃并产生一条系统崩溃报告
 	if s.gpuDisabled.Load() {
-		items, err := s.runWhisper(wavPath, filePath, "-ng")
+		items, err := s.runWhisper(wavPath, key, "-ng")
 		if err != nil {
 			s.app.Logger.Info("Transcription failed", "error", err)
 			return []SubtitleItem{}
@@ -153,11 +163,14 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 		return items
 	}
 
-	items, err := s.runWhisper(wavPath, filePath)
+	items, err := s.runWhisper(wavPath, key)
 	if err != nil {
 		s.app.Logger.Info("GPU transcription failed, retrying without GPU", "error", err)
 		s.gpuDisabled.Store(true)
-		items, err = s.runWhisper(wavPath, filePath, "-ng")
+		// 第一次尝试可能已经推送了部分段落；重试前让前端丢掉这些增量，
+		// 否则 GPU/CPU 两次解码结果会短暂混在一起。
+		s.app.Event.Emit("whisper:segments", whisperSegmentsEvent{Key: key, Reset: true})
+		items, err = s.runWhisper(wavPath, key, "-ng")
 	}
 	if err != nil {
 		s.app.Logger.Info("Transcription failed", "error", err)
@@ -166,7 +179,8 @@ func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
 	return items
 }
 
-// runWhisper 执行一次 whisper-sidecar，cacheKey 用于定位输出文件。
+// runWhisper 执行一次 whisper-sidecar，cacheKey 用于定位输出文件和事件分发。
+// 返回值始终以最终 JSON 为权威；同时通过 whisper:segments 事件增量推送。
 func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...string) ([]SubtitleItem, error) {
 	sidecar := s.findWhisperSidecar()
 	if sidecar == "" {
@@ -186,6 +200,11 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 	args = append(args, extraArgs...)
 	cmd := exec.Command(sidecar, args...)
 	s.app.Logger.Debug("Transcribe cmd", "cmd", cmd.String())
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("read whisper stdout: %w", err)
+	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, fmt.Errorf("read whisper stderr: %w", err)
@@ -199,11 +218,12 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 		stderrLines []string
 		readDone    sync.WaitGroup
 	)
-	readDone.Add(1)
+	readDone.Add(2)
+
+	// stderr: 进度条 + 系统信息
 	go func() {
 		defer readDone.Done()
 		scanner := bufio.NewScanner(stderr)
-		// 避免单行过长时读取提前中断，导致子进程写满管道阻塞
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -229,7 +249,29 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 		}
 	}()
 
-	// StderrPipe 文档要求读完管道后才能调用 Wait，否则 Wait 关闭管道会截断 stderr
+	// stdout: 逐 segment 增量输出，格式 "[hh:mm:ss.mmm --> hh:mm:ss.mmm]  text"
+	go func() {
+		defer readDone.Done()
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		var count int
+		for scanner.Scan() {
+			line := scanner.Text()
+			if item, ok := parseWhisperSegmentLine(line); ok {
+				count++
+				s.app.Logger.Debug("whisper segment streamed", "n", count, "start", item.StartTime)
+				s.app.Event.Emit("whisper:segments", whisperSegmentsEvent{
+					Key:   cacheKey,
+					Items: []SubtitleItem{item},
+				})
+			}
+		}
+		if count == 0 {
+			s.app.Logger.Warn("whisper stdout produced no parseable segments")
+		}
+	}()
+
+	// StderrPipe/StdoutPipe 文档要求读完管道后才能调用 Wait
 	readDone.Wait()
 	waitErr := cmd.Wait()
 
@@ -268,6 +310,70 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 	}
 
 	return result, nil
+}
+
+// whisperSegmentsEvent 是 whisper:segments 事件载荷：增量推送时只包含一条，
+// 用数组是为了将来支持一次多条；key 用于前端过滤掉切换文件后的过期事件；
+// Reset 用于通知前端清空当前 key 已接收的增量。
+type whisperSegmentsEvent struct {
+	Key   string         `json:"key"`
+	Items []SubtitleItem `json:"items"`
+	// Reset 为 true 表示丢弃该 key 已推送的增量（例如 GPU 失败后改用 CPU 重试）。
+	Reset bool `json:"reset,omitempty"`
+}
+
+// parseWhisperSegmentLine 解析 whisper-cli stdout 的单行输出。
+// 格式固定为 "[hh:mm:ss.mmm --> hh:mm:ss.mmm]  text content"，
+// 不匹配或文本为空时返回 ok=false，调用方应忽略该日志行。
+func parseWhisperSegmentLine(line string) (SubtitleItem, bool) {
+	line = strings.TrimRight(line, "\r\n")
+	if !strings.HasPrefix(line, "[") {
+		return SubtitleItem{}, false
+	}
+	// 时间戳格式 hh:mm:ss.mmm，中间以 " --> " 分隔
+	rest := line[1:]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		return SubtitleItem{}, false
+	}
+	timestamps := strings.TrimSpace(rest[:end])
+	text := strings.TrimSpace(rest[end+1:])
+	if text == "" {
+		return SubtitleItem{}, false
+	}
+	parts := strings.SplitN(timestamps, "-->", 2)
+	if len(parts) != 2 {
+		return SubtitleItem{}, false
+	}
+	start, ok1 := parseWhisperTimestamp(strings.TrimSpace(parts[0]))
+	endTs, ok2 := parseWhisperTimestamp(strings.TrimSpace(parts[1]))
+	if !ok1 || !ok2 {
+		return SubtitleItem{}, false
+	}
+	return SubtitleItem{
+		StartTime: start,
+		EndTime:   endTs,
+		Text:      text,
+	}, true
+}
+
+// parseWhisperTimestamp 解析 hh:mm:ss.mmm 为秒数。精度只到毫秒，多余的小数会被丢弃。
+func parseWhisperTimestamp(ts string) (float64, bool) {
+	ts = strings.TrimSpace(ts)
+	if ts == "" {
+		return 0, false
+	}
+	// 允许 "." 或 "," 作为毫秒分隔符（SRT 用 ","，whisper stdout 用 "."）
+	ts = strings.Replace(ts, ",", ".", 1)
+	var h, m int
+	var s float64
+	if _, err := fmt.Sscanf(ts, "%d:%d:%f", &h, &m, &s); err != nil {
+		return 0, false
+	}
+	if m < 0 || m >= 60 || s < 0 || s >= 60 {
+		return 0, false
+	}
+	return float64(h)*3600 + float64(m)*60 + s, true
 }
 
 // --- Whisper status / model ---

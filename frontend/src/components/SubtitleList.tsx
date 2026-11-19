@@ -20,8 +20,13 @@ export interface SubtitleListHandle {
 }
 
 interface SubtitleListProps {
-  /** 原始字幕，用于空状态判定与切文件时重置滚动 */
+  /** 原始字幕，用于空状态判定 */
   subtitles: SubtitleItem[]
+  /**
+   * 字幕源标识（文件路径 + 导入的字幕路径）。
+   * 只有切换文件或换字幕时才会变化；增量转录每追加一句都会换新数组，不能据此重置滚动。
+   */
+  sourceKey: string
   /** 按显示模式过滤后的字幕，与 subtitles 同序 */
   cues: SubtitleCue[]
   played: number
@@ -132,6 +137,7 @@ const ListFooter = () => <div style={{ height: 14 }} />
 const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function SubtitleList(
   {
     subtitles,
+    sourceKey,
     cues,
     played,
     offset,
@@ -181,11 +187,12 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
     scrollToIndex(idx)
   }, [cursor, cues, autoFollow, scrollToIndex])
 
-  // 切换文件或字幕时回到列表顶部
+  // 切换文件或字幕源时回到列表顶部。
+  // 增量转录时 subtitles 每一句都会换新数组，不能跟着重置，否则播放中列表会被反复拽回顶部。
   useEffect(() => {
     lastIdxRef.current = -2
     virtuosoRef.current?.scrollTo({ top: 0 })
-  }, [subtitles])
+  }, [sourceKey])
 
   return (
     <>
