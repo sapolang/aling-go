@@ -95,6 +95,12 @@ export default function VideoStage({
     }
   }
 
+  // 指针停在控制条上时保持显示，避免 2 秒后按钮在指针下淡出
+  const holdControls = () => {
+    setVisible(true)
+    clearTimer()
+  }
+
   const scheduleHide = () => {
     clearTimer()
     if (!pinnedRef.current && playing) {
@@ -147,6 +153,9 @@ export default function VideoStage({
       {!hidden && filePath && (
         <div
           className={`pp-video-controls transition-opacity duration-200 ${controlsShown ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          onMouseEnter={holdControls}
+          onMouseLeave={scheduleHide}
+          onPointerDown={holdControls}
           onClick={(e) => e.stopPropagation()}
         >
           <TransportControls

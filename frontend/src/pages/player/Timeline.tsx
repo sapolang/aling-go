@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useThemeStore } from '@/stores/themeStore'
 import Waveform from '@/components/Waveform'
@@ -22,7 +22,24 @@ export default function Timeline({ showDeck, isYouTube }: TimelineProps) {
   const focusMode = usePlayerStore((s) => s.focusMode)
   const themeDark = useThemeStore((s) => s.dark)
 
-  const progressPct = duration > 0 ? Math.min(100, (played / duration) * 100) : 0
+  // 拖动期间只在本地记录目标位置，松手后才写入 currentTime，避免长时间音频反复回弹
+  const [scrubTime, setScrubTime] = useState<number | null>(null)
+  const scrubTimeRef = useRef<number | null>(null)
+
+  const setScrub = (value: number | null) => {
+    scrubTimeRef.current = value
+    setScrubTime(value)
+  }
+
+  const commitScrub = () => {
+    const value = scrubTimeRef.current
+    if (value === null) return
+    setScrub(null)
+    usePlayerStore.getState().requestSeek(value)
+  }
+
+  const displayTime = scrubTime ?? played
+  const progressPct = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0
   const waveClass = showDeck ? (focusMode ? 'pp-wave--focus' : 'pp-wave--audio') : 'pp-wave--video'
 
   return (
@@ -51,13 +68,22 @@ export default function Timeline({ showDeck, isYouTube }: TimelineProps) {
         )}
       </div>
       <div className="pp-time-row">
-        <span>{formatClockTime(played)}</span>
+        <span>{formatClockTime(displayTime)}</span>
         <input
           type="range"
           min={0}
           max={duration || 1}
-          value={played}
-          onChange={(e) => usePlayerStore.getState().requestSeek(parseFloat(e.target.value))}
+          value={displayTime}
+          onPointerDown={() => setScrub(played)}
+          onChange={(e) => {
+            const value = parseFloat(e.target.value)
+            if (Number.isFinite(value)) setScrub(value)
+          }}
+          onPointerUp={commitScrub}
+          onPointerCancel={commitScrub}
+          onLostPointerCapture={commitScrub}
+          onKeyUp={commitScrub}
+          onBlur={commitScrub}
           className="pp-range"
           style={{ '--pp-progress': `${progressPct}%` } as CSSProperties}
           aria-label="播放进度"

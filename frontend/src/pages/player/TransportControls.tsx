@@ -1,11 +1,13 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
   CirclePause,
   FastForward,
+  Gauge,
   Headphones,
   Keyboard,
+  MoreHorizontal,
   Pause,
   Play,
   Repeat,
@@ -24,12 +26,13 @@ interface PPIconButtonProps {
   label: string
   active?: boolean
   disabled?: boolean
+  expanded?: boolean
   onClick: () => void
   children: ReactNode
 }
 
 // 播放控制栏图标按钮：统一 hover / active / disabled 视觉
-function PPIconButton({ label, active, disabled, onClick, children }: PPIconButtonProps) {
+function PPIconButton({ label, active, disabled, expanded, onClick, children }: PPIconButtonProps) {
   return (
     <button
       type="button"
@@ -37,10 +40,35 @@ function PPIconButton({ label, active, disabled, onClick, children }: PPIconButt
       title={label}
       aria-label={label}
       aria-pressed={active}
+      aria-expanded={expanded}
       disabled={disabled}
       onClick={onClick}
     >
       {children}
+    </button>
+  )
+}
+
+interface PPToolItemProps {
+  label: string
+  icon: ReactNode
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+}
+
+// 「更多」浮层里的功能项：图标 + 文案，开关态用高亮表达
+function PPToolItem({ label, icon, active, disabled, onClick }: PPToolItemProps) {
+  return (
+    <button
+      type="button"
+      className={`pp-tool ${active ? 'is-active' : ''}`}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{label}</span>
     </button>
   )
 }
@@ -55,7 +83,7 @@ interface TransportControlsProps {
 
 /**
  * 播放控制栏：视频时内嵌到画面底部，音频时放在 deck 下方。
- * 所有按钮都转交给动作表执行，不重复实现 HUD 文案与开关判断。
+ * 只常显「上一句 / 播放 / 下一句」，其余动作收进「更多」浮层，避免一排同权重图标。
  */
 export default function TransportControls({
   variant = 'dock',
@@ -75,6 +103,28 @@ export default function TransportControls({
   const hasSubtitles = usePlayerStore((s) => s.subtitles.length > 0)
   const currentSubtitleIndex = usePlayerStore((s) => s.currentSubtitleIndex)
 
+  const [showMore, setShowMore] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showMore) return
+    const onPointerDown = (e: MouseEvent) => {
+      if (moreRef.current?.contains(e.target as Node)) return
+      setShowMore(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowMore(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [showMore])
+
+  const run = (action: ShortcutActionId) => () => onAction(action)
+
   return (
     <div className={`pp-transport ${isVideo ? 'pp-transport--video' : ''}`}>
       <PPIconButton
@@ -84,20 +134,15 @@ export default function TransportControls({
       >
         <ChevronLeft className="h-4 w-4" />
       </PPIconButton>
-      <PPIconButton label="后退 5 秒（←）" onClick={() => onAction('seekBack')}>
-        <Rewind className="h-4 w-4" />
-      </PPIconButton>
       <button
         type="button"
         className={`pp-play ${isVideo ? 'pp-play--sm' : ''}`}
         title="播放 / 暂停（Space）"
+        aria-label="播放 / 暂停"
         onClick={() => onAction('playPause')}
       >
         {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
       </button>
-      <PPIconButton label="前进 5 秒（→）" onClick={() => onAction('seekForward')}>
-        <FastForward className="h-4 w-4" />
-      </PPIconButton>
       <PPIconButton
         label="下一句（↓）"
         disabled={!hasSubtitles}
@@ -105,62 +150,89 @@ export default function TransportControls({
       >
         <ChevronRight className="h-4 w-4" />
       </PPIconButton>
-      <button
-        type="button"
-        className="pp-rate"
-        title="播放速度（P）"
-        onClick={() => onAction('rateCycle')}
-      >
-        {playbackRate}x
-      </button>
-      <PPIconButton
-        label="A/B 循环设点（L）"
-        active={loopStart !== null}
-        onClick={() => onAction('toggleLoopAB')}
-      >
-        <Repeat className="h-4 w-4" />
-      </PPIconButton>
-      {!isVideo && (
-        <>
-          <PPIconButton
-            label={autoPause ? '播完本句自动暂停：开（Q）' : '播完本句自动暂停：关（Q）'}
-            active={autoPause}
-            onClick={() => onAction('autoPause')}
-          >
-            <CirclePause className="h-4 w-4" />
-          </PPIconButton>
-          <PPIconButton
-            label={autoNextEpisode ? '自动下一集：开（N）' : '自动下一集：关（N）'}
-            active={autoNextEpisode}
-            onClick={() => onAction('autoNextEpisode')}
-          >
-            <SkipForward className="h-4 w-4" />
-          </PPIconButton>
-          <PPIconButton
-            label="专注模式（V）"
-            active={focusMode}
-            onClick={() => onAction('focusMode')}
-          >
-            <Headphones className="h-4 w-4" />
-          </PPIconButton>
-        </>
-      )}
-      <PPIconButton
-        label="AI 翻译 / 详解当前句（T）"
-        active={aiActive}
-        disabled={currentSubtitleIndex < 0}
-        onClick={() => onAction('aiSentence')}
-      >
-        <Sparkles className="h-4 w-4" />
-      </PPIconButton>
-      <PPIconButton label={muted ? '取消静音（M）' : '静音（M）'} onClick={() => onAction('mute')}>
-        {muted ? <VolumeX className="h-4 w-4" /> : <Speaker className="h-4 w-4" />}
-      </PPIconButton>
-      {!isVideo && (
-        <PPIconButton label="快捷键帮助（?）" onClick={onHelp}>
-          <Keyboard className="h-4 w-4" />
+
+      <div className="pp-more-wrap" ref={moreRef}>
+        <PPIconButton
+          label="更多控制"
+          active={showMore}
+          expanded={showMore}
+          onClick={() => setShowMore((v) => !v)}
+        >
+          <MoreHorizontal className="h-4 w-4" />
         </PPIconButton>
-      )}
+        {showMore && (
+          <div className="pp-more-panel" role="group" aria-label="更多播放控制">
+            <div className="pp-more-grid">
+              <PPToolItem
+                label="后退 5 秒"
+                icon={<Rewind className="h-3.5 w-3.5" />}
+                onClick={run('seekBack')}
+              />
+              <PPToolItem
+                label="前进 5 秒"
+                icon={<FastForward className="h-3.5 w-3.5" />}
+                onClick={run('seekForward')}
+              />
+              <PPToolItem
+                label={`倍速 ${playbackRate}x`}
+                icon={<Gauge className="h-3.5 w-3.5" />}
+                onClick={run('rateCycle')}
+              />
+              <PPToolItem
+                label="A/B 循环"
+                icon={<Repeat className="h-3.5 w-3.5" />}
+                active={loopStart !== null}
+                onClick={run('toggleLoopAB')}
+              />
+              {!isVideo && (
+                <>
+                  <PPToolItem
+                    label="自动暂停"
+                    icon={<CirclePause className="h-3.5 w-3.5" />}
+                    active={autoPause}
+                    onClick={run('autoPause')}
+                  />
+                  <PPToolItem
+                    label="自动下一集"
+                    icon={<SkipForward className="h-3.5 w-3.5" />}
+                    active={autoNextEpisode}
+                    onClick={run('autoNextEpisode')}
+                  />
+                  <PPToolItem
+                    label="专注模式"
+                    icon={<Headphones className="h-3.5 w-3.5" />}
+                    active={focusMode}
+                    onClick={run('focusMode')}
+                  />
+                </>
+              )}
+              <PPToolItem
+                label="AI 详解"
+                icon={<Sparkles className="h-3.5 w-3.5" />}
+                active={aiActive}
+                disabled={currentSubtitleIndex < 0}
+                onClick={run('aiSentence')}
+              />
+              <PPToolItem
+                label={muted ? '取消静音' : '静音'}
+                icon={
+                  muted ? <VolumeX className="h-3.5 w-3.5" /> : <Speaker className="h-3.5 w-3.5" />
+                }
+                active={muted}
+                onClick={run('mute')}
+              />
+              {!isVideo && (
+                <PPToolItem
+                  label="快捷键"
+                  icon={<Keyboard className="h-3.5 w-3.5" />}
+                  onClick={onHelp}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {loopStart !== null && (
         <span className="pp-loop-readout">
           A {formatClockTime(loopStart)}

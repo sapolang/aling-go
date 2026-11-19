@@ -321,6 +321,7 @@ export default function TranscriptPanel({
         onDragHover={handleCueDragHover}
         onImportSrt={onImportSrt}
         onTranscribe={onTranscribe}
+        onShowAllSubtitles={() => usePlayerStore.getState().setSubtitleDisplayMode('all')}
         renderText={renderText}
       />
     </aside>

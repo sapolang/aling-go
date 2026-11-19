@@ -217,7 +217,20 @@ export function useMediaElement({ filePath, onEnded }: UseMediaElementOptions): 
     el.addEventListener('error', onError)
     if (el.duration) onMetaRef.current()
     if (!el.paused && el.readyState >= 3) onPlaying()
+    // timeupdate 约 250ms 一次，字幕高亮与波形播放头会明显滞后。
+    // 播放中用 rAF 按 ~50ms 节流采样 currentTime；暂停时仍由原生 timeupdate 兜底。
+    let rafId = 0
+    let lastSample = 0
+    const sample = (now: number) => {
+      rafId = requestAnimationFrame(sample)
+      if (now - lastSample < 50) return
+      lastSample = now
+      const media = mediaRef.current
+      if (media && !media.paused && media.readyState >= 2) onTimeUpdateRef.current()
+    }
+    rafId = requestAnimationFrame(sample)
     return () => {
+      cancelAnimationFrame(rafId)
       el.removeEventListener('timeupdate', onTime)
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('playing', onPlaying)

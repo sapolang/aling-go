@@ -43,6 +43,8 @@ interface SubtitleListProps {
   onDragHover: (index: number) => void
   onImportSrt: () => void
   onTranscribe: () => void
+  /** 显示模式过滤后没有可显示内容时，恢复为「全部」 */
+  onShowAllSubtitles: () => void
   renderText: (cue: SubtitleCue) => ReactNode
 }
 
@@ -152,6 +154,7 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
     onDragHover,
     onImportSrt,
     onTranscribe,
+    onShowAllSubtitles,
     renderText,
   },
   ref,
@@ -212,19 +215,32 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
           if (autoFollow) onAutoFollowChange(false)
         }}
       >
-        {subtitles.length === 0 ? (
+        {cues.length === 0 ? (
           <div className="pp-transcript-body">
             <div className="pp-transcript-empty">
               <Captions className="h-8 w-8" />
-              <p>还没有字幕。可以导入 SRT，或让 Whisper 转录当前素材。</p>
-              <div className="pp-transcript-empty-actions">
-                <button className="pp-mini-btn" onClick={onImportSrt}>
-                  <Subtitles /> 导入字幕
-                </button>
-                <button className="pp-mini-btn is-accent" onClick={onTranscribe}>
-                  <Loader2 /> 转录字幕
-                </button>
-              </div>
+              {subtitles.length === 0 ? (
+                <>
+                  <p>还没有字幕。可以导入 SRT，或让 Whisper 转录当前素材。</p>
+                  <div className="pp-transcript-empty-actions">
+                    <button className="pp-mini-btn" onClick={onImportSrt}>
+                      <Subtitles /> 导入字幕
+                    </button>
+                    <button className="pp-mini-btn is-accent" onClick={onTranscribe}>
+                      <Loader2 /> 转录字幕
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>当前显示模式下没有可显示的字幕。</p>
+                  <div className="pp-transcript-empty-actions">
+                    <button className="pp-mini-btn is-accent" onClick={onShowAllSubtitles}>
+                      <Subtitles /> 显示全部字幕
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : (
