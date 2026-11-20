@@ -24,7 +24,9 @@ export async function loadSrtFile(path: string): Promise<void> {
 }
 
 /**
- * 打开本地媒体文件：设置播放源、加载波形，并按「字幕缓存 → 同名 SRT」的顺序加载字幕。
+ * 打开本地媒体文件：设置播放源、加载波形，并从字幕缓存恢复字幕。
+ * 字幕只有「缓存」一个自动来源：转录结果和手动导入的 SRT 都会写入缓存，
+ * 因此清理字幕缓存后重新打开不会自动出现字幕，需要重新转录或再次导入。
  * 文件库与播放页共用这一入口，避免两处各自实现导致行为漂移。
  */
 export async function openLocalMedia(filePath: string): Promise<void> {
@@ -42,17 +44,7 @@ export async function openLocalMedia(filePath: string): Promise<void> {
 
   try {
     const cached = await window.api.getCachedSubtitles(filePath)
-    if (cached && cached.length > 0) {
-      st.setSubtitles(cached)
-      return
-    }
-    const srtPath = filePath.replace(/\.[^.]+$/, '.srt')
-    try {
-      await window.api.readTextFile(srtPath)
-      await loadSrtFile(srtPath)
-    } catch (err) {
-      console.error('Failed to load SRT:', err)
-    }
+    if (cached && cached.length > 0) st.setSubtitles(cached)
   } catch (err) {
     console.error('Failed to load cached subtitles:', err)
   }

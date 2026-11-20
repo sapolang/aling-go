@@ -70,7 +70,7 @@ func NewCacheService(app *application.App, dataDir string, library *LibraryServi
 // ServiceStartup 清理上次异常退出残留的临时文件
 func (s *CacheService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	if n := s.cleanupTemporary(); n > 0 {
-		s.app.Logger.Info("Cleaned temporary cache files", "count", n)
+		loggerOf(s.app).Info("Cleaned temporary cache files", "count", n)
 	}
 	return nil
 }
@@ -102,25 +102,30 @@ func (s *CacheService) ClearCache(kind string) CacheClearResult {
 	}
 	freed, err := s.clearTarget(target)
 	if err != nil {
-		s.app.Logger.Warn("Clear cache failed", "kind", kind, "error", err)
+		loggerOf(s.app).Warn("Clear cache failed", "kind", kind, "error", err)
 		return CacheClearResult{Error: err.Error(), Freed: freed}
 	}
-	s.app.Logger.Info("Cleared cache", "kind", kind, "freed", freed)
+	loggerOf(s.app).Info("Cleared cache", "kind", kind, "freed", freed)
 	return CacheClearResult{OK: true, Freed: freed}
 }
 
-// ClearAllCaches 依次清理全部缓存类别
+// ClearAllCaches 依次清理全部缓存类别。单个类别失败时不中断，
+// 尽量清完其余类别，最后汇总失败原因返回。
 func (s *CacheService) ClearAllCaches() CacheClearResult {
 	var freed int64
+	var failures []string
 	for _, target := range cacheTargets {
 		n, err := s.clearTarget(target)
 		freed += n
 		if err != nil {
-			s.app.Logger.Warn("Clear cache failed", "kind", target.kind, "error", err)
-			return CacheClearResult{Error: err.Error(), Freed: freed}
+			loggerOf(s.app).Warn("Clear cache failed", "kind", target.kind, "error", err)
+			failures = append(failures, target.label+": "+err.Error())
 		}
 	}
-	s.app.Logger.Info("Cleared all caches", "freed", freed)
+	if len(failures) > 0 {
+		return CacheClearResult{Error: strings.Join(failures, "；"), Freed: freed}
+	}
+	loggerOf(s.app).Info("Cleared all caches", "freed", freed)
 	return CacheClearResult{OK: true, Freed: freed}
 }
 
@@ -154,13 +159,17 @@ func (s *CacheService) clearTarget(target cacheTarget) (int64, error) {
 		}
 
 		if !target.onlyTemporary {
+			var before int64
 			var removed []string
 			walkCacheFiles(dir, false, func(path string, size int64) {
 				removed = append(removed, path)
-				freed += size
+				before += size
 			})
-			if err := os.RemoveAll(dir); err != nil {
-				return freed, err
+			rmErr := os.RemoveAll(dir)
+			// 删除失败时目录里可能还有残留，只把真正删掉的字节计入释放量
+			freed += before - dirSize(dir)
+			if rmErr != nil {
+				return freed, rmErr
 			}
 			if target.kind == "podcasts" {
 				if s.library != nil && len(removed) > 0 {
@@ -168,39 +177,30 @@ func (s *CacheService) clearTarget(target cacheTarget) (int64, error) {
 				}
 				// 音频已删除，节目上的本地路径要重置，否则播放会指向不存在的文件
 				if err := q().ClearAllEpisodeLocalPaths(context.Background()); err != nil {
-					s.app.Logger.Warn("Reset episode local paths", "error", err)
+					loggerOf(s.app).Warn("Reset episode local paths", "error", err)
 				}
 			}
 			continue
 		}
 
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return freed, err
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tmp") {
-				continue
+		// 只清理临时文件时递归处理，与统计口径保持一致（含子目录）。
+		walkCacheFiles(dir, true, func(path string, size int64) {
+			if rmErr := os.Remove(path); rmErr == nil {
+				freed += size
 			}
-			info, infoErr := entry.Info()
-			if infoErr != nil {
-				continue
-			}
-			if rmErr := os.Remove(filepath.Join(dir, entry.Name())); rmErr == nil {
-				freed += info.Size()
-			}
-		}
+		})
 	}
 	return freed, nil
 }
 
 // cleanupTemporary 删除上次运行残留的临时产物：转录输出、模型下载中断的
-// .tmp 以及未完成的转码 .part 文件。
+// .tmp、未完成的转码 .part 以及中断的播客下载 .part 文件。
 func (s *CacheService) cleanupTemporary() int {
 	patterns := []string{
 		filepath.Join(s.dataDir, "temp-transcript", "*"),
 		filepath.Join(s.dataDir, "whisper-models", "*.tmp"),
 		filepath.Join(s.dataDir, "transcoded", "*.part*"),
+		filepath.Join(s.dataDir, "podcasts", "*", "*.part"),
 	}
 	removed := 0
 	for _, pattern := range patterns {
@@ -231,6 +231,13 @@ func walkCacheFiles(dir string, onlyTemporary bool, fn func(path string, size in
 		}
 		return nil
 	})
+}
+
+// dirSize 返回目录下全部文件的总大小，用于扣除删除失败后的残留量。
+func dirSize(dir string) int64 {
+	var total int64
+	walkCacheFiles(dir, false, func(_ string, size int64) { total += size })
+	return total
 }
 
 // enforceTranscodeLimit 把转码缓存压到上限以内：按最后修改时间从旧到新删除，

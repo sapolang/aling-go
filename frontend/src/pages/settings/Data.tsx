@@ -50,7 +50,10 @@ export default function SettingsData() {
   }
 
   useEffect(() => {
-    window.api.getBackupStatus().then(setBackupStatus)
+    window.api
+      .getBackupStatus()
+      .then(setBackupStatus)
+      .catch((err: unknown) => console.error('[backup] load status failed', err))
     window.api
       .cacheStats()
       .then(setCacheStats)
@@ -145,10 +148,17 @@ export default function SettingsData() {
       const res = await window.api.clearCache(kind)
       if (res?.ok) {
         showToast(`已清理${label}，释放 ${formatBytes(res.freed)}`)
+      } else if ((res?.freed ?? 0) > 0) {
+        showToast(
+          `部分清理完成，释放 ${formatBytes(res?.freed ?? 0)}：${res.error || '未知错误'}`,
+          'warning',
+        )
       } else {
         showToast('清理失败: ' + (res?.error || '未知错误'), 'error')
       }
       await loadCacheStats()
+    } catch (err) {
+      showToast('清理失败: ' + err, 'error')
     } finally {
       setClearingCache(null)
     }
@@ -158,7 +168,7 @@ export default function SettingsData() {
     const ok = await confirmDialog({
       title: '清理全部缓存？',
       description:
-        '缩略图、波形、转码文件、字幕缓存、已下载音频等都会被删除；生词、收藏与播放记录不受影响。',
+        '缩略图、波形、转码文件、字幕缓存、转录临时文件、模型下载残留、已下载音频等都会被删除；生词、收藏与播放记录不受影响。',
       confirmText: '全部清理',
       destructive: true,
     })
@@ -168,10 +178,17 @@ export default function SettingsData() {
       const res = await window.api.clearAllCaches()
       if (res?.ok) {
         showToast(`已清理全部缓存，释放 ${formatBytes(res.freed)}`)
+      } else if ((res?.freed ?? 0) > 0) {
+        showToast(
+          `部分缓存已清理，释放 ${formatBytes(res?.freed ?? 0)}：${res.error || '未知错误'}`,
+          'warning',
+        )
       } else {
         showToast('清理失败: ' + (res?.error || '未知错误'), 'error')
       }
       await loadCacheStats()
+    } catch (err) {
+      showToast('清理失败: ' + err, 'error')
     } finally {
       setClearingCache(null)
     }
@@ -226,6 +243,9 @@ export default function SettingsData() {
               disabled={entry.files === 0 || clearingCache !== null}
               onClick={() => handleClearCache(entry.kind, entry.label)}
             >
+              {clearingCache === entry.kind && (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              )}
               清理
             </Button>
           </SettingsRow>
