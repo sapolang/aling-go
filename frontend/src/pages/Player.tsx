@@ -4,6 +4,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { useWordStore } from '@/stores/wordStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
 import type { SubtitleCue, SubtitleListHandle } from '@/components/SubtitleList'
+import type { PlatformSubtitleCue, PlatformSubtitleResult, RecentEntry } from '@/types/api'
 import { showToast } from '@/components/feedback'
 import WordHoverCard from '@/components/WordHoverCard'
 import WordLookupModal from '@/components/WordLookupModal'
@@ -13,11 +14,17 @@ import { extOf } from '@/lib/mediaFormats'
 import { loadSrtFile, openLocalMedia } from '@/lib/openMedia'
 import { formatClockTime } from '@/lib/subtitles'
 import { useYouTubeEngine } from '@/hooks/useYouTubeEngine'
-import { ArrowLeft, AudioLines, Keyboard, Loader2, Subtitles } from 'lucide-react'
-import TransportControls from './player/TransportControls'
+import {
+  ArrowLeft,
+  AudioLines,
+  Captions,
+  FileAudio,
+  FileVideo,
+  Keyboard,
+  Subtitles,
+} from 'lucide-react'
 import VideoStage from './player/VideoStage'
-import AudioDeck from './player/AudioDeck'
-import Timeline from './player/Timeline'
+import AudioStage from './player/AudioStage'
 import TranscriptPanel from './player/TranscriptPanel'
 import AISentencePanel from './player/AISentencePanel'
 import ShortcutHelpDialog from './player/ShortcutHelpDialog'
@@ -65,9 +72,86 @@ export default function PlayerPage() {
 
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
+  // 右栏默认跟随内容：没有字幕且未在转录时收起，让舞台铺满；
+  // 用户手动切换后以手动选择为准，切换素材时自动失效、回到默认规则
+  const [transcriptChoice, setTranscriptChoice] = useState<{
+    path: string | null
+    open: boolean
+  } | null>(null)
   const [mediaPort, setMediaPort] = useState(0)
+  const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([])
   const subtitleListRef = useRef<SubtitleListHandle>(null)
   const dragStateRef = useRef({ active: false, anchor: -1, current: -1 })
+  const autoSubtitleRef = useRef<string | null>(null)
+
+  // 在线视频统一在这里自动加载字幕：后端先取官方字幕，缺失时再走 Whisper。
+  // 历史、订阅、粘贴链接等入口最终都停留在播放页，集中处理可以避免有的入口必须先点「转录」。
+  useEffect(() => {
+    if (!filePath) return
+    if (sourceKind !== 'youtube' && sourceKind !== 'bilibili') return
+    const sourceKey = historyKeyState || filePath
+    const requestKey = `${playSession}:${sourceKey}`
+    if (autoSubtitleRef.current === requestKey) return
+    autoSubtitleRef.current = requestKey
+
+    const session = playSession
+    let cancelled = false
+    const st = usePlayerStore.getState()
+    st.setTranscribing(true)
+    st.setTranscriptionProgress(-1)
+    setTranscribingLabel('加载字幕')
+
+    window.api
+      .platformGetSubtitlesBySource(sourceKind, sourceKey.replace(/^(yt:|bili:)/, ''))
+      .then((r: PlatformSubtitleResult) => {
+        if (cancelled || !r.ok || !r.cues || r.cues.length === 0) return
+        const cur = usePlayerStore.getState()
+        if (cur.playSession !== session || (cur.historyKey || cur.filePath) !== sourceKey) return
+        cur.setSubtitles(
+          r.cues.map((c: PlatformSubtitleCue, i: number) => ({
+            id: i,
+            startTime: c.start,
+            endTime: c.end,
+            text: c.text,
+          })),
+        )
+      })
+      .catch(() => {
+        // 自动加载失败时保持空状态，用户仍可手动转录
+      })
+      .finally(() => {
+        if (cancelled) return
+        const cur = usePlayerStore.getState()
+        if (cur.playSession !== session) return
+        cur.setTranscribing(false)
+        setTranscribingLabel('')
+      })
+
+    return () => {
+      cancelled = true
+      // 切到其他媒体后，本次自动加载的转录状态需要由这里收尾
+      const cur = usePlayerStore.getState()
+      if (cur.playSession !== session) {
+        cur.setTranscribing(false)
+        setTranscribingLabel('')
+      }
+    }
+  }, [filePath, sourceKind, historyKeyState, playSession])
+
+  // 空播放器不再是无路可走的死胡同：拉取最近播放，点一下即可继续
+  useEffect(() => {
+    if (filePath) return
+    let cancelled = false
+    window.api
+      .recentList()
+      .then((rows) => {
+        if (!cancelled) setRecentEntries(rows.slice(0, 5))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [filePath])
 
   const isAudio = resolveIsAudio(filePath, mediaKind)
   const ext = extOf(filePath || '')
@@ -93,8 +177,17 @@ export default function PlayerPage() {
     })
   }
 
-  const { mediaRef, playError, converting, fallbackPath, activeMediaPath, clearPlayError } =
-    useMediaElement({ filePath, onEnded: handleEnded })
+  const {
+    mediaRef,
+    playError,
+    converting,
+    fallbackPath,
+    activeMediaPath,
+    stalled,
+    clearPlayError,
+    retryPlayback,
+    transcodeNow,
+  } = useMediaElement({ filePath, onEnded: handleEnded })
 
   // 生词库词表：已收藏的词在字幕中高亮显示
   const savedWordList = useWordStore((s) => s.words)
@@ -288,6 +381,9 @@ export default function PlayerPage() {
   const togglePlay = () => runAction('playPause')
 
   const showDeck = isAudio || focusMode
+  const hasTranscript = subtitles.length > 0
+  const showTranscript = transcriptChoice?.path === filePath ? transcriptChoice.open : hasTranscript
+  const setTranscriptOpen = (open: boolean) => setTranscriptChoice({ path: filePath, open })
   const deckPlaying = playing && (isYouTube || (!!filePath && activeMediaPath === filePath))
 
   return (
@@ -305,12 +401,12 @@ export default function PlayerPage() {
             </button>
             <div className="pp-heading">
               <span className="pp-eyebrow">
-                {filePath ? `Now playing · ${isAudio ? 'Audio' : 'Video'}` : 'Player'}
+                {filePath ? `正在播放 · ${isAudio ? '音频' : '视频'}` : '播放器'}
               </span>
               <h1 className="pp-title">{filePath ? title : '选择一段素材开始'}</h1>
               {filePath && (
                 <div className="pp-meta">
-                  <span>{isAudio ? 'Audio' : 'Video'}</span>
+                  <span>{isAudio ? '音频' : '视频'}</span>
                   {duration > 0 && (
                     <>
                       <span className="pp-meta-dot">·</span>
@@ -320,13 +416,13 @@ export default function PlayerPage() {
                   {displayCount > 0 && (
                     <>
                       <span className="pp-meta-dot">·</span>
-                      <span>{displayCount} sentences</span>
+                      <span>{displayCount} 条字幕</span>
                     </>
                   )}
                   {subtitleOffset !== 0 && (
                     <>
                       <span className="pp-meta-dot">·</span>
-                      <span>offset {subtitleOffset.toFixed(1)}s</span>
+                      <span>偏移 {subtitleOffset.toFixed(1)}s</span>
                     </>
                   )}
                 </div>
@@ -342,7 +438,7 @@ export default function PlayerPage() {
                 title="加载 SRT 字幕"
               >
                 <Subtitles />
-                <span>字幕</span>
+                <span>导入字幕</span>
               </button>
             )}
             <button
@@ -358,7 +454,7 @@ export default function PlayerPage() {
         </header>
 
         {filePath ? (
-          <div className="pp-main">
+          <div className={`pp-main ${showTranscript ? '' : 'pp-main--solo'}`}>
             <section className="pp-left">
               <VideoStage
                 hidden={showDeck}
@@ -371,6 +467,9 @@ export default function PlayerPage() {
                 ytEmbedUrl={ytEmbedUrl}
                 converting={converting}
                 playError={playError}
+                stalled={stalled}
+                onRetryPlayback={retryPlayback}
+                onTranscode={transcodeNow}
                 onTogglePlay={togglePlay}
                 onAction={runAction}
                 onHelp={() => setShowShortcutHelp(true)}
@@ -379,64 +478,61 @@ export default function PlayerPage() {
               />
 
               {showDeck && (
-                <AudioDeck
+                <AudioStage
                   isAudio={isAudio}
                   ext={ext}
                   title={title}
+                  filePath={filePath}
                   converting={converting}
                   playError={playError}
                   deckPlaying={deckPlaying}
                   onTogglePlay={togglePlay}
                   onAction={runAction}
+                  onHelp={() => setShowShortcutHelp(true)}
+                  aiActive={!!ai.aiTarget}
                   renderWords={hover.renderWords}
                 />
               )}
 
-              <Timeline showDeck={showDeck} isYouTube={isYouTube} />
-
-              {showDeck && (
-                <div className="pp-dock">
-                  <TransportControls
-                    variant="dock"
-                    onAction={runAction}
-                    onHelp={() => setShowShortcutHelp(true)}
-                    aiActive={!!ai.aiTarget}
-                  />
-                </div>
-              )}
-
-              {transcribing && transcriptionProgress >= 0 && (
-                <div className="pp-transcribing">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>
-                    Whisper {transcribingLabel} {transcriptionProgress}%
-                  </span>
-                  <div className="pp-transcribing-track">
-                    <div
-                      className="pp-transcribing-fill"
-                      style={{ width: `${transcriptionProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+              {/* 舞台右侧的字幕开关：收起时是入口，展开时变为隐藏 */}
+              <button
+                type="button"
+                className="pp-transcript-fab"
+                title={showTranscript ? '隐藏字幕面板' : '显示字幕面板'}
+                aria-label={showTranscript ? '隐藏字幕面板' : '显示字幕面板'}
+                aria-expanded={showTranscript}
+                onClick={() => setTranscriptOpen(!showTranscript)}
+              >
+                <Captions className="h-4 w-4" />
+                <span className="pp-transcript-fab-label">
+                  {Array.from(showTranscript ? '字幕关' : '字幕').map((ch, i) => (
+                    <span key={i}>{ch}</span>
+                  ))}
+                </span>
+              </button>
             </section>
 
-            <TranscriptPanel
-              listRef={subtitleListRef}
-              dragStateRef={dragStateRef}
-              onSeek={requestSeek}
-              onSpeak={speak}
-              onFavorite={openFavoriteCue}
-              onCancelHover={() => {
-                hover.resetHoverPause()
-                hover.cancelHover()
-              }}
-              onImportSrt={() => void handleLoadSrt()}
-              onTranscribe={transcribe}
-              onExport={() => void exportSubtitles()}
-              onRetranscribe={transcribe}
-              renderWords={hover.renderWords}
-            />
+            {showTranscript && (
+              <TranscriptPanel
+                listRef={subtitleListRef}
+                dragStateRef={dragStateRef}
+                onSeek={requestSeek}
+                onSpeak={speak}
+                onFavorite={openFavoriteCue}
+                onCancelHover={() => {
+                  hover.resetHoverPause()
+                  hover.cancelHover()
+                }}
+                onImportSrt={() => void handleLoadSrt()}
+                onTranscribe={transcribe}
+                onExport={() => void exportSubtitles()}
+                onRetranscribe={transcribe}
+                transcribing={transcribing}
+                transcribingLabel={transcribingLabel}
+                transcriptionProgress={transcriptionProgress}
+                renderWords={hover.renderWords}
+              />
+            )}
           </div>
         ) : (
           <div className="pp-empty">
@@ -456,6 +552,37 @@ export default function PlayerPage() {
                   返回{backLabel}
                 </button>
               </div>
+              {recentEntries.length > 0 && (
+                <div className="pp-empty-recent">
+                  <div className="pp-empty-recent-title">从最近播放继续</div>
+                  <ul className="pp-empty-recent-list">
+                    {recentEntries.map((item) => (
+                      <li key={item.path}>
+                        <button
+                          type="button"
+                          className="pp-empty-recent-item"
+                          onClick={() => void openLocalMedia(item.path)}
+                          title={item.path}
+                        >
+                          <span className="pp-empty-recent-icon">
+                            {item.type === 'audio' ? (
+                              <FileAudio className="h-4 w-4" />
+                            ) : (
+                              <FileVideo className="h-4 w-4" />
+                            )}
+                          </span>
+                          <span className="pp-empty-recent-name">{item.name}</span>
+                          {!!item.lastPosition && item.lastPosition > 0 && (
+                            <span className="pp-empty-recent-meta">
+                              {formatClockTime(item.lastPosition)}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         )}

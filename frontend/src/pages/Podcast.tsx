@@ -15,7 +15,6 @@ import { confirmDialog, showToast } from '@/components/feedback'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFeedStore, type FeedEpisode } from '@/stores/feedStore'
 import { usePlayerStore } from '@/stores/playerStore'
-import type { PlatformSubtitleCue, PlatformSubtitleResult } from '@/types/api'
 import {
   Rss,
   Plus,
@@ -296,27 +295,6 @@ export default function PodcastPage() {
     if (cached && cached.length > 0) player.setSubtitles(cached)
   }
 
-  // 平台字幕在后台拉取，回来后确认用户没有切走再写入
-  const loadPlatformSubtitles = (episodeId: number, expectedPath: string) => {
-    window.api
-      .platformGetSubtitles(episodeId)
-      .then((r: PlatformSubtitleResult) => {
-        if (!r.ok || !r.cues || r.cues.length === 0) return
-        if (usePlayerStore.getState().filePath !== expectedPath) return
-        usePlayerStore.getState().setSubtitles(
-          r.cues.map((c: PlatformSubtitleCue, i: number) => ({
-            id: i,
-            startTime: c.start,
-            endTime: c.end,
-            text: c.text,
-          })),
-        )
-      })
-      .catch(() => {
-        // 字幕失败不影响播放，用户可在播放页重新转录
-      })
-  }
-
   // B站 节目：先用登录态换取本地代理播放地址，再交给统一播放页
   const playBilibiliEpisode = async (ep: FeedEpisode, bvid: string) => {
     if (biliLoadingId !== null) return
@@ -336,7 +314,6 @@ export default function PodcastPage() {
       })
       if (res.duration > 0) player.setDuration(res.duration)
       openPlayer()
-      loadPlatformSubtitles(ep.id, res.url)
     } catch {
       showToast('获取 B站 播放地址失败', 'error')
     } finally {
@@ -355,7 +332,6 @@ export default function PodcastPage() {
       sourceUrl: `https://www.youtube.com/watch?v=${videoId}`,
     })
     openPlayer()
-    loadPlatformSubtitles(ep.id, sourcePath)
   }
 
   const handleEpisodeClick = async (ep: FeedEpisode) => {

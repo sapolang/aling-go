@@ -10,9 +10,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 判断本次改动范围：纯前端改动跳过 go-checks，纯后端改动跳过 frontend-checks
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # before 为全 0（新建分支首次推送）或取不到基线时，保守起见按两边都改动处理
+          if ! git diff --name-only "$base...HEAD" > /tmp/changed.txt 2>/dev/null; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cat /tmp/changed.txt
+          if grep -Eq '(\.go$|^go\.(mod|sum)$|^internal/store/|^\.golangci\.yml$|^Makefile$|^Taskfile\.yml$|^build/|^sidecar/|^cmd/)' /tmp/changed.txt; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^frontend/' /tmp/changed.txt; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # 生成前端需要的 bindings（产物是 gitignored，CI 里必须现生成）
   # Wails v3 依赖 cgo / 平台 SDK，Go 相关 job 保持在 macOS（官方支持平台）
   bindings:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -49,8 +89,10 @@ jobs:
           path: frontend/bindings
           retention-days: 1
 
-  # Go 侧检查，与 bindings / 前端并行
+  # Go 侧检查，与 bindings / 前端并行；纯前端改动时跳过
   go-checks:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -114,9 +156,10 @@ jobs:
       - name: go test
         run: go test ./...
 
-  # 前端检查，需要 bindings 产物
+  # 前端检查，需要 bindings 产物；纯后端改动时跳过
   frontend-checks:
-    needs: bindings
+    needs: [changes, bindings]
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

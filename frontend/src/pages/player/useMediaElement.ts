@@ -16,7 +16,13 @@ export interface MediaElementHandle {
   converting: boolean
   fallbackPath: string | null
   activeMediaPath: string | null
+  /** 播放中时间冻结超过 8 秒 */
+  stalled: boolean
   clearPlayError: () => void
+  /** 播放失败后重新加载媒体源 */
+  retryPlayback: () => void
+  /** 用户手动触发一次转码兜底（仅本地文件） */
+  transcodeNow: () => void
 }
 
 /**
@@ -31,8 +37,11 @@ export function useMediaElement({ filePath, onEnded }: UseMediaElementOptions): 
   // 格式兜底：内置播放器解不了的容器转成可播文件后，只替换媒体源，filePath 仍是原文件
   const [fallback, setFallback] = useState<{ file: string; path: string } | null>(null)
   const [convertingFile, setConvertingFile] = useState<string | null>(null)
+  // 卡死看门狗：记录停在哪个文件的播放时间，换文件后自动失效
+  const [stalledFor, setStalledFor] = useState<string | null>(null)
   const fallbackPath = fallback && fallback.file === filePath ? fallback.path : null
   const converting = convertingFile !== null && convertingFile === filePath
+  const stalled = stalledFor !== null && stalledFor === filePath
 
   // 同一个文件只尝试转码一次，避免转码结果也播不了时反复重试
   const fallbackTriedRef = useRef<string | null>(null)
@@ -217,7 +226,44 @@ export function useMediaElement({ filePath, onEnded }: UseMediaElementOptions): 
     el.addEventListener('error', onError)
     if (el.duration) onMetaRef.current()
     if (!el.paused && el.readyState >= 3) onPlaying()
+    // timeupdate 约 250ms 一次，字幕高亮与波形播放头会明显滞后。
+    // 播放中用 rAF 按 ~50ms 节流采样 currentTime；暂停时仍由原生 timeupdate 兜底。
+    let rafId = 0
+    let lastSample = 0
+    let lastTime = -1
+    let lastProgressAt = performance.now()
+    let stalledNow = false
+    const sample = (now: number) => {
+      rafId = requestAnimationFrame(sample)
+      if (now - lastSample < 50) return
+      lastSample = now
+      const media = mediaRef.current
+      if (!media) return
+      if (media.paused) {
+        lastProgressAt = now
+        return
+      }
+      if (media.currentTime !== lastTime) {
+        // 时间在推进就说明解码正常，之前的卡死标记自动解除
+        lastTime = media.currentTime
+        lastProgressAt = now
+        if (stalledNow) {
+          stalledNow = false
+          setStalledFor(null)
+        }
+      } else if (media.readyState < 3 && now - lastProgressAt > 8000) {
+        // 缓冲事件没来但时间已经冻结 8 秒：提示用户并给出重新加载入口
+        if (!stalledNow) {
+          stalledNow = true
+          setStalledFor(filePath)
+        }
+        return
+      }
+      if (media.readyState >= 2) onTimeUpdateRef.current()
+    }
+    rafId = requestAnimationFrame(sample)
     return () => {
+      cancelAnimationFrame(rafId)
       el.removeEventListener('timeupdate', onTime)
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('playing', onPlaying)
@@ -266,6 +312,51 @@ export function useMediaElement({ filePath, onEnded }: UseMediaElementOptions): 
     converting,
     fallbackPath,
     activeMediaPath,
+    stalled,
     clearPlayError: () => setPlayError(null),
+    retryPlayback: () => {
+      const el = mediaRef.current
+      const st = usePlayerStore.getState()
+      if (!el || !st.filePath) return
+      const resumeTime = el.currentTime
+      setPlayError(null)
+      el.load()
+      // 重载后尽量回到失败前的位置，避免用户从头再听一遍
+      if (resumeTime > 0) {
+        el.addEventListener(
+          'loadedmetadata',
+          () => {
+            if (usePlayerStore.getState().filePath !== st.filePath) return
+            el.currentTime = resumeTime
+            usePlayerStore.getState().setPlayed(resumeTime)
+          },
+          { once: true },
+        )
+      }
+      if (st.playing) el.play().catch(() => {})
+    },
+    transcodeNow: () => {
+      const st = usePlayerStore.getState()
+      const fp = st.filePath
+      const el = mediaRef.current
+      if (!fp || !el) return
+      if (st.sourceKind !== 'html5' || /^https?:\/\//i.test(fp)) return
+      setPlayError(null)
+      setConvertingFile(fp)
+      fallbackResumeRef.current = { file: fp, time: el.currentTime }
+      window.api
+        .transcodeForPlayback(fp)
+        .then((out: string) => {
+          if (usePlayerStore.getState().filePath !== fp) return
+          setFallback({ file: fp, path: out })
+          showPlayerHud('已转换为可播格式')
+        })
+        .catch((e: unknown) => {
+          if (usePlayerStore.getState().filePath !== fp) return
+          fallbackResumeRef.current = null
+          setPlayError(e instanceof Error ? e.message : String(e))
+        })
+        .finally(() => setConvertingFile(null))
+    },
   }
 }

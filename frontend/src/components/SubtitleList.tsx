@@ -43,6 +43,12 @@ interface SubtitleListProps {
   onDragHover: (index: number) => void
   onImportSrt: () => void
   onTranscribe: () => void
+  /** 转录进行中：右栏不再显示空白空状态，而是展示实时进度 */
+  transcribing: boolean
+  transcribingLabel: string
+  transcriptionProgress: number
+  /** 显示模式过滤后没有可显示内容时，恢复为「全部」 */
+  onShowAllSubtitles: () => void
   renderText: (cue: SubtitleCue) => ReactNode
 }
 
@@ -87,6 +93,15 @@ const CueRow = memo(function CueRow({
         className={`pp-cue ${inRange ? 'is-range' : ''} ${isActive ? 'is-active' : ''} ${isPast ? 'is-past' : ''}`}
         style={{ fontSize: `${1.125 * fontScale}rem` }}
         onClick={() => onSeek(cue.startTime + offset)}
+        role="button"
+        tabIndex={0}
+        aria-current={isActive ? 'true' : undefined}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault()
+          e.stopPropagation()
+          onSeek(cue.startTime + offset)
+        }}
       >
         <span
           className="pp-cue-time"
@@ -152,6 +167,10 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
     onDragHover,
     onImportSrt,
     onTranscribe,
+    transcribing,
+    transcribingLabel,
+    transcriptionProgress,
+    onShowAllSubtitles,
     renderText,
   },
   ref,
@@ -212,19 +231,54 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
           if (autoFollow) onAutoFollowChange(false)
         }}
       >
-        {subtitles.length === 0 ? (
+        {cues.length === 0 ? (
           <div className="pp-transcript-body">
             <div className="pp-transcript-empty">
-              <Captions className="h-8 w-8" />
-              <p>还没有字幕。可以导入 SRT，或让 Whisper 转录当前素材。</p>
-              <div className="pp-transcript-empty-actions">
-                <button className="pp-mini-btn" onClick={onImportSrt}>
-                  <Subtitles /> 导入字幕
-                </button>
-                <button className="pp-mini-btn is-accent" onClick={onTranscribe}>
-                  <Loader2 /> 转录字幕
-                </button>
-              </div>
+              {transcribing ? (
+                <Loader2 className="h-7 w-7 animate-spin" />
+              ) : (
+                <Captions className="h-8 w-8" />
+              )}
+              {transcribing ? (
+                <>
+                  <p>
+                    Whisper {transcribingLabel}
+                    {transcriptionProgress >= 0 ? ` · ${transcriptionProgress}%` : ''}
+                  </p>
+                  {transcriptionProgress >= 0 && (
+                    <div className="pp-transcript-empty-track">
+                      <div
+                        className="pp-transcript-empty-fill"
+                        style={{ width: `${transcriptionProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  <p className="pp-transcript-empty-note">
+                    逐句结果会实时追加到列表，可以先继续播放。
+                  </p>
+                </>
+              ) : subtitles.length === 0 ? (
+                <>
+                  <p>还没有字幕。可以导入 SRT，或让 Whisper 转录当前素材。</p>
+                  <div className="pp-transcript-empty-actions">
+                    <button className="pp-mini-btn" onClick={onImportSrt}>
+                      <Subtitles /> 导入字幕
+                    </button>
+                    <button className="pp-mini-btn is-accent" onClick={onTranscribe}>
+                      <Loader2 /> 转录字幕
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>当前显示模式下没有可显示的字幕。</p>
+                  <div className="pp-transcript-empty-actions">
+                    <button className="pp-mini-btn is-accent" onClick={onShowAllSubtitles}>
+                      <Subtitles /> 显示全部字幕
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : (
