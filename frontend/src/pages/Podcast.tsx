@@ -124,6 +124,10 @@ export default function PodcastPage() {
   )
 
   useEffect(() => {
+    // 每次进入播客页都刷新当前订阅源的节目：在设置里清理下载后，
+    // 后端的 local_path 会变化，不刷新会继续显示「已下载」。
+    const { selectedFeedId: currentFeedID, loadEpisodes: reloadEpisodes } = useFeedStore.getState()
+    if (currentFeedID) void reloadEpisodes(currentFeedID)
     loadFeeds()
   }, [loadFeeds])
 

@@ -335,7 +335,7 @@ export default function HomePage() {
     }
     // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库
     navigate('/player', { state: { from: '/' } })
-    // 与播放页共用同一打开入口：波形、字幕缓存与同名 SRT 回退
+    // 与播放页共用同一打开入口：波形与字幕缓存
     await openLocalMedia(file.path)
   }
 

@@ -123,6 +123,94 @@ func TestClearUnknownCacheKindReturnsError(t *testing.T) {
 	}
 }
 
+func TestClearAllCachesClearsEveryCategory(t *testing.T) {
+	dataDir := t.TempDir()
+	s := &CacheService{dataDir: dataDir}
+	writeCacheFile(t, filepath.Join(dataDir, "aling", "thumbnails"), "a.jpg", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "aling", "waveforms"), "b.json", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "transcoded"), "c.mp4", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "subtitle-cache"), "d.json", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "temp-transcript"), "e.json", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "whisper-models"), "f.bin.tmp", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "whisper-models"), "f.bin", 500)
+
+	res := s.ClearAllCaches()
+	if !res.OK || res.Error != "" {
+		t.Fatalf("清理全部缓存失败: %+v", res)
+	}
+	if res.Freed != 600 {
+		t.Fatalf("释放字节 = %d, want 600", res.Freed)
+	}
+	for _, dir := range []string{
+		filepath.Join(dataDir, "aling", "thumbnails"),
+		filepath.Join(dataDir, "aling", "waveforms"),
+		filepath.Join(dataDir, "transcoded"),
+		filepath.Join(dataDir, "subtitle-cache"),
+		filepath.Join(dataDir, "temp-transcript"),
+	} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("%s 应被删除, err = %v", dir, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "whisper-models", "f.bin.tmp")); !os.IsNotExist(err) {
+		t.Fatalf("模型下载残留应被删除, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "whisper-models", "f.bin")); err != nil {
+		t.Fatalf("已下载的模型不应被删除: %v", err)
+	}
+}
+
+func TestClearPodcastsRemovesLibraryEntriesAndResetsLocalPaths(t *testing.T) {
+	db := setupFeedTestDB(t)
+	dataDir := t.TempDir()
+	episodePath := writeCacheFile(t, filepath.Join(dataDir, "podcasts", "1"), "ep.mp3", 300)
+	otherPath := writeCacheFile(t, filepath.Join(dataDir, "transcoded"), "keep.mp4", 100)
+
+	library := &LibraryService{dataDir: dataDir}
+	library.writeLibrary(LibraryData{Files: []LibraryFile{
+		{Path: episodePath, Name: "ep.mp3", Type: "audio"},
+		{Path: otherPath, Name: "keep.mp4", Type: "video"},
+	}})
+
+	if _, err := db.Exec("INSERT INTO feeds (url) VALUES (?)", "https://example.com/feed.xml"); err != nil {
+		t.Fatalf("写入订阅源失败: %v", err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO feed_episodes (feed_id, guid, local_path) VALUES (1, 'g1', ?)", episodePath,
+	); err != nil {
+		t.Fatalf("写入节目失败: %v", err)
+	}
+
+	target, ok := findCacheTarget("podcasts")
+	if !ok {
+		t.Fatal("未找到 podcasts 缓存类型")
+	}
+	s := &CacheService{dataDir: dataDir, library: library}
+	freed, err := s.clearTarget(target)
+	if err != nil {
+		t.Fatalf("清理失败: %v", err)
+	}
+	if freed != 300 {
+		t.Fatalf("释放字节 = %d, want 300", freed)
+	}
+	if _, statErr := os.Stat(filepath.Join(dataDir, "podcasts")); !os.IsNotExist(statErr) {
+		t.Fatalf("播客目录应被删除, err = %v", statErr)
+	}
+
+	lib := library.readLibrary()
+	if len(lib.Files) != 1 || lib.Files[0].Path != otherPath {
+		t.Fatalf("媒体库应只保留非播客条目: %+v", lib.Files)
+	}
+
+	var localPath string
+	if err := db.QueryRow("SELECT local_path FROM feed_episodes WHERE guid = 'g1'").Scan(&localPath); err != nil {
+		t.Fatalf("查询节目失败: %v", err)
+	}
+	if localPath != "" {
+		t.Fatalf("节目本地路径应被清空, got %q", localPath)
+	}
+}
+
 func TestCleanupTemporaryRemovesLeftovers(t *testing.T) {
 	dataDir := t.TempDir()
 	s := &CacheService{dataDir: dataDir}
@@ -130,12 +218,16 @@ func TestCleanupTemporaryRemovesLeftovers(t *testing.T) {
 	writeCacheFile(t, filepath.Join(dataDir, "whisper-models"), "ggml-base.bin.tmp", 10)
 	writeCacheFile(t, filepath.Join(dataDir, "whisper-models"), "ggml-base.bin", 10)
 	writeCacheFile(t, filepath.Join(dataDir, "transcoded"), "abc.part.mp4", 10)
+	writeCacheFile(t, filepath.Join(dataDir, "podcasts", "1"), "ep.mp3.part", 10)
 
-	if removed := s.cleanupTemporary(); removed != 3 {
-		t.Fatalf("清理数量 = %d, want 3", removed)
+	if removed := s.cleanupTemporary(); removed != 4 {
+		t.Fatalf("清理数量 = %d, want 4", removed)
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "whisper-models", "ggml-base.bin")); err != nil {
 		t.Fatalf("模型文件不应被删除: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "podcasts", "1", "ep.mp3.part")); !os.IsNotExist(err) {
+		t.Fatalf("中断的播客下载残留应被删除, err = %v", err)
 	}
 }
 
