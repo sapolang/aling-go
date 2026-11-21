@@ -18,7 +18,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -56,9 +56,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -66,7 +66,7 @@ jobs:
       # 缓存 wails3 二进制，避免每次从源码重编（关键路径上最慢的一段）
       - name: Cache Wails CLI
         id: cache-wails
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/go/bin/wails3
           key: ${{ runner.os }}-wails3-${{ hashFiles('go.sum') }}
@@ -83,7 +83,7 @@ jobs:
       - name: Verify bindings are interface mode
         run: grep -q '^export interface ' frontend/bindings/aling-go/internal/study/models.ts
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wails-bindings
           path: frontend/bindings
@@ -96,9 +96,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -118,7 +118,7 @@ jobs:
       # sqlc 生成代码已提交，校验其与 schema.sql / query.sql 保持同步
       - name: Cache sqlc
         id: cache-sqlc
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/go/bin/sqlc
           key: ${{ runner.os }}-sqlc-v1.31.1
@@ -134,14 +134,14 @@ jobs:
 
       # 官方 action 下载预编译二进制并缓存分析结果，替代原来的 go install 编译
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.15.0
           args: --timeout=5m
 
       - name: Cache govulncheck
         id: cache-govulncheck
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/go/bin/govulncheck
           key: ${{ runner.os }}-govulncheck-latest
@@ -163,14 +163,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: wails-bindings
           path: frontend/bindings
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '26'
           cache: npm
