@@ -60,6 +60,11 @@ jobs:
         with:
           path: sidecar/ffmpeg
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('sidecar/versions.sh', 'sidecar/build.sh') }}
+      - name: Cache yt-dlp
+        uses: actions/cache@v4
+        with:
+          path: sidecar/yt-dlp
+          key: yt-dlp-${{ runner.os }}-${{ hashFiles('sidecar/versions.sh', 'sidecar/build.sh') }}
       - run: make sidecar
       # zip 依赖 dmg，同时产出 DMG（首次安装）与 zip（应用内自动更新）
       - run: make zip
@@ -118,6 +123,7 @@ jobs:
             sidecar/.whisper-cpp
             sidecar/ffmpeg.exe
             sidecar/whisper-sidecar.exe
+            sidecar/yt-dlp.exe
           key: windows-sidecar-${{ hashFiles('sidecar/versions.sh', 'sidecar/build-windows.sh') }}
       - uses: msys2/setup-msys2@v2
         with:

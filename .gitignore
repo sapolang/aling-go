@@ -11,6 +11,8 @@ sidecar/whisper-sidecar
 sidecar/ffmpeg
 sidecar/whisper-sidecar.exe
 sidecar/ffmpeg.exe
+sidecar/yt-dlp
+sidecar/yt-dlp.exe
 sidecar/ggml-*.bin
 bin/
 whisper-models/
