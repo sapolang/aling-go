@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goRuntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,17 +32,41 @@ const ytDlpSubtitleLangs = "en,zh-Hans,zh-Hant"
 
 var vttTagRe = regexp.MustCompile(`<[^>]+>`)
 
-// findYtDlp 优先用 PATH 里的 yt-dlp，兼容常见的 Homebrew 安装位置
-func findYtDlp() string {
+// findYtDlp 保留 PATH 优先级，未安装到系统时回退到随应用发布或开发目录里的 sidecar。
+func findYtDlp(dataDir string) string {
 	if p, err := exec.LookPath("yt-dlp"); err == nil {
 		return p
 	}
-	for _, p := range []string{"/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"} {
-		if _, err := os.Stat(p); err == nil {
-			return p
+	return firstExisting(ytDlpCandidates(dataDir, executableDir(), bundleResources(), goRuntime.GOOS))
+}
+
+// ytDlpCandidates 返回除 PATH 之外的 yt-dlp 查找路径。
+// Windows 安装包把 yt-dlp.exe 放在 exe 同目录，因此 exe 目录排在相对路径之前。
+func ytDlpCandidates(dataDir, exeDir, bundlePath, goos string) []string {
+	if goos == "darwin" {
+		locations := []string{
+			"/opt/homebrew/bin/yt-dlp",
+			"/usr/local/bin/yt-dlp",
+			"/usr/bin/yt-dlp",
+			filepath.Join(dataDir, "sidecar", "yt-dlp"),
+			"sidecar/yt-dlp",
+			"./sidecar/yt-dlp",
 		}
+		locations = append([]string{"../sidecar/yt-dlp"}, locations...)
+		if bundlePath != "" {
+			locations = append([]string{filepath.Join(bundlePath, "yt-dlp")}, locations...)
+		}
+		return locations
 	}
-	return ""
+
+	locations := []string{filepath.Join(dataDir, "sidecar", "yt-dlp.exe")}
+	if exeDir != "" {
+		locations = append(locations, filepath.Join(exeDir, "yt-dlp.exe"))
+	}
+	return append(locations,
+		"sidecar/yt-dlp.exe",
+		"./sidecar/yt-dlp.exe",
+	)
 }
 
 // runYtDlp 执行 yt-dlp，代理复用订阅拉取的配置。
@@ -51,9 +76,9 @@ func findYtDlp() string {
 // yt-dlp 把进度和普通日志写到 stdout，错误写到 stderr，因此两个流都要并行读完：
 // 只读 stderr 会拿不到进度，只读 stdout 又会在长时间下载时让 stderr 管道写满。
 func (s *PlatformService) runYtDlp(timeout time.Duration, onProgress func(int), args ...string) error {
-	bin := findYtDlp()
+	bin := findYtDlp(s.dataDir)
 	if bin == "" {
-		return fmt.Errorf("未找到 yt-dlp，请先安装（brew install yt-dlp）")
+		return fmt.Errorf("未找到 yt-dlp，发布版请重新安装应用，开发环境请运行 make sidecar")
 	}
 	// --newline 让 yt-dlp 每行输出一个进度，便于流式解析；--no-warnings 减少噪音
 	base := []string{"--no-warnings", "--no-playlist", "--no-mtime", "--newline"}

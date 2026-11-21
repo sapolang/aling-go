@@ -67,4 +67,30 @@ if [ ! -f "ffmpeg" ]; then
     echo "minimal ffmpeg built ($(ls -lh ffmpeg | awk '{print $5}'))"
 fi
 
+# ---- yt-dlp standalone ----
+need_yt_dlp_download() {
+    [ -f "yt-dlp" ] || return 0
+    [ "$(./yt-dlp --version 2>/dev/null)" != "$YT_DLP_VERSION" ] && return 0
+    return 1
+}
+
+if need_yt_dlp_download; then
+    echo "Downloading yt-dlp $YT_DLP_VERSION..."
+    YT_DLP_TMP=".yt-dlp.download"
+    if ! curl -fSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp_macos" -o "$YT_DLP_TMP"; then
+        rm -f "$YT_DLP_TMP"
+        exit 1
+    fi
+    echo "${YT_DLP_MACOS_SHA256}  ${YT_DLP_TMP}" | shasum -a 256 -c - || {
+        rm -f "$YT_DLP_TMP"
+        echo "yt-dlp 校验失败" >&2
+        exit 1
+    }
+    chmod +x "$YT_DLP_TMP"
+    mv -f "$YT_DLP_TMP" yt-dlp
+    echo "yt-dlp $YT_DLP_VERSION downloaded"
+else
+    echo "yt-dlp $YT_DLP_VERSION already present, skipping"
+fi
+
 echo "Done"

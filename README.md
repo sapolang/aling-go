@@ -44,7 +44,7 @@
 
 ```bash
 make frontend-install   # 安装前端依赖
-make sidecar            # 可选：构建 Whisper / FFmpeg sidecar，用于字幕转录
+make sidecar            # 可选：构建 Whisper / FFmpeg，并获取 yt-dlp sidecar
 make dev                # 开发模式（热重载）
 ```
 
@@ -60,7 +60,7 @@ make clean              # 清理构建产物
 make upgrade-wails      # 升级 Wails CLI / Go 依赖 / 前端 runtime
 ```
 
-macOS 应用启动时会从 `Resources/` 读取 `whisper-sidecar`、`ffmpeg`、`dict.db`、`articles.db`，打包目标已包含这一步。
+macOS 应用启动时会从 `Resources/` 读取 `whisper-sidecar`、`ffmpeg`、`yt-dlp`、`dict.db`、`articles.db`，打包目标已包含这一步。
 
 ### Windows 构建
 
@@ -73,9 +73,11 @@ make exe
 # 产物：bin/aling-go-<version>-amd64-installer.exe
 ```
 
-安装程序装到 `%LOCALAPPDATA%\Programs\语练`，不需要管理员权限，因此应用内自动更新可以直接替换 exe。安装包会把 `aling-go.exe`、`ffmpeg.exe`、`whisper-sidecar.exe`、`dict.db`、`articles.db` 放在同一目录，应用从 exe 所在目录读取这些资源。
+安装程序装到 `%LOCALAPPDATA%\Programs\语练`，不需要管理员权限，因此应用内自动更新可以直接替换 exe。安装包会把 `aling-go.exe`、`ffmpeg.exe`、`whisper-sidecar.exe`、`yt-dlp.exe`、`dict.db`、`articles.db` 放在同一目录，应用从 exe 所在目录读取这些资源。
 
 应用内自动更新只替换 `aling-go.exe`；sidecar 与数据库不会随自动更新升级，需要更新时请重新下载安装包覆盖安装。
+
+发布版已内置 yt-dlp，YouTube/B 站字幕与音轨下载无需另装 Python、Homebrew 或 yt-dlp；网络受限时仍可在播客页配置代理。
 
 ## 测试与检查
 
@@ -121,6 +123,7 @@ cd frontend && npm run format:check
 | 状态管理 | Zustand |
 | 数据库 | SQLite（`modernc.org/sqlite`） |
 | 语音转录 / 媒体处理 | Whisper.cpp · FFmpeg（sidecar） |
+| 在线字幕 / 音轨下载 | yt-dlp（sidecar） |
 
 ## 项目结构
 
