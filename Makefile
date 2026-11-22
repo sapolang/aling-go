@@ -2,6 +2,7 @@
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
+YT_DLP_BIN = sidecar/yt-dlp
 # 版本号与 build/config.yml 保持一致（发布时 CI 按 tag 注入）
 VERSION ?= $(shell sed -n 's/^  version: "\(.*\)"$$/\1/p' build/config.yml)
 ARCH ?= $(shell go env GOARCH)
@@ -26,6 +27,7 @@ package:
 dmg: sidecar package
 	install -d "bin/$(APP_NAME).app/Contents/Resources"
 	install "$(SIDECAR_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
+	install "$(YT_DLP_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f dict.db ] || install dict.db "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f articles.db ] || install articles.db "bin/$(APP_NAME).app/Contents/Resources/"
@@ -64,6 +66,7 @@ exe:
 dist: sidecar package
 	install -d "bin/$(APP_NAME).app/Contents/Resources"
 	install "$(SIDECAR_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
+	install "$(YT_DLP_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f dict.db ] || install dict.db "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f articles.db ] || install articles.db "bin/$(APP_NAME).app/Contents/Resources/"

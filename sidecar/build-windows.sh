@@ -80,4 +80,29 @@ if [ ! -f "ffmpeg.exe" ]; then
     echo "minimal ffmpeg.exe built ($(ls -lh ffmpeg.exe | awk '{print $5}'))"
 fi
 
+# ---- yt-dlp standalone ----
+need_yt_dlp_download() {
+    [ -f "yt-dlp.exe" ] || return 0
+    [ "$(./yt-dlp.exe --version 2>/dev/null | tr -d '\r')" != "$YT_DLP_VERSION" ] && return 0
+    return 1
+}
+
+if need_yt_dlp_download; then
+    echo "Downloading yt-dlp $YT_DLP_VERSION..."
+    YT_DLP_TMP=".yt-dlp.exe.download"
+    if ! curl -fSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp.exe" -o "$YT_DLP_TMP"; then
+        rm -f "$YT_DLP_TMP"
+        exit 1
+    fi
+    echo "${YT_DLP_WINDOWS_SHA256}  ${YT_DLP_TMP}" | sha256sum -c - || {
+        rm -f "$YT_DLP_TMP"
+        echo "yt-dlp 校验失败" >&2
+        exit 1
+    }
+    mv -f "$YT_DLP_TMP" yt-dlp.exe
+    echo "yt-dlp $YT_DLP_VERSION downloaded"
+else
+    echo "yt-dlp $YT_DLP_VERSION already present, skipping"
+fi
+
 echo "Done"

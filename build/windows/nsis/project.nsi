@@ -98,6 +98,7 @@ Section
     !ifdef ARG_WAILS_SIDECAR_DIR
         File "${ARG_WAILS_SIDECAR_DIR}\ffmpeg.exe"
         File "${ARG_WAILS_SIDECAR_DIR}\whisper-sidecar.exe"
+        File "${ARG_WAILS_SIDECAR_DIR}\yt-dlp.exe"
     !endif
 
     !ifdef ARG_WAILS_DATA_DIR
