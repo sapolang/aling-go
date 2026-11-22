@@ -35,8 +35,38 @@
 | Windows（x64） | `aling-go-<version>-amd64-installer.exe` | 安装用，当前用户安装，无需管理员权限 |
 | Windows（x64） | `aling-go-<version>-windows-amd64.zip` | 应用内更新使用的格式，仅含 exe |
 
-> 应用使用 ad-hoc 签名、未经 Apple 公证。首次打开若被 Gatekeeper 拦截，请右键点击应用 → 打开。
-> Windows 安装包未做代码签名，SmartScreen 会提示“未知发布者”，选择“仍要运行”即可。
+### macOS 首次打开
+
+应用使用 **ad-hoc 签名**，没有 Apple Developer ID，也未经 Apple 公证。macOS 15 起，从浏览器下载后首次打开可能出现：
+
+- 提示“已损坏，无法打开”或“无法验证开发者”；
+- 不弹任何提示，双击没反应；
+- 「应用程序」里的图标变成问号。
+
+这些都不是安装包损坏，而是 Gatekeeper 给下载文件打的隔离标记（`com.apple.quarantine`）在拦截。任选一种方式放行，只需一次：
+
+1. **挂载前先去掉 DMG 的隔离标记**（推荐，之后拖出来的应用不会再被拦截）：
+
+   ```bash
+   xattr -d com.apple.quarantine ~/Downloads/aling-go-*.dmg
+   ```
+
+2. **安装后去掉应用的隔离标记**：
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/aling-go.app
+   ```
+
+3. **系统设置里放行**：先双击一次应用触发拦截，再到「系统设置 → 隐私与安全性」页面底部点「仍要打开」。
+
+若放行后图标仍是问号，重建该应用的 Launch Services 注册：
+
+```bash
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f /Applications/aling-go.app
+killall Finder
+```
+
+> 根治办法是 Developer ID 签名 + Apple 公证（需要 Apple Developer Program 账号）。在此之前，上述步骤是 macOS 安全机制要求的，无法省略。Windows 安装包未做代码签名，SmartScreen 会提示“未知发布者”，选择“仍要运行”即可。
 
 ## 快速开始
 
@@ -53,6 +83,7 @@ make dev                # 开发模式（热重载）
 ```bash
 make build              # 当前平台产物
 make dmg                # macOS .dmg
+make check-dmg          # 校验 .dmg 内 App 的结构、签名与 Gatekeeper 状态
 make zip                # macOS 更新包 + SHA256SUMS
 make exe                # Windows NSIS 安装包（需 Windows + NSIS，见下）
 make dist               # .app + sidecar
@@ -73,9 +104,13 @@ make exe
 # 产物：bin/aling-go-<version>-amd64-installer.exe
 ```
 
-安装程序装到 `%LOCALAPPDATA%\Programs\语练`，不需要管理员权限，因此应用内自动更新可以直接替换 exe。安装包会把 `aling-go.exe`、`ffmpeg.exe`、`whisper-sidecar.exe`、`yt-dlp.exe`、`dict.db`、`articles.db` 放在同一目录，应用从 exe 所在目录读取这些资源。
+安装程序装到 `%LOCALAPPDATA%\Programs\aling-go`（目录名固定用 ASCII，中文只作为显示名出现在向导标题、快捷方式和卸载列表里），不需要管理员权限，因此应用内自动更新可以直接替换 exe。安装包会把 `aling-go.exe`、`ffmpeg.exe`、`whisper-sidecar.exe`、`yt-dlp.exe`、`dict.db`、`articles.db` 放在同一目录，应用从 exe 所在目录读取这些资源。
 
 应用内自动更新只替换 `aling-go.exe`；sidecar 与数据库不会随自动更新升级，需要更新时请重新下载安装包覆盖安装。
+
+想装到其他盘时，在目标盘先新建一个文件夹再在安装向导里选中（例如 `D:\Apps\aling-go`）。安装包以当前用户权限运行，不会写入 `Program Files` 这类受保护位置，也不能直接装到盘符根目录（`D:\`）或网络共享根目录 —— 卸载时会 `RMDir /r` 整个安装目录，装到根目录等于让卸载器删整盘。
+
+旧版本装在 `%LOCALAPPDATA%\Programs\语练`。安装程序不会自动删除旧目录：升级时最好先运行旧目录里的 `uninstall.exe` 卸载旧版本，再安装新版；如果已经装了新版，直接删掉旧目录即可（此时不要再运行旧 `uninstall.exe`，两版共用同一个卸载注册项，旧卸载器会把新版的卸载项一起删掉）。
 
 发布版已内置 yt-dlp，YouTube/B 站字幕与音轨下载无需另装 Python、Homebrew 或 yt-dlp；网络受限时仍可在播客页配置代理。
 

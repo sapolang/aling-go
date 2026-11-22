@@ -13,13 +13,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	goRuntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"regexp"
+	"aling-go/internal/proc"
 )
 
 // youtubeSubtitleLangPriority 字幕语言优先级，取第一个命中的轨道
@@ -87,7 +88,7 @@ func (s *PlatformService) runYtDlp(timeout time.Duration, onProgress func(int), 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, append(base, args...)...)
+	cmd := proc.CommandContext(ctx, bin, append(base, args...)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("yt-dlp stdout pipe: %w", err)
@@ -351,7 +352,7 @@ func (s *PlatformService) transcodeToWav(input, output string) error {
 	if ffmpeg == "" {
 		return fmt.Errorf("缺少 ffmpeg，无法转码音轨")
 	}
-	cmd := exec.Command(ffmpeg, "-y", "-i", input, "-vn", "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", output)
+	cmd := proc.Command(ffmpeg, "-y", "-i", input, "-vn", "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", output)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
@@ -370,7 +371,10 @@ func (s *PlatformService) transcodeToWav(input, output string) error {
 }
 
 func (s *PlatformService) transcribeAudioFile(path, eventKey string) ([]SubtitleCue, error) {
-	items := s.whisper.TranscribeWithKey(path, eventKey)
+	items, err := s.whisper.TranscribeWithKey(path, eventKey)
+	if err != nil {
+		return nil, err
+	}
 	cues := make([]SubtitleCue, 0, len(items))
 	for _, it := range items {
 		if it.Text == "" {

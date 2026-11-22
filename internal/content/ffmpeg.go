@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	goRuntime "runtime"
+
+	"aling-go/internal/proc"
 )
 
 func findFFmpeg(dataDir string, logger *slog.Logger) string {
@@ -81,7 +83,7 @@ func extractAudio(dataDir string, logger *slog.Logger, filePath string) string {
 		return outPath
 	}
 
-	cmd := exec.Command(ffmpeg, "-i", filePath, "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", outPath)
+	cmd := proc.Command(ffmpeg, "-i", filePath, "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", outPath)
 	logger.Debug("extractAudio running", "cmd", cmd.String())
 	out, err := cmd.CombinedOutput()
 	logger.Debug("extractAudio output", "output", string(out))
