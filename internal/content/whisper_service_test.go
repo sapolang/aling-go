@@ -1,8 +1,11 @@
 package content
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -241,5 +244,43 @@ func TestWhisperConfigConcurrentAccess(t *testing.T) {
 	st := s.store.Settings()
 	if st.WhisperModel != "ggml-base.bin" || st.WhisperLang != "zh" {
 		t.Fatalf("设置未持久化: %+v", st)
+	}
+}
+
+func TestWrapTranscriptionError(t *testing.T) {
+	base := errors.New("whisper 退出异常（exit status 1）")
+	if got := wrapTranscriptionError(base, false); got != base {
+		t.Fatalf("普通失败应原样返回，got %v", got)
+	}
+	// ffmpeg 没转出 WAV 时，失败原因里要能看出是解码环节，而不是只有 whisper 的报错
+	got := wrapTranscriptionError(base, true)
+	if !strings.HasPrefix(got.Error(), "音频解码失败") {
+		t.Fatalf("解码失败应带上环节提示，got %q", got)
+	}
+	if !errors.Is(got, base) {
+		t.Fatalf("包装后应保留原始错误，got %v", got)
+	}
+}
+
+func TestSummarizeStderr(t *testing.T) {
+	// whisper 的进度是 \r 覆盖式输出，摘要里不能把它原样带给前端
+	var b strings.Builder
+	for i := 0; i < 200; i++ {
+		fmt.Fprintf(&b, "whisper_print_progress_callback: progress = %3d%%\r", i%100)
+	}
+	b.WriteString("error: failed to load model\n")
+	got := summarizeStderr(b.String())
+	if strings.ContainsAny(got, "\r\n") {
+		t.Fatalf("摘要不应包含换行或回车: %q", got)
+	}
+	if !strings.HasSuffix(got, "error: failed to load model") {
+		t.Fatalf("摘要应保留最后一行错误: %q", got)
+	}
+	if len(got) > 2000 {
+		t.Fatalf("摘要长度应受限，got %d", len(got))
+	}
+	// 6 行上限：末尾 5 行进度 + 最后 1 行错误
+	if lines := strings.Split(got, " | "); len(lines) > 6 {
+		t.Fatalf("摘要只应保留末尾少量行，got %d 行: %q", len(lines), got)
 	}
 }

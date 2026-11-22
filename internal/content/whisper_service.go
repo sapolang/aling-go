@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	goRuntime "runtime"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"sync/atomic"
 
 	"aling-go/internal/config"
+	"aling-go/internal/proc"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -133,23 +133,31 @@ func (s *WhisperService) ServiceShutdown() error { return nil }
 // --- Transcribe ---
 
 // Transcribe 转录本地文件，增量事件的 key 为文件路径（供前端过滤）。
-func (s *WhisperService) Transcribe(filePath string) []SubtitleItem {
+//
+// 失败时返回 error：Wails 会把绑定方法的 error 变成前端 promise 的 reject，
+// 这是失败原因唯一能到达界面的通道 —— 发布版不写日志，Windows 上也没有控制台，
+// 只记日志会让“转录失败”和“没识别到语音”在界面上完全一样。
+func (s *WhisperService) Transcribe(filePath string) ([]SubtitleItem, error) {
 	return s.transcribeWithKey(filePath, filePath)
 }
 
 // TranscribeWithKey 转录文件，但用自定义 key 作为事件标识。
 // 播客/在线视频等场景下，实际转的是临时 WAV 文件，但前端用原始 URL 过滤事件，
 // 因此需要把原始标识作为 key 穿透下去。
-func (s *WhisperService) TranscribeWithKey(filePath, key string) []SubtitleItem {
+func (s *WhisperService) TranscribeWithKey(filePath, key string) ([]SubtitleItem, error) {
 	return s.transcribeWithKey(filePath, key)
 }
 
-func (s *WhisperService) transcribeWithKey(filePath, key string) []SubtitleItem {
+func (s *WhisperService) transcribeWithKey(filePath, key string) ([]SubtitleItem, error) {
 	s.app.Logger.Debug("Transcribe start", "filePath", filePath, "key", key)
 	wavPath := extractAudio(s.dataDir, s.app.Logger, filePath)
 	s.app.Logger.Debug("Transcribe wavPath", "wavPath", wavPath)
+	// ffmpeg 解不出音频时仍把原文件交给 whisper 试一次（来源本身可能就是 16kHz WAV），
+	// 但要记下这个前提：失败时原因多半是解码而不是识别。
+	decodeFailed := false
 	if wavPath == "" {
 		s.app.Logger.Debug("Transcribe extractAudio returned empty, using original file")
+		decodeFailed = true
 		wavPath = filePath
 	}
 
@@ -157,10 +165,9 @@ func (s *WhisperService) transcribeWithKey(filePath, key string) []SubtitleItem 
 	if s.gpuDisabled.Load() {
 		items, err := s.runWhisper(wavPath, key, "-ng")
 		if err != nil {
-			s.app.Logger.Info("Transcription failed", "error", err)
-			return []SubtitleItem{}
+			return nil, s.transcriptionError(err, decodeFailed)
 		}
-		return items
+		return items, nil
 	}
 
 	items, err := s.runWhisper(wavPath, key)
@@ -173,10 +180,50 @@ func (s *WhisperService) transcribeWithKey(filePath, key string) []SubtitleItem 
 		items, err = s.runWhisper(wavPath, key, "-ng")
 	}
 	if err != nil {
-		s.app.Logger.Info("Transcription failed", "error", err)
-		return []SubtitleItem{}
+		return nil, s.transcriptionError(err, decodeFailed)
 	}
-	return items
+	return items, nil
+}
+
+// transcriptionError 记录失败原因，并补上“解码失败”这个前置环节的信息：
+// ffmpeg 没转出 WAV 时，whisper 的报错只会是读不了音频，看不出问题出在解码。
+func (s *WhisperService) transcriptionError(err error, decodeFailed bool) error {
+	s.app.Logger.Info("Transcription failed", "error", err, "decodeFailed", decodeFailed)
+	return wrapTranscriptionError(err, decodeFailed)
+}
+
+// wrapTranscriptionError 是 transcriptionError 的纯函数部分，便于单测。
+func wrapTranscriptionError(err error, decodeFailed bool) error {
+	if err == nil || !decodeFailed {
+		return err
+	}
+	return fmt.Errorf("音频解码失败（ffmpeg 未能转出 WAV）: %w", err)
+}
+
+// summarizeStderr 把 whisper 的 stderr 压成可直接展示的短摘要。
+// whisper 的进度是覆盖式输出（`\r` 不换行），整段拼进错误消息会变成一大段重复文本；
+// 而错误消息现在会作为前端 promise 的 reject 弹给用户，长度必须有界。
+func summarizeStderr(text string) string {
+	const (
+		maxLines = 6
+		maxWidth = 200
+	)
+	lines := make([]string, 0, maxLines)
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r", "\n"), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			if runes := []rune(line); len(runes) > maxWidth {
+				line = string(runes[:maxWidth]) + "…"
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, " | ")
 }
 
 // runWhisper 执行一次 whisper-sidecar，cacheKey 用于定位输出文件和事件分发。
@@ -184,13 +231,13 @@ func (s *WhisperService) transcribeWithKey(filePath, key string) []SubtitleItem 
 func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...string) ([]SubtitleItem, error) {
 	sidecar := s.findWhisperSidecar()
 	if sidecar == "" {
-		return nil, fmt.Errorf("whisper sidecar not found, run 'make sidecar' to build it")
+		return nil, fmt.Errorf("未找到本地转录组件 whisper-sidecar，发布版请重新安装应用，开发环境请运行 make sidecar")
 	}
 
 	modelPath := s.modelPath()
 	outDir := filepath.Join(s.dataDir, "temp-transcript")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return nil, fmt.Errorf("create transcript dir: %w", err)
+		return nil, fmt.Errorf("创建转录临时目录失败: %w", err)
 	}
 	outFile := filepath.Join(outDir, md5Hash(cacheKey))
 	// 上一次失败的残留会让下面的读取误判为成功
@@ -198,19 +245,19 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 
 	args := []string{"-f", wavPath, "-m", modelPath, "-oj", "-of", outFile, "-pp", "-l", s.currentWhisperLang()}
 	args = append(args, extraArgs...)
-	cmd := exec.Command(sidecar, args...)
+	cmd := proc.Command(sidecar, args...)
 	s.app.Logger.Debug("Transcribe cmd", "cmd", cmd.String())
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("read whisper stdout: %w", err)
+		return nil, fmt.Errorf("读取 whisper 输出失败: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return nil, fmt.Errorf("read whisper stderr: %w", err)
+		return nil, fmt.Errorf("读取 whisper 日志失败: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start whisper process: %w", err)
+		return nil, fmt.Errorf("启动 whisper 失败: %w", err)
 	}
 
 	var (
@@ -281,7 +328,9 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 		stderrText := strings.Join(stderrLines, "\n")
 		stderrMu.Unlock()
 		if stderrText != "" {
-			return nil, fmt.Errorf("whisper 退出异常（%v），stderr: %s", waitErr, stderrText)
+			// 完整 stderr 只进日志；错误消息会一路弹到界面上，必须压成短摘要
+			s.app.Logger.Debug("whisper stderr", "text", stderrText)
+			return nil, fmt.Errorf("whisper 退出异常（%v），stderr: %s", waitErr, summarizeStderr(stderrText))
 		}
 		return nil, fmt.Errorf("whisper 退出异常（%v），sidecar: %s", waitErr, sidecar)
 	}
@@ -296,7 +345,7 @@ func (s *WhisperService) runWhisper(wavPath, cacheKey string, extraArgs ...strin
 		} `json:"transcription"`
 	}
 	if err := json.Unmarshal(data, &whisperOutput); err != nil {
-		return nil, fmt.Errorf("parse whisper output: %w", err)
+		return nil, fmt.Errorf("解析 whisper 输出失败: %w", err)
 	}
 
 	result := make([]SubtitleItem, 0, len(whisperOutput.Transcription))

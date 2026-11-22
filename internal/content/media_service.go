@@ -12,13 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"aling-go/internal/proc"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -425,7 +426,7 @@ func (s *MediaService) generateThumbnail(ctx context.Context, filePath, thumbPat
 	// -ss 放在 -i 之前是快速定位；短于 3 秒的视频截不到帧时回退到首帧
 	for _, seek := range []string{"00:00:03", "00:00:00"} {
 		cmdCtx, cancel := context.WithTimeout(ctx, thumbTimeout)
-		cmd := exec.CommandContext(cmdCtx, ffmpeg, //nolint:gosec // G702: filePath 已通过 authorizeMediaPath 白名单校验，且作为独立参数传入
+		cmd := proc.CommandContext(cmdCtx, ffmpeg, //nolint:gosec // G702: filePath 已通过 authorizeMediaPath 白名单校验，且作为独立参数传入
 			"-ss", seek,
 			"-i", filePath,
 			"-frames:v", "1",
@@ -523,7 +524,7 @@ func (s *MediaService) GetWaveformData(filePath string) []float64 {
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	cmd := exec.Command(ffmpeg,
+	cmd := proc.Command(ffmpeg,
 		"-i", filePath,
 		"-ac", "1",
 		"-ar", "1000",
@@ -667,7 +668,7 @@ func (s *MediaService) probeCaps(ffmpeg string) ffmpegCaps {
 		return s.caps
 	}
 	caps := ffmpegCaps{probed: true}
-	if out, err := exec.Command(ffmpeg, "-hide_banner", "-encoders").CombinedOutput(); err == nil {
+	if out, err := proc.Command(ffmpeg, "-hide_banner", "-encoders").CombinedOutput(); err == nil {
 		text := string(out)
 		switch {
 		case strings.Contains(text, "h264_videotoolbox"):
@@ -683,7 +684,7 @@ func (s *MediaService) probeCaps(ffmpeg string) ffmpegCaps {
 		}
 		caps.pcm = strings.Contains(text, "pcm_s16le")
 	}
-	if out, err := exec.Command(ffmpeg, "-hide_banner", "-muxers").CombinedOutput(); err == nil {
+	if out, err := proc.Command(ffmpeg, "-hide_banner", "-muxers").CombinedOutput(); err == nil {
 		text := string(out)
 		caps.mp4 = strings.Contains(text, " mp4 ") || strings.Contains(text, " mov ")
 	}
@@ -757,7 +758,7 @@ func (s *MediaService) TranscodeForPlayback(filePath string) (string, error) {
 	tmpPath := filepath.Join(cacheDir, key+".part"+outExt)
 	fullArgs := append([]string{"-y", "-i", filePath}, args...)
 	fullArgs = append(fullArgs, tmpPath)
-	out, runErr := exec.Command(ffmpeg, fullArgs...).CombinedOutput()
+	out, runErr := proc.Command(ffmpeg, fullArgs...).CombinedOutput()
 	if runErr != nil {
 		_ = os.Remove(tmpPath)
 		msg := strings.TrimSpace(string(out))

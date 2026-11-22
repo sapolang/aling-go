@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	goRuntime "runtime"
 
+	"aling-go/internal/proc"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -64,11 +66,11 @@ func (s *PlatformService) OpenExternal(filePath string) {
 	var cmd *exec.Cmd
 	switch goRuntime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", "--", filePath)
+		cmd = proc.Command("open", "--", filePath)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", filePath)
+		cmd = proc.Command("cmd", "/c", "start", "", filePath)
 	default:
-		cmd = exec.Command("xdg-open", filePath)
+		cmd = proc.Command("xdg-open", filePath)
 	}
 	_ = cmd.Start()
 }
