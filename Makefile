@@ -1,4 +1,4 @@
-.PHONY: dev build dmg zip exe dist sidecar clean run vet tidy frontend-install bindings upgrade-wails lint typecheck test sqlc
+.PHONY: dev build dmg zip exe dist sign sidecar clean run vet tidy frontend-install bindings upgrade-wails lint typecheck test sqlc
 
 APP_NAME = aling-go
 SIDECAR_BIN = sidecar/whisper-sidecar
@@ -24,6 +24,12 @@ build:
 package:
 	wails3 task package
 
+# 资源是在 package 的临时签名之后才拷入 .app 的，会破坏原有签名封条；
+# 必须重新签名，否则 macOS 会判定应用“已损坏，无法打开”
+sign:
+	codesign --force --deep --sign - "bin/$(APP_NAME).app"
+	codesign --verify --deep --strict --verbose=2 "bin/$(APP_NAME).app"
+
 dmg: sidecar package
 	install -d "bin/$(APP_NAME).app/Contents/Resources"
 	install "$(SIDECAR_BIN)" "bin/$(APP_NAME).app/Contents/Resources/"
@@ -31,6 +37,7 @@ dmg: sidecar package
 	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f dict.db ] || install dict.db "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f articles.db ] || install articles.db "bin/$(APP_NAME).app/Contents/Resources/"
+	$(MAKE) --no-print-directory sign
 	@if ! command -v create-dmg >/dev/null 2>&1; then \
 		echo "Installing create-dmg..."; \
 		brew install create-dmg; \
@@ -70,6 +77,7 @@ dist: sidecar package
 	[ ! -f sidecar/ffmpeg ] || install sidecar/ffmpeg "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f dict.db ] || install dict.db "bin/$(APP_NAME).app/Contents/Resources/"
 	[ ! -f articles.db ] || install articles.db "bin/$(APP_NAME).app/Contents/Resources/"
+	$(MAKE) --no-print-directory sign
 	du -sh "bin/$(APP_NAME).app"
 
 sidecar:
