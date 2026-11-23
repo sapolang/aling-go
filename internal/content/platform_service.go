@@ -295,8 +295,9 @@ func podcastSubtitleEventKey(episodeID int64) string {
 	return fmt.Sprintf("podcast:%d", episodeID)
 }
 
-// TranscribePodcast 转录 RSS 节目。已下载节目直接使用本地文件；在线节目临时下载音频，
-// 转录完成后删除临时文件。字幕按本地路径或音频 URL 缓存，force 用于显式重新转录。
+// TranscribePodcast 转录 RSS 节目。已下载节目直接使用本地文件；在线节目下载音频并转成
+// 16kHz WAV，成功后删除原始下载、保留 WAV 供重新转录复用。字幕按本地路径或音频 URL
+// 缓存，force 用于显式重新转录。
 func (s *PlatformService) TranscribePodcast(episodeID int64, force bool) PodcastTranscribeResult {
 	fail := func(err error) PodcastTranscribeResult {
 		return PodcastTranscribeResult{Error: err.Error()}

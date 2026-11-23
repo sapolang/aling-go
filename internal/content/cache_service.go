@@ -52,7 +52,7 @@ var cacheTargets = []cacheTarget{
 	{kind: "transcoded", label: "转码文件", dirs: []string{"transcoded"}},
 	{kind: "subtitles", label: "字幕缓存", dirs: []string{"subtitle-cache"}},
 	{kind: "podcasts", label: "已下载音频", dirs: []string{"podcasts"}},
-	{kind: "transcripts", label: "转录临时文件", dirs: []string{"temp-transcript"}},
+	{kind: "transcripts", label: "转录临时文件", dirs: []string{"temp-transcript", "aling/temp-audio"}},
 	{kind: "model-temp", label: "模型下载残留", dirs: []string{"whisper-models"}, onlyTemporary: true},
 }
 

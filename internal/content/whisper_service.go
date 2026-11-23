@@ -145,20 +145,34 @@ func (s *WhisperService) Transcribe(filePath string) ([]SubtitleItem, error) {
 // 播客/在线视频等场景下，实际转的是临时 WAV 文件，但前端用原始 URL 过滤事件，
 // 因此需要把原始标识作为 key 穿透下去。
 func (s *WhisperService) TranscribeWithKey(filePath, key string) ([]SubtitleItem, error) {
-	return s.transcribeWithKey(filePath, key)
+	return s.transcribeFile(filePath, key, true)
+}
+
+// TranscribePreparedWav 转录已经按 Whisper 要求转好的 16kHz 单声道 WAV，
+// 跳过 extractAudio 的再次解码与临时缓存。调用方需保证 WAV 格式符合要求。
+func (s *WhisperService) TranscribePreparedWav(wavPath, key string) ([]SubtitleItem, error) {
+	return s.transcribeFile(wavPath, key, false)
 }
 
 func (s *WhisperService) transcribeWithKey(filePath, key string) ([]SubtitleItem, error) {
-	s.app.Logger.Debug("Transcribe start", "filePath", filePath, "key", key)
-	wavPath := extractAudio(s.dataDir, s.app.Logger, filePath)
-	s.app.Logger.Debug("Transcribe wavPath", "wavPath", wavPath)
-	// ffmpeg 解不出音频时仍把原文件交给 whisper 试一次（来源本身可能就是 16kHz WAV），
-	// 但要记下这个前提：失败时原因多半是解码而不是识别。
+	return s.transcribeFile(filePath, key, true)
+}
+
+// transcribeFile 转录文件；extract 为 true 时先用 ffmpeg 解出 16kHz 单声道 WAV。
+func (s *WhisperService) transcribeFile(filePath, key string, extract bool) ([]SubtitleItem, error) {
+	s.app.Logger.Debug("Transcribe start", "filePath", filePath, "key", key, "extract", extract)
+	wavPath := filePath
 	decodeFailed := false
-	if wavPath == "" {
-		s.app.Logger.Debug("Transcribe extractAudio returned empty, using original file")
-		decodeFailed = true
-		wavPath = filePath
+	if extract {
+		wavPath = extractAudio(s.dataDir, s.app.Logger, filePath)
+		s.app.Logger.Debug("Transcribe wavPath", "wavPath", wavPath)
+		// ffmpeg 解不出音频时仍把原文件交给 whisper 试一次（来源本身可能就是 16kHz WAV），
+		// 但要记下这个前提：失败时原因多半是解码而不是识别。
+		if wavPath == "" {
+			s.app.Logger.Debug("Transcribe extractAudio returned empty, using original file")
+			decodeFailed = true
+			wavPath = filePath
+		}
 	}
 
 	// Metal 后端一旦失败，后续转录直接走 CPU，避免每次都先崩溃并产生一条系统崩溃报告
