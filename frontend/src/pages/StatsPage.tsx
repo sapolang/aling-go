@@ -89,7 +89,7 @@ export default function StatsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">学习统计</h2>
+        <h1 className="text-2xl font-bold">学习统计</h1>
         <Button size="sm" onClick={() => navigate('/card')}>
           去复习
         </Button>
