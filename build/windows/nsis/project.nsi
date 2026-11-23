@@ -10,12 +10,13 @@ Unicode true
 ## For development first make a wails nsis build to populate the "wails_tools.nsh":
 ## > wails build --target windows/amd64 --nsis
 ## Then you can call makensis on this file with specifying the path to your binary:
+## 脚本里有中文，必须用 -INPUTCHARSET UTF8，否则在非 UTF-8 代码页的机器上会编译成乱码。
 ## For a AMD64 only installer:
-## > makensis -DARG_WAILS_AMD64_BINARY=..\..\bin\app.exe
+## > makensis -INPUTCHARSET UTF8 -DARG_WAILS_AMD64_BINARY=..\..\bin\app.exe
 ## For a ARM64 only installer:
-## > makensis -DARG_WAILS_ARM64_BINARY=..\..\bin\app.exe
+## > makensis -INPUTCHARSET UTF8 -DARG_WAILS_ARM64_BINARY=..\..\bin\app.exe
 ## For a installer with both architectures:
-## > makensis -DARG_WAILS_AMD64_BINARY=..\..\bin\app-amd64.exe -DARG_WAILS_ARM64_BINARY=..\..\bin\app-arm64.exe
+## > makensis -INPUTCHARSET UTF8 -DARG_WAILS_AMD64_BINARY=..\..\bin\app-amd64.exe -DARG_WAILS_ARM64_BINARY=..\..\bin\app-arm64.exe
 ####
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
