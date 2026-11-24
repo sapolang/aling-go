@@ -5,10 +5,12 @@
   "schedule": ["before 9am on monday"],
   "minimumReleaseAge": "3 days",
   "osvVulnerabilityAlerts": true,
+  "automerge": true,
   "packageRules": [
     { "matchManagers": ["npm", "github-actions"], "matchUpdateTypes": ["minor", "patch", "pinDigest"], "groupName": "frontend" },
     { "matchManagers": ["gomod"], "matchUpdateTypes": ["minor", "patch"], "groupName": "go" },
-    { "matchUpdateTypes": ["major"], "dependencyDashboardApproval": true },
+    { "matchUpdateTypes": ["major"], "dependencyDashboardApproval": true, "automerge": false },
     { "matchPackageNames": ["github.com/wailsapp/wails/v3", "@wailsio/runtime"], "groupName": "wails", "rangeStrategy": "bump" }
   ]
 }
+

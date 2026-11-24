@@ -419,8 +419,8 @@ export default function PodcastPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-center gap-2 flex-wrap">
-        <Rss className="h-5 w-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">播客订阅</h2>
+        <Rss className="h-6 w-6 text-muted-foreground" />
+        <h1 className="text-2xl font-bold">播客订阅</h1>
         <span className="text-xs text-muted-foreground">
           {feeds.length > 0 ? `${feeds.length} 个订阅源` : '订阅 RSS 后自动获取节目'}
         </span>

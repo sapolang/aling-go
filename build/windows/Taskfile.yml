@@ -123,11 +123,14 @@ tasks:
       # Create the Microsoft WebView2 bootstrapper if it doesn't exist
       - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
       # 版本号写入安装包文件名；sidecar 与只读数据库由 NSIS 一并安装到 exe 同目录
+      # 脚本里有中文（project.nsi 的提示文案、wails_tools.nsh 的产品名）。makensis 默认
+      # 按构建机的 ANSI 代码页解析脚本，在英文/西文 Windows 上会把 UTF-8 中文显示成乱码，
+      # 所以统一显式指定 UTF-8 输入字符集。
       - |
         {{if eq OS "windows"}}
-        makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DINFO_PRODUCTVERSION={{.APP_VERSION}} -DARG_WAILS_SIDECAR_DIR="{{.ROOT_DIR}}\sidecar" -DARG_WAILS_DATA_DIR="{{.ROOT_DIR}}" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi
+        makensis -INPUTCHARSET UTF8 {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DINFO_PRODUCTVERSION={{.APP_VERSION}} -DARG_WAILS_SIDECAR_DIR="{{.ROOT_DIR}}\sidecar" -DARG_WAILS_DATA_DIR="{{.ROOT_DIR}}" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi
         {{else}}
-        makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DINFO_PRODUCTVERSION={{.APP_VERSION}} -DARG_WAILS_SIDECAR_DIR="{{.ROOT_DIR}}/sidecar" -DARG_WAILS_DATA_DIR="{{.ROOT_DIR}}" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
+        makensis -INPUTCHARSET UTF8 {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DINFO_PRODUCTVERSION={{.APP_VERSION}} -DARG_WAILS_SIDECAR_DIR="{{.ROOT_DIR}}/sidecar" -DARG_WAILS_DATA_DIR="{{.ROOT_DIR}}" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
         {{end}}
     vars:
       ARCH: '{{.ARCH | default ARCH}}'

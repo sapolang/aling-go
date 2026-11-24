@@ -131,6 +131,7 @@ func TestClearAllCachesClearsEveryCategory(t *testing.T) {
 	writeCacheFile(t, filepath.Join(dataDir, "transcoded"), "c.mp4", 100)
 	writeCacheFile(t, filepath.Join(dataDir, "subtitle-cache"), "d.json", 100)
 	writeCacheFile(t, filepath.Join(dataDir, "temp-transcript"), "e.json", 100)
+	writeCacheFile(t, filepath.Join(dataDir, "aling", "temp-audio", "online-abc"), "f.wav", 100)
 	writeCacheFile(t, filepath.Join(dataDir, "whisper-models"), "f.bin.tmp", 100)
 	writeCacheFile(t, filepath.Join(dataDir, "whisper-models"), "f.bin", 500)
 
@@ -138,8 +139,8 @@ func TestClearAllCachesClearsEveryCategory(t *testing.T) {
 	if !res.OK || res.Error != "" {
 		t.Fatalf("清理全部缓存失败: %+v", res)
 	}
-	if res.Freed != 600 {
-		t.Fatalf("释放字节 = %d, want 600", res.Freed)
+	if res.Freed != 700 {
+		t.Fatalf("释放字节 = %d, want 700", res.Freed)
 	}
 	for _, dir := range []string{
 		filepath.Join(dataDir, "aling", "thumbnails"),
@@ -147,6 +148,7 @@ func TestClearAllCachesClearsEveryCategory(t *testing.T) {
 		filepath.Join(dataDir, "transcoded"),
 		filepath.Join(dataDir, "subtitle-cache"),
 		filepath.Join(dataDir, "temp-transcript"),
+		filepath.Join(dataDir, "aling", "temp-audio"),
 	} {
 		if _, err := os.Stat(dir); !os.IsNotExist(err) {
 			t.Fatalf("%s 应被删除, err = %v", dir, err)

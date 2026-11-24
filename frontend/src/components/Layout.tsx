@@ -248,7 +248,8 @@ export function Layout({
             <span className="text-sm truncate flex-1">{mediaTitle || basename(filePath)}</span>
             {transcribing && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" /> 转录中 {progress}%
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {progress >= 0 ? `转录中 ${progress}%` : '转录中'}
               </span>
             )}
             <Button

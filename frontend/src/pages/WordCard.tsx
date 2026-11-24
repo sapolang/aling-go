@@ -210,34 +210,40 @@ export default function WordCardPage() {
 
   if (reviewWords.length === 0 && reviewCompleted === 0) {
     return (
-      <div className="flex items-center justify-center h-full px-4">
-        <Card className="p-8 sm:p-12 text-center">
-          <p className="text-lg text-muted-foreground mb-2">今日没有待复习的词条</p>
-          <p className="text-sm text-muted-foreground mb-4">前往播放器学习新词或浏览生词库</p>
-          <Button variant="outline" onClick={() => navigate('/dict')}>
-            去词库浏览
-          </Button>
-        </Card>
+      <div className="flex flex-col h-full gap-4">
+        <h1 className="text-2xl font-bold">今日复习</h1>
+        <div className="flex flex-1 items-center justify-center px-4">
+          <Card className="p-8 sm:p-12 text-center">
+            <p className="text-lg text-muted-foreground mb-2">今日没有待复习的词条</p>
+            <p className="text-sm text-muted-foreground mb-4">前往播放器学习新词或浏览生词库</p>
+            <Button variant="outline" onClick={() => navigate('/dict')}>
+              去词库浏览
+            </Button>
+          </Card>
+        </div>
       </div>
     )
   }
 
   if (reviewWords.length === 0 && reviewCompleted > 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 px-4">
-        <Card className="p-8 sm:p-12 text-center">
-          <p className="text-2xl font-bold mb-2">今日复习完成</p>
-          <p className="text-lg text-muted-foreground mb-4">本次复习了 {reviewCompleted} 个词</p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              loadReview()
-              setCurrentIndex(0)
-            }}
-          >
-            再来一轮
-          </Button>
-        </Card>
+      <div className="flex flex-col h-full gap-4">
+        <h1 className="text-2xl font-bold">今日复习</h1>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4">
+          <Card className="p-8 sm:p-12 text-center">
+            <p className="text-2xl font-bold mb-2">今日复习完成</p>
+            <p className="text-lg text-muted-foreground mb-4">本次复习了 {reviewCompleted} 个词</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                loadReview()
+                setCurrentIndex(0)
+              }}
+            >
+              再来一轮
+            </Button>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -246,6 +252,7 @@ export default function WordCardPage() {
 
   return (
     <div className="space-y-4">
+      <h1 className="text-2xl font-bold">今日复习</h1>
       <div className="space-y-1">
         <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
           <div

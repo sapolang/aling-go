@@ -62,8 +62,8 @@ export default function ArticleListPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 mb-4">
-        <BookOpen className="h-5 w-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">文章打字</h2>
+        <BookOpen className="h-6 w-6 text-muted-foreground" />
+        <h1 className="text-2xl font-bold">文章打字</h1>
       </div>
 
       <div className="flex gap-2 flex-wrap">
