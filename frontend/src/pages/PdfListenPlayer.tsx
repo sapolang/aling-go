@@ -40,6 +40,7 @@ import { useAIPanel } from '@/pages/player/useAIPanel'
 import { showToast } from '@/components/feedback'
 import { useTtsQueuePlayer } from '@/hooks/useTtsQueuePlayer'
 import { useTextWordHover } from '@/hooks/useTextWordHover'
+import { TTS_VOICE_STORAGE_KEY as VOICE_STORAGE_KEY } from '@/lib/tts'
 import { useWordStore } from '@/stores/wordStore'
 import type {
   EngineStatus,
@@ -50,7 +51,6 @@ import type {
 } from '@/types/api'
 import './PdfListenPlayer.css'
 
-const VOICE_STORAGE_KEY = 'aling-pdf-tts-voice'
 const RATES = [0.6, 0.8, 1, 1.2, 1.5]
 const GAPS = [0, 1, 2]
 

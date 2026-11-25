@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { showToast } from '@/components/feedback'
 import { speak } from '@/lib/tts'
+import { useIsSpeaking } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
 import { gradeOptions, sm2, srsIntervalLabel } from '@/lib/srs'
-import { Speaker, ChevronLeft, ChevronRight, Pencil, Undo2, Settings2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, Undo2, Settings2 } from 'lucide-react'
 
 interface UndoEntry {
   word: Word
@@ -78,6 +80,7 @@ export default function WordCardPage() {
   }, [flipped])
 
   const current = reviewWords[currentIndex]
+  const speaking = useIsSpeaking(current?.word)
 
   const handleWrite = () => {
     if (!current || !writeInput.trim()) return
@@ -333,7 +336,7 @@ export default function WordCardPage() {
                     speak(current.word)
                   }}
                 >
-                  <Speaker className="h-4 w-4 mr-1" /> 朗读
+                  <SpeakerIcon speaking={speaking} className="mr-1 h-4 w-4" /> 朗读
                 </Button>
                 <p className="text-xs text-muted-foreground mt-6">空格翻面 · ← → Enter 导航</p>
               </CardContent>

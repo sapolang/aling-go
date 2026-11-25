@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { confirmDialog } from '@/components/feedback'
 import { speak } from '@/lib/tts'
-import { ChevronLeft, ThumbsUp, ThumbsDown, Plus, BookOpen, Speaker, Pencil } from 'lucide-react'
+import { useIsSpeaking } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
+import { ChevronLeft, ThumbsUp, ThumbsDown, Plus, BookOpen, Pencil } from 'lucide-react'
 
 const tagLabels: Record<string, string> = {
   zk: '中考',
@@ -43,6 +45,7 @@ export default function ReviewPage() {
 
   const label = tagLabels[tag || ''] || (tag || '').toUpperCase()
   const current = words[currentIndex]
+  const speaking = useIsSpeaking(current?.word)
   const isDone = currentIndex >= words.length
 
   useEffect(() => {
@@ -208,7 +211,7 @@ export default function ReviewPage() {
                 speak(current?.word)
               }}
             >
-              <Speaker className="h-4 w-4 mr-1" /> 朗读
+              <SpeakerIcon speaking={speaking} className="mr-1 h-4 w-4" /> 朗读
             </Button>
           </div>
         ) : (
@@ -225,7 +228,7 @@ export default function ReviewPage() {
                 speak(current?.word)
               }}
             >
-              <Speaker className="h-4 w-4 mr-1" /> 朗读
+              <SpeakerIcon speaking={speaking} className="mr-1 h-4 w-4" /> 朗读
             </Button>
             <div className="text-lg">{current?.translation}</div>
             {current?.definition && (

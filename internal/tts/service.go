@@ -53,7 +53,10 @@ func (s *Service) ServiceStartup(ctx context.Context, options application.Servic
 	return nil
 }
 
-func (s *Service) ServiceShutdown() error { return nil }
+func (s *Service) ServiceShutdown() error {
+	s.edge.Close()
+	return nil
+}
 
 // SynthesizeSentence 合成单句音频。优先在线 Edge-TTS，其次本地 Piper/Sherpa。
 // 两个引擎都不可用时返回 Engine=fallback，前端自动使用 window.speechSynthesis。

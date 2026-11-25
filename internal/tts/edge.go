@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -25,6 +26,8 @@ const (
 	edgeConnectTimeout = 2 * time.Second
 	edgeFirstAudioWait = 2 * time.Second
 	edgeTotalTimeout   = 8 * time.Second
+	// 空闲连接超过该时长就直接丢弃，避免复用已被服务端回收的连接。
+	edgeIdleMaxAge = 10 * time.Second
 )
 
 var edgeVoicePattern = regexp.MustCompile(`^[a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+Neural$`)
@@ -33,7 +36,53 @@ var edgeVoicePattern = regexp.MustCompile(`^[a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+Neural
 // "2-" 前缀；前缀之后的版本号服务端目前不校验。
 var edgeGECVersions = []string{"2-155.0.4283.45"}
 
-type edgeClient struct{}
+// edgeClient 复用最近一条 WebSocket 连接，省掉每次朗读的 TCP/TLS 与握手开销。
+// 同时只有一个空闲槽位，并发请求各自新建连接，因此不会互相阻塞。
+type edgeClient struct {
+	mu   sync.Mutex
+	idle *edgeConn
+}
+
+type edgeConn struct {
+	conn *websocket.Conn
+	at   time.Time
+}
+
+// Close 关闭空闲连接，供服务关闭时调用。
+func (c *edgeClient) Close() {
+	c.mu.Lock()
+	idle := c.idle
+	c.idle = nil
+	c.mu.Unlock()
+	if idle != nil {
+		_ = idle.conn.Close(websocket.StatusNormalClosure, "")
+	}
+}
+
+func (c *edgeClient) takeIdle() *websocket.Conn {
+	c.mu.Lock()
+	idle := c.idle
+	c.idle = nil
+	c.mu.Unlock()
+	if idle == nil {
+		return nil
+	}
+	if time.Since(idle.at) > edgeIdleMaxAge {
+		_ = idle.conn.Close(websocket.StatusNormalClosure, "")
+		return nil
+	}
+	return idle.conn
+}
+
+func (c *edgeClient) putIdle(conn *websocket.Conn) {
+	c.mu.Lock()
+	old := c.idle
+	c.idle = &edgeConn{conn: conn, at: time.Now()}
+	c.mu.Unlock()
+	if old != nil {
+		_ = old.conn.Close(websocket.StatusNormalClosure, "")
+	}
+}
 
 // synthesize 通过 Edge 的 WebSocket 协议合成单句 MP3。
 func (c *edgeClient) synthesize(ctx context.Context, text, voice string) ([]byte, error) {
@@ -55,6 +104,33 @@ func (c *edgeClient) synthesize(ctx context.Context, text, voice string) ([]byte
 }
 
 func (c *edgeClient) synthesizeOnce(ctx context.Context, text, voice, version string) ([]byte, error) {
+	if conn := c.takeIdle(); conn != nil {
+		audio, err := edgeTurn(ctx, conn, text, voice)
+		if err == nil {
+			c.putIdle(conn)
+			return audio, nil
+		}
+		_ = conn.Close(websocket.StatusInternalError, "")
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		// 空闲连接可能已被服务端回收，换新连接重试一次。
+	}
+
+	conn, err := c.dial(ctx, version)
+	if err != nil {
+		return nil, err
+	}
+	audio, err := edgeTurn(ctx, conn, text, voice)
+	if err != nil {
+		_ = conn.Close(websocket.StatusInternalError, "")
+		return nil, err
+	}
+	c.putIdle(conn)
+	return audio, nil
+}
+
+func (c *edgeClient) dial(ctx context.Context, version string) (*websocket.Conn, error) {
 	dialCtx, cancelDial := context.WithTimeout(ctx, edgeConnectTimeout)
 	defer cancelDial()
 
@@ -76,8 +152,11 @@ func (c *edgeClient) synthesizeOnce(ctx context.Context, text, voice, version st
 	if err != nil {
 		return nil, fmt.Errorf("连接 Edge-TTS 失败：%w", err)
 	}
-	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+	return conn, nil
+}
 
+// edgeTurn 在已建立的连接上完成一次合成：发送配置与 SSML，读取音频直到 turn.end。
+func edgeTurn(ctx context.Context, conn *websocket.Conn, text, voice string) ([]byte, error) {
 	overallCtx, cancelOverall := context.WithTimeout(ctx, edgeTotalTimeout)
 	defer cancelOverall()
 
