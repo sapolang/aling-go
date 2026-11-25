@@ -1,0 +1,212 @@
+/* PDF 精听页：沿用全局主题令牌，只在这里定义阅读区的排版尺度 */
+
+.pdf-listen-root {
+  --pdf-line: hsl(var(--border));
+  --pdf-card: hsl(var(--card));
+  --pdf-muted: hsl(var(--muted-foreground));
+  --pdf-accent: hsl(var(--primary));
+  --pdf-accent-soft: hsl(var(--primary) / 0.1);
+  --pdf-hover: hsl(var(--accent) / 0.58);
+  min-height: 0;
+  color: hsl(var(--foreground));
+}
+
+.pdf-listen-header {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--pdf-line);
+}
+
+.pdf-listen-controls {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--pdf-line);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--pdf-card);
+}
+
+.pdf-listen-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--pdf-line);
+}
+
+.pdf-listen-label {
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--pdf-muted);
+}
+
+.pdf-pill {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pdf-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pdf-pill:hover {
+  background: var(--pdf-hover);
+  color: hsl(var(--foreground));
+}
+
+.pdf-pill.is-active {
+  border-color: hsl(var(--primary) / 0.35);
+  background: var(--pdf-accent-soft);
+  color: var(--pdf-accent);
+}
+
+.pdf-pill:focus-visible,
+.pdf-row-action:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.pdf-sentence-list {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--pdf-line);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--pdf-card);
+}
+
+.pdf-sentence-shell {
+  padding: 2px 8px;
+}
+
+.pdf-sentence-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 8px 8px 8px 6px;
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pdf-sentence-row:hover {
+  background: var(--pdf-hover);
+}
+
+.pdf-sentence-row.is-active {
+  border-left-color: var(--pdf-accent);
+  background: var(--pdf-accent-soft);
+}
+
+.pdf-sentence-row.is-past .pdf-sentence-text {
+  opacity: 0.62;
+}
+
+.pdf-sentence-page {
+  padding-top: 4px;
+  color: var(--pdf-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+}
+
+.pdf-sentence-text {
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+  transition:
+    filter 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.pdf-sentence-row.is-blind .pdf-sentence-text {
+  filter: blur(5px);
+  user-select: none;
+}
+
+/* 悬停、键盘聚焦和点击偷看都只临时揭开当前句 */
+.pdf-sentence-row.is-blind:hover .pdf-sentence-text,
+.pdf-sentence-row.is-blind:focus-visible .pdf-sentence-text {
+  filter: none;
+}
+
+.pdf-sentence-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-top: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.pdf-sentence-row:hover .pdf-sentence-actions,
+.pdf-sentence-row.is-active .pdf-sentence-actions {
+  opacity: 1;
+}
+
+.pdf-row-action {
+  display: inline-flex;
+  height: 24px;
+  width: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--pdf-muted);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pdf-row-action:hover {
+  background: var(--pdf-accent-soft);
+  color: var(--pdf-accent);
+}
+
+.pdf-word {
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.pdf-word:hover {
+  background: hsl(var(--primary) / 0.14);
+}
+
+.pdf-word.is-saved {
+  color: var(--pdf-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+
+.pdf-listen-hint {
+  flex-shrink: 0;
+  padding-top: 6px;
+  color: var(--pdf-muted);
+  font-size: 11px;
+  text-align: center;
+}

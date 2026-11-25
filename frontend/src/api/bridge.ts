@@ -70,6 +70,20 @@ import {
 } from '../../bindings/aling-go/internal/content/libraryservice'
 
 import {
+  PDFImport,
+  PDFList,
+  PDFLoad,
+  PDFRemove,
+  PDFUpdateProgress,
+} from '../../bindings/aling-go/internal/content/pdfservice'
+
+import {
+  InstallLocalTTS,
+  SynthesizeSentence,
+  TTSStatus,
+} from '../../bindings/aling-go/internal/tts/service'
+
+import {
   GetWaveformData,
   GetMediaPort,
   GetBilibiliStream,
@@ -275,6 +289,19 @@ export function initBridge(): void {
     folderDelete: (id: string) => FolderDelete(id).then((folders) => folders ?? []),
     folderRename: (id: string, name: string) =>
       FolderRename(id, name).then((folders) => folders ?? []),
+
+    pdfImport: (path: string) => PDFImport(path),
+    pdfList: () => PDFList().then((rows) => rows ?? []),
+    pdfLoad: (path: string) => PDFLoad(path),
+    pdfRemove: (path: string) => PDFRemove(path),
+    pdfUpdateProgress: (path: string, sentenceIndex: number) =>
+      PDFUpdateProgress(path, sentenceIndex),
+
+    ttsSynthesize: (text: string, voice: string) => SynthesizeSentence(text, voice),
+    ttsStatus: () => TTSStatus(),
+    installLocalTTS: (voice: string) => InstallLocalTTS(voice),
+    ttsOnInstallProgress: (cb: (data: any) => void) =>
+      Events.On('tts:install-progress', (e: any) => cb(e.data)),
 
     openExternal: (path: string) => OpenExternal(path),
 

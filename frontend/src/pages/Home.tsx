@@ -330,7 +330,8 @@ export default function HomePage() {
 
   const handleOpenFile = async (file: LibraryFile) => {
     if (file.type === 'pdf') {
-      await window.api.openExternal(file.path)
+      // PDF 不再交给系统阅读器，直接进入逐句 TTS 精听页
+      navigate('/pdf-listen', { state: { path: file.path, name: file.name } })
       return
     }
     // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库

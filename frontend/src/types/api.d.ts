@@ -47,6 +47,11 @@ import type {
   CacheEntry,
   CacheStats,
   CacheClearResult,
+  PDFDocument,
+  PDFDocumentSummary,
+  PDFImportResult,
+  PDFLoadResult,
+  PDFSentence,
 } from '../../bindings/aling-go/internal/content/models'
 import type {
   AIConfig,
@@ -60,6 +65,13 @@ import type {
   UpdateResult,
   UpdateState,
 } from '../../bindings/aling-go/internal/system/models'
+import type {
+  EngineStatus,
+  InstallProgress,
+  InstallResult,
+  SynthesizeResult,
+  Voice,
+} from '../../bindings/aling-go/internal/tts/models'
 
 export type {
   Word,
@@ -107,6 +119,11 @@ export type {
   CacheEntry,
   CacheStats,
   CacheClearResult,
+  PDFDocument,
+  PDFDocumentSummary,
+  PDFImportResult,
+  PDFLoadResult,
+  PDFSentence,
   AIConfig,
   AIConfigView,
   AIExplainResult,
@@ -117,6 +134,11 @@ export type {
   UpdateInfo,
   UpdateResult,
   UpdateState,
+  EngineStatus,
+  InstallProgress,
+  InstallResult,
+  SynthesizeResult,
+  Voice,
 }
 
 // 旧代码沿用的命名，语义与 bindings 一致
@@ -225,6 +247,19 @@ export interface ElectronAPI {
   folderCreate: (name: string, parentId: string) => Promise<Folder[]>
   folderDelete: (id: string) => Promise<Folder[]>
   folderRename: (id: string, name: string) => Promise<Folder[]>
+
+  // PDF 精听
+  pdfImport: (path: string) => Promise<PDFImportResult>
+  pdfList: () => Promise<PDFDocumentSummary[]>
+  pdfLoad: (path: string) => Promise<PDFLoadResult>
+  pdfRemove: (path: string) => Promise<void>
+  pdfUpdateProgress: (path: string, sentenceIndex: number) => Promise<void>
+
+  // TTS
+  ttsSynthesize: (text: string, voice: string) => Promise<SynthesizeResult>
+  ttsStatus: () => Promise<EngineStatus>
+  installLocalTTS: (voice: string) => Promise<InstallResult>
+  ttsOnInstallProgress: (cb: (data: InstallProgress) => void) => () => void
 
   openExternal: (path: string) => Promise<void>
 

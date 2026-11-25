@@ -33,10 +33,20 @@ type LibraryService struct {
 	app     *application.App
 	dataDir string
 	mu      sync.Mutex
+	// pdfSvc 在 bootstrap 中注入，避免 LibraryService → PDFService 循环依赖。
+	// 为 nil 时 PDF 相关的联动操作会静默跳过（纯 JSON 读写不受影响）。
+	pdfSvc *PDFService
 }
 
 func NewLibraryService(app *application.App, dataDir string) *LibraryService {
 	return &LibraryService{app: app, dataDir: dataDir}
+}
+
+// SetPDFService 在 bootstrap 中注册 PDFService 后调用，注入 PDF 索引联动能力。
+// 故意不用构造注入——PDFService 注册晚于 LibraryService，且 feedSvc/mediaSvc/whisperSvc 等下游依赖
+// 也提前构造了 LibraryService 的实例，改构造函数签名会牵扯一串调用方。
+func (s *LibraryService) SetPDFService(svc *PDFService) {
+	s.pdfSvc = svc
 }
 
 func (s *LibraryService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -124,15 +134,30 @@ func (s *LibraryService) LibraryImportPaths(paths []string, folderID string) Lib
 }
 
 // ImportFiles 是 importFiles 的公开加锁版本，供其他服务（如 FeedService）调用。
+// PDF 索引在锁外执行，避免解析/落库长时间占用 library.json 写锁，影响媒体库其它读写。
 func (s *LibraryService) ImportFiles(files []string, folderID string) LibraryImportResult {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.importFiles(files, folderID)
+	var result LibraryImportResult
+	var pdfPaths []string
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		result, pdfPaths = s.importFiles(files, folderID)
+	}()
+	// 锁外：逐个索引 PDF。importPDFFile 内部自己有 pdfIndexMu 串行化，
+	// 不与 s.mu 交叉，不会产生锁反转。
+	for _, file := range pdfPaths {
+		if _, err := importPDFFile(s.dataDir, file); err != nil {
+			loggerOf(s.app).Warn("pdf index on import", "path", file, "error", err)
+		}
+	}
+	return result
 }
 
-func (s *LibraryService) importFiles(files []string, folderID string) LibraryImportResult {
+// importFiles 只做 library.json 读写 + PDF 路径收集，不碰 PDF 解析/DB。
+func (s *LibraryService) importFiles(files []string, folderID string) (LibraryImportResult, []string) {
 	lib := s.readLibrary()
 	var imported, skipped, dropped int
+	var pdfPaths []string
 	for _, file := range files {
 		if containsFile(lib.Files, file) {
 			skipped++
@@ -159,28 +184,47 @@ func (s *LibraryService) importFiles(files []string, folderID string) LibraryImp
 			AddedAt:  time.Now().Format(time.RFC3339),
 		})
 		imported++
-	}
-	s.writeLibrary(lib)
-	return LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped, Dropped: dropped}
-}
-
-func (s *LibraryService) LibraryRemove(paths []string) []LibraryFile {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	pathSet := make(map[string]bool, len(paths))
-	for _, p := range paths {
-		pathSet[p] = true
-	}
-	lib := s.readLibrary()
-	filtered := make([]LibraryFile, 0, len(lib.Files))
-	for _, f := range lib.Files {
-		if !pathSet[f.Path] {
-			filtered = append(filtered, f)
+		if ftype == "pdf" {
+			pdfPaths = append(pdfPaths, file)
 		}
 	}
-	lib.Files = filtered
 	s.writeLibrary(lib)
-	return lib.Files
+	return LibraryImportResult{Files: lib.Files, Imported: imported, Skipped: skipped, Dropped: dropped}, pdfPaths
+}
+
+// LibraryRemove 从媒体库移除文件。被移除的 PDF 会联动清理句子索引，
+// 保持 pdf_documents / pdf_sentences 与媒体库条目一致。
+// PDF 清理在锁外执行，避免 DB 操作长时间占用 library.json 写锁。
+func (s *LibraryService) LibraryRemove(paths []string) []LibraryFile {
+	var result []LibraryFile
+	var pdfToRemove []string
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		pathSet := make(map[string]bool, len(paths))
+		for _, p := range paths {
+			pathSet[p] = true
+		}
+		lib := s.readLibrary()
+		filtered := make([]LibraryFile, 0, len(lib.Files))
+		for _, f := range lib.Files {
+			if !pathSet[f.Path] {
+				filtered = append(filtered, f)
+			} else if f.Type == "pdf" {
+				pdfToRemove = append(pdfToRemove, f.Path)
+			}
+		}
+		lib.Files = filtered
+		s.writeLibrary(lib)
+		result = lib.Files
+	}()
+	// 锁外：清理 PDF 索引。pdfSvc 为 nil（启动早期顺序问题）时静默跳过。
+	if s.pdfSvc != nil {
+		for _, path := range pdfToRemove {
+			s.pdfSvc.PDFRemove(path)
+		}
+	}
+	return result
 }
 
 func (s *LibraryService) LibraryRename(path, newName string) LibraryData {

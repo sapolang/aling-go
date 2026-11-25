@@ -16,6 +16,7 @@ import (
 	"aling-go/internal/core"
 	"aling-go/internal/study"
 	"aling-go/internal/system"
+	"aling-go/internal/tts"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -105,6 +106,9 @@ func newAppOptions(assets embed.FS) application.Options {
 
 func registerServices(app *application.App, dataDir string, store *config.Store, version string) {
 	librarySvc := content.NewLibraryService(app, dataDir)
+	pdfSvc := content.NewPDFService(app, dataDir)
+	librarySvc.SetPDFService(pdfSvc) // 移除 PDF 条目时联动清理句子索引。
+
 	feedSvc := content.NewFeedService(app, dataDir, librarySvc, store)
 	whisperSvc := content.NewWhisperService(app, dataDir, store)
 	// YouTube 无字幕时复用本地 Whisper 转录音轨
@@ -120,6 +124,8 @@ func registerServices(app *application.App, dataDir string, store *config.Store,
 		application.NewService(study.NewFavoriteService(app)),
 		application.NewService(content.NewArticleService(app)),
 		application.NewService(librarySvc),
+		application.NewService(pdfSvc),
+		application.NewService(tts.NewService(app, dataDir)),
 		application.NewService(content.NewHistoryService(app)),
 		application.NewService(feedSvc),
 		application.NewService(platformSvc),
