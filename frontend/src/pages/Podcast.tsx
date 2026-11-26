@@ -30,16 +30,32 @@ import {
   PlayCircle,
 } from 'lucide-react'
 
-// 推荐订阅源，都是公开发布的 RSS，不依赖任何私有接口
-// BBC 与 TED 的源在国内网络直连经常超时，需要在播客页配置代理后使用
+// 推荐订阅源：播客走公开 RSS，B站链接由后端解析 mid 后调官方接口（不依赖 RSSHub），
+// YouTube 频道使用官方 videos.xml（Atom）。均为公开源，不依赖私有接口。
+// YouTube 源在国内直连通常不通，需在播客页配置代理后订阅；B站匿名访问偶发风控，可扫码登录后再试。
 const recommendedFeeds = [
-  { name: 'BBC 6 Minute English', url: 'https://podcasts.files.bbci.co.uk/p02pc9tn.rss' },
-  { name: 'TED Talks Daily', url: 'https://feeds.acast.com/public/shows/ted-talks-daily' },
-  { name: 'NPR News Now', url: 'https://feeds.npr.org/500005/podcast.xml' },
-  { name: 'ESL Pod', url: 'https://www.eslpod.com/feed.xml' },
+  // 英语学习播客（RSS）
+  { name: 'Culips English Podcast', url: 'https://esl.culips.com/feed/podcast/' },
+  { name: 'All Ears English', url: 'https://allearsenglish.libsyn.com/rss' },
   {
-    name: "Luke's English Podcast",
-    url: 'https://feeds.acast.com/public/shows/62b0ada25c7ea10012f541cb',
+    name: 'English Learning for Curious Minds',
+    url: 'https://feeds.transistor.fm/leonardo-english-english-language-learning-for-curious-minds',
+  },
+  { name: 'Espresso English', url: 'https://espressoenglish.libsyn.com/rss' },
+  { name: 'NPR News Now', url: 'https://feeds.npr.org/500005/podcast.xml' },
+  // B站 UP主（使用空间链接，后端直接调 B站官方接口）
+  { name: 'B站·英语兔', url: 'https://space.bilibili.com/483162496' },
+  { name: 'B站·瑞秋英语', url: 'https://space.bilibili.com/631186842' },
+  { name: 'B站·Real麦克老师', url: 'https://space.bilibili.com/19859602' },
+  { name: 'B站·马思瑞', url: 'https://space.bilibili.com/24801003' },
+  // YouTube 频道（Atom feed，需代理）
+  {
+    name: 'YT·Rachel’s English',
+    url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCvn_XCl_mgQmt3sD753zdJA',
+  },
+  {
+    name: 'YT·English with Lucy',
+    url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCz4tgANd4yy8Oe0iXCdSWfA',
   },
 ]
 
