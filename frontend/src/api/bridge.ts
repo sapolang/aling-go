@@ -124,6 +124,7 @@ import {
   SetRSSHubURL,
   GetSubtitles,
   GetSubtitlesBySource,
+  TranscribeBySource as PlatformTranscribeBySource,
   WarmAudio as PlatformWarmAudio,
   TranscribePodcast as PlatformTranscribePodcast,
 } from '../../bindings/aling-go/internal/content/platformservice'
@@ -266,6 +267,8 @@ export function initBridge(): void {
     platformGetSubtitles: (episodeId: number) => GetSubtitles(episodeId),
     platformGetSubtitlesBySource: (sourceKind: string, videoID: string) =>
       GetSubtitlesBySource(sourceKind, videoID),
+    platformTranscribeBySource: (sourceKind: string, videoID: string, force: boolean) =>
+      PlatformTranscribeBySource(sourceKind, videoID, force),
     platformWarmAudio: (sourceKind: string, videoID: string) =>
       PlatformWarmAudio(sourceKind, videoID),
     platformTranscribePodcast: (episodeId: number, force: boolean) =>

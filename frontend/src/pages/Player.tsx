@@ -92,8 +92,8 @@ export default function PlayerPage() {
   const dragStateRef = useRef({ active: false, anchor: -1, current: -1 })
   const autoSubtitleRef = useRef<string | null>(null)
 
-  // 在线视频统一在这里自动加载字幕：后端先取官方字幕，缺失时再走 Whisper。
-  // 历史、订阅、粘贴链接等入口最终都停留在播放页，集中处理可以避免有的入口必须先点「转录」。
+  // 在线视频自动加载的只有平台现成字幕；没有字幕就保持空，由用户点「转录字幕」再跑 Whisper。
+  // 历史、订阅、粘贴链接等入口最终都停留在播放页，集中处理避免重复加载官方字幕。
   useEffect(() => {
     if (!filePath) return
     if (sourceKind !== 'youtube' && sourceKind !== 'bilibili') return
@@ -106,10 +106,7 @@ export default function PlayerPage() {
     let cancelled = false
     const st = usePlayerStore.getState()
 
-    // 后台预热音轨：与字幕加载并发执行，后端按视频去重，不会重复下载。
-    // 即使 Whisper 模型还没下载，音轨也会先备好，用户下好模型点转录时直接命中。
     const bareId = sourceKey.replace(/^(yt:|bili:)/, '')
-    void window.api.platformWarmAudio(sourceKind, bareId).catch(() => {})
 
     st.setTranscribing(true)
     st.setTranscriptionProgress(-1)

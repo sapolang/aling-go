@@ -19,8 +19,8 @@ import (
 )
 
 // PlatformService 处理 YouTube / Bilibili 的链接解析与字幕抓取。
-// YouTube 字幕交给 yt-dlp，视频没有字幕轨道时用本地 Whisper 转录音轨；B 站调官方公开 API。
-// 订阅层面仍然复用 FeedService，本服务只做「链接转换」和「字幕获取」两件事。
+// 自动流程只抓平台现成字幕：YouTube 交给 yt-dlp，B 站调官方公开 API。
+// 本地 Whisper 转录只在用户点「转录字幕」时触发（TranscribeBySource）。
 type PlatformService struct {
 	app     *application.App
 	feed    *FeedService
@@ -416,8 +416,63 @@ func (s *PlatformService) GetSubtitlesBySource(sourceKind, videoID string) Platf
 	return s.subtitlesByPlatform(kind, id)
 }
 
-// WarmAudioResult 音轨预热结果。前端在打开在线视频播放器时调用，
-// 提前把音轨下载并转成 16kHz WAV，点「转录」时直接命中，省掉下载等待。
+// TranscribeBySource 手动生成字幕：优先复用缓存与平台现成字幕，都没有时下载音轨走本地 Whisper。
+// 与 GetSubtitlesBySource 的区别是允许触发本地转录，只应由用户点击「转录字幕」调用。
+// force 用于显式重新转录：跳过缓存，但仍有现成字幕时优先采用。
+func (s *PlatformService) TranscribeBySource(sourceKind, videoID string, force bool) PlatformSubtitlesResult {
+	kind, id, err := normalizePlatformSource(sourceKind, videoID)
+	if err != nil {
+		return PlatformSubtitlesResult{Error: err.Error()}
+	}
+	result := func() PlatformSubtitlesResult {
+		return PlatformSubtitlesResult{Platform: kindLabel(kind), VideoID: id}
+	}
+
+	cachePath := s.platformSubtitleCachePath(kind, id)
+	if !force {
+		if raw, err := os.ReadFile(cachePath); err == nil {
+			var cached []SubtitleCue
+			if json.Unmarshal(raw, &cached) == nil && len(cached) > 0 {
+				r := result()
+				r.OK, r.Cues = true, cached
+				return r
+			}
+		}
+	}
+
+	cues, subErr := s.fetchSubtitleTrack(kind, id)
+	if len(cues) == 0 {
+		var trErr error
+		switch kind {
+		case platformYouTube:
+			cues, trErr = s.transcribeYouTubeAudio(strings.TrimPrefix(id, "video:"))
+		case platformBilibili:
+			bvid, cid := splitBiliVideoID(id)
+			cues, trErr = s.transcribeBilibiliAudio(bvid, cid)
+		default:
+			trErr = fmt.Errorf("不支持的平台链接")
+		}
+		if trErr == nil && len(cues) == 0 {
+			trErr = fmt.Errorf("未识别到语音，请在设置页检查模型与语言配置")
+		}
+		if trErr != nil {
+			r := result()
+			r.Error = fmt.Sprintf("无官方字幕（%v），本地转录失败（%v）", subErr, trErr)
+			return r
+		}
+	}
+
+	if raw, err := json.Marshal(cues); err == nil {
+		_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+		_ = os.WriteFile(cachePath, raw, 0644)
+	}
+	r := result()
+	r.OK, r.Cues = true, cues
+	return r
+}
+
+// WarmAudioResult 音轨预热结果。可选地把音轨下载并转成 16kHz WAV，
+// 供后续转录直接命中；自动加载字幕不再调用它，避免为不需要转录的视频下载音频。
 type WarmAudioResult struct {
 	OK      bool   `json:"ok"`
 	Ready   bool   `json:"ready"`
@@ -511,10 +566,10 @@ func normalizePlatformSource(sourceKind, videoID string) (platformKind, string, 
 	return kind, videoID, nil
 }
 
-// subtitlesByPlatform 按平台 + 视频 ID 取字幕：先读缓存，再抓官方字幕，最后兜底本地转录
+// subtitlesByPlatform 按平台 + 视频 ID 取字幕：只读缓存、抓官方字幕，不触发本地转录。
+// 本地转录由用户点击「转录字幕」走 TranscribeBySource。
 func (s *PlatformService) subtitlesByPlatform(kind platformKind, id string) PlatformSubtitlesResult {
-	cacheKey := md5Hash("platform:" + kindLabel(kind) + ":" + id)
-	cachePath := filepath.Join(s.dataDir, "subtitle-cache", cacheKey+".json")
+	cachePath := s.platformSubtitleCachePath(kind, id)
 
 	var cues []SubtitleCue
 	if raw, err := os.ReadFile(cachePath); err == nil {
@@ -526,16 +581,13 @@ func (s *PlatformService) subtitlesByPlatform(kind platformKind, id string) Plat
 
 	if len(cues) == 0 {
 		var err error
-		switch kind {
-		case platformYouTube:
-			cues, err = s.fetchYouTubeSubtitles(id)
-		case platformBilibili:
-			cues, err = s.fetchBilibiliSubtitles(id)
-		default:
-			err = fmt.Errorf("不支持的平台链接")
-		}
+		cues, err = s.fetchSubtitleTrack(kind, id)
 		if err != nil {
-			return PlatformSubtitlesResult{Error: err.Error(), Platform: kindLabel(kind)}
+			return PlatformSubtitlesResult{
+				Error:    fmt.Sprintf("该视频没有官方字幕（%v），可点击「转录字幕」生成", err),
+				Platform: kindLabel(kind),
+				VideoID:  id,
+			}
 		}
 
 		if raw, err := json.Marshal(cues); err == nil {
@@ -552,6 +604,25 @@ func (s *PlatformService) subtitlesByPlatform(kind platformKind, id string) Plat
 	}
 }
 
+// platformSubtitleCachePath 是官方字幕与手动转录共用的缓存位置：
+// 手动生成一次后，下次打开视频也能直接命中，不再重复下载音轨。
+func (s *PlatformService) platformSubtitleCachePath(kind platformKind, id string) string {
+	cacheKey := md5Hash("platform:" + kindLabel(kind) + ":" + id)
+	return filepath.Join(s.dataDir, "subtitle-cache", cacheKey+".json")
+}
+
+// fetchSubtitleTrack 只抓平台现成字幕轨，不做本地转录。
+func (s *PlatformService) fetchSubtitleTrack(kind platformKind, id string) ([]SubtitleCue, error) {
+	switch kind {
+	case platformYouTube:
+		return s.fetchYouTubeSubtitles(id)
+	case platformBilibili:
+		return s.fetchBilibiliSubtitles(id)
+	default:
+		return nil, fmt.Errorf("不支持的平台链接")
+	}
+}
+
 func kindLabel(k platformKind) string {
 	switch k {
 	case platformYouTube:
@@ -562,24 +633,13 @@ func kindLabel(k platformKind) string {
 	return "unknown"
 }
 
-// fetchYouTubeSubtitles 先由 yt-dlp 取现成字幕，取不到时下载音轨走本地 Whisper 转录
+// fetchYouTubeSubtitles 只由 yt-dlp 抓取现成字幕；本地转录由用户点击「转录字幕」触发。
 func (s *PlatformService) fetchYouTubeSubtitles(id string) ([]SubtitleCue, error) {
 	videoID := strings.TrimPrefix(id, "video:")
 	if len(videoID) != 11 {
 		return nil, fmt.Errorf("无效的 YouTube 视频 ID")
 	}
-
-	cues, subErr := s.fetchYouTubeSubtitlesViaYtDlp(videoID)
-	if subErr == nil && len(cues) > 0 {
-		return cues, nil
-	}
-	s.app.Logger.Info("YouTube 字幕抓取失败，尝试本地转录", "videoId", videoID, "error", subErr)
-
-	cues, trErr := s.transcribeYouTubeAudio(videoID)
-	if trErr == nil && len(cues) > 0 {
-		return cues, nil
-	}
-	return nil, fmt.Errorf("YouTube 无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
+	return s.fetchYouTubeSubtitlesViaYtDlp(videoID)
 }
 
 // splitBiliVideoID 把内部标识 "bv:<bvid>" 或 "bv:<bvid>:<cid>" 拆成 bvid 与 cid。
@@ -596,24 +656,13 @@ func splitBiliVideoID(id string) (string, int64) {
 	return id, 0
 }
 
-// fetchBilibiliSubtitles 先抓 B站字幕，接口连续未返回字幕时下载音轨走本地 Whisper 转录。
+// fetchBilibiliSubtitles 只抓 B站现成字幕；本地转录由用户点击「转录字幕」触发。
 func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, error) {
 	bvid, cid := splitBiliVideoID(id)
 	if bvid == "" || !strings.HasPrefix(bvid, "BV") {
 		return nil, fmt.Errorf("无效的 B站视频 ID")
 	}
-
-	cues, subErr := s.fetchBilibiliSubtitleTrack(bvid, cid)
-	if subErr == nil && len(cues) > 0 {
-		return cues, nil
-	}
-	s.app.Logger.Info("B站字幕抓取失败，尝试本地转录", "bvid", bvid, "cid", cid, "error", subErr)
-
-	cues, trErr := s.transcribeBilibiliAudio(bvid, cid)
-	if trErr == nil && len(cues) > 0 {
-		return cues, nil
-	}
-	return nil, fmt.Errorf("B站无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
+	return s.fetchBilibiliSubtitleTrack(bvid, cid)
 }
 
 func (s *PlatformService) fetchBilibiliSubtitleTrack(bvid string, cid int64) ([]SubtitleCue, error) {

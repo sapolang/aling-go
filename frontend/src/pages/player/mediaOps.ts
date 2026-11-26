@@ -31,8 +31,8 @@ interface TranscriptionCallbacks {
 }
 
 /**
- * 启动字幕转录：
- * - YouTube/B站 走平台接口（官方字幕优先，抓不到再下载音轨转录）；
+ * 启动字幕转录（用户手动点击触发）：
+ * - YouTube/B站 走平台转录接口（官方字幕优先，没有才下载音轨跑本地 Whisper）；
  * - 已订阅播客按 episodeID 转录；
  * - 本地文件直接调 Whisper。
  */
@@ -105,13 +105,14 @@ export async function startTranscription(
   try {
     let subs: SubtitleItem[]
     if (platformVideo) {
-      // 平台接口会先抓官方字幕，抓不到再下载音轨做本地转录
+      // 手动转录：官方字幕优先，没有时后端才下载音轨跑本地 Whisper。
+      // 订阅视频同样有稳定的 historyKey，和粘贴链接走同一条链路。
       const sourceKey = (st.historyKey || st.filePath || '').replace(/^(yt:|bili:)/, '')
-      const result = (
-        st.mediaEpisodeID > 0
-          ? await window.api.platformGetSubtitles(st.mediaEpisodeID)
-          : await window.api.platformGetSubtitlesBySource(st.sourceKind, sourceKey)
-      ) as PlatformSubtitleResult
+      const result = (await window.api.platformTranscribeBySource(
+        st.sourceKind,
+        sourceKey,
+        force,
+      )) as PlatformSubtitleResult
       if (!result.ok) throw new Error(result.error || '转录失败')
       subs = (result.cues || []).map((c: PlatformSubtitleCue, i: number) => ({
         id: i,

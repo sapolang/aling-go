@@ -301,6 +301,11 @@ export interface ElectronAPI {
     sourceKind: string,
     videoID: string,
   ) => Promise<PlatformSubtitlesResult>
+  platformTranscribeBySource: (
+    sourceKind: string,
+    videoID: string,
+    force: boolean,
+  ) => Promise<PlatformSubtitlesResult>
   platformWarmAudio: (sourceKind: string, videoID: string) => Promise<WarmAudioResult>
   platformTranscribePodcast: (episodeId: number, force: boolean) => Promise<PodcastTranscribeResult>
 
