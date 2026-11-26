@@ -137,34 +137,42 @@ func (s *FeedService) fetchBilibiliFeed(mid string) (*feedMeta, error) {
 		return nil, err
 	}
 
+	name, face := s.bilibiliUploaderInfo(mid)
 	return &feedMeta{
-		title:    "Bilibili UP主 " + mid,
+		title:    bilibiliFeedTitle(name, mid),
 		desc:     "B站视频列表",
-		image:    s.bilibiliUploaderFace(mid),
+		image:    face,
 		siteURL:  "https://space.bilibili.com/" + mid,
 		episodes: episodes,
 	}, nil
 }
 
-// bilibiliUploaderFace 取 UP 主头像作为订阅列表封面，失败时返回空串（前端回退到通用图标）
-func (s *FeedService) bilibiliUploaderFace(mid string) string {
+// bilibiliFeedTitle 优先使用 UP 主昵称作为订阅标题；昵称获取失败时回退到 mid，
+// 避免接口风控导致订阅失败或显示无意义的名字。
+func bilibiliFeedTitle(name, mid string) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	return "Bilibili UP主 " + mid
+}
+
+// bilibiliUploaderInfo 取 UP 主昵称与头像作为订阅标题和封面。
+// 失败时返回空串，由调用方回退，不阻断订阅流程。
+func (s *FeedService) bilibiliUploaderInfo(mid string) (name, face string) {
 	var out struct {
 		Code int `json:"code"`
 		Data struct {
 			Card struct {
+				Name string `json:"name"`
 				Face string `json:"face"`
 			} `json:"card"`
 		} `json:"data"`
 	}
 	api := "https://api.bilibili.com/x/web-interface/card?mid=" + url.QueryEscape(mid)
 	if err := fetchBiliJSON(s.httpClient(), s.bilibiliCookie(), api, &out); err != nil || out.Code != 0 {
-		return ""
+		return "", ""
 	}
-	face := strings.TrimSpace(out.Data.Card.Face)
-	if strings.HasPrefix(face, "http://") {
-		face = "https://" + strings.TrimPrefix(face, "http://")
-	}
-	return face
+	return strings.TrimSpace(out.Data.Card.Name), normalizeBilibiliPic(out.Data.Card.Face)
 }
 
 // bilibiliRiskHint 生成风控相关提示：未配置登录 Cookie 时引导扫码登录
