@@ -376,7 +376,13 @@ func (s *LibraryService) RecentAdd(filePath string) []RecentEntry {
 	found := false
 	for i, f := range lib.Files {
 		if f.Path == filePath {
-			lib.Files = append([]LibraryFile{lib.Files[i]}, append(lib.Files[:i], lib.Files[i+1:]...)...)
+			// 先把命中项单独取出，再基于原切片重新拼一份，避免原地 append 改写底层数组：
+			// 原地写法会先覆盖 lib.Files[i]，导致该项丢失、后一项被复制成两份。
+			moved := make([]LibraryFile, 0, len(lib.Files))
+			moved = append(moved, f)
+			moved = append(moved, lib.Files[:i]...)
+			moved = append(moved, lib.Files[i+1:]...)
+			lib.Files = moved
 			found = true
 			break
 		}
