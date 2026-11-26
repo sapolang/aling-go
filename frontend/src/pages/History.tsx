@@ -82,18 +82,28 @@ export default function HistoryPage() {
       return
     }
     if (entry.kind === 'bilibili') {
-      // sourceUrl 是可打开的页面地址，取流仍用内部标识里的 BV 号
-      const bvid = entry.mediaKey.replace(/^bili:/, '')
-      const res = await window.api.getBilibiliStream(bvid)
+      // 内部标识形如 bili:<bvid> 或 bili:<bvid>:<cid>，cid 用于恢复指定分 P
+      const raw = entry.mediaKey.replace(/^bili:/, '')
+      const [bvid, cidStr] = raw.split(':')
+      const cid = cidStr ? Number(cidStr) || 0 : 0
+      const res = await window.api.getBilibiliStream(bvid, cid)
       if (!res.ok || !res.url) {
         showToast(res.error || '获取 B站 播放地址失败', 'error')
         return
       }
+      const parts = (res.parts || []).map((p) => ({
+        cid: p.cid,
+        page: p.page,
+        title: p.title,
+        duration: p.duration,
+      }))
       player.setFilePath(res.url, entry.title, entry.episodeId, {
         ...meta,
         sourceKind: 'bilibili',
         mediaKind: 'video',
         historyKey: entry.mediaKey,
+        biliParts: parts,
+        biliCID: res.cid || 0,
       })
       if (res.duration > 0) player.setDuration(res.duration)
       navigate('/player', { state: { from: '/history' } })

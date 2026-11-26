@@ -43,6 +43,7 @@ import type {
   BiliStreamResult,
   BiliQRLoginResult,
   PodcastTranscribeResult,
+  WarmAudioResult,
   RSSConvertResult,
   CacheEntry,
   CacheStats,
@@ -115,6 +116,7 @@ export type {
   BiliStreamResult,
   BiliQRLoginResult,
   PodcastTranscribeResult,
+  WarmAudioResult,
   RSSConvertResult,
   CacheEntry,
   CacheStats,
@@ -279,13 +281,13 @@ export interface ElectronAPI {
   feedAdd: (url: string) => Promise<ActionResult>
   feedRemove: (id: number, deleteDownloads: boolean) => Promise<ActionResult>
   feedRefresh: (id: number) => Promise<ActionResult>
-  feedEpisodes: (id: number, limit: number) => Promise<FeedEpisodesResult>
+  feedEpisodes: (id: number, limit: number, offset: number) => Promise<FeedEpisodesResult>
   episodeDownload: (id: number) => Promise<EpisodeDownloadResult>
   feedGetProxy: () => Promise<string>
   feedSetProxy: (proxy: string) => Promise<ActionResult>
   feedGetBilibiliCookie: () => Promise<string>
   feedSetBilibiliCookie: (cookie: string) => Promise<ActionResult>
-  getBilibiliStream: (bvid: string) => Promise<BiliStreamResult>
+  getBilibiliStream: (bvid: string, cid?: number) => Promise<BiliStreamResult>
   feedStartBilibiliQRLogin: () => Promise<BiliQRLoginResult>
   feedPollBilibiliQRLogin: (key: string) => Promise<BiliQRLoginResult>
   feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => () => void
@@ -299,6 +301,7 @@ export interface ElectronAPI {
     sourceKind: string,
     videoID: string,
   ) => Promise<PlatformSubtitlesResult>
+  platformWarmAudio: (sourceKind: string, videoID: string) => Promise<WarmAudioResult>
   platformTranscribePodcast: (episodeId: number, force: boolean) => Promise<PodcastTranscribeResult>
 
   // Favorites

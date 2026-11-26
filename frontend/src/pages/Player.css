@@ -180,6 +180,93 @@
   height: 14px;
 }
 
+/* B站分 P 选择器 */
+.pp-part-picker {
+  position: relative;
+}
+
+.pp-part-picker .pp-ghost-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pp-part-chevron {
+  width: 12px !important;
+  height: 12px !important;
+  opacity: 0.7;
+}
+
+.pp-part-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 300px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--pp-line);
+  background: var(--pp-panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.pp-part-menu-title {
+  padding: 6px 8px 8px;
+  font-size: 11px;
+  color: var(--pp-dim);
+}
+
+.pp-part-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pp-muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pp-part-item:hover {
+  background: var(--pp-hover);
+  color: var(--pp-ink);
+}
+
+.pp-part-item--active {
+  background: var(--pp-hover);
+  color: var(--pp-ink);
+}
+
+.pp-part-index {
+  flex-shrink: 0;
+  min-width: 20px;
+  color: var(--pp-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-part-item--active .pp-part-index {
+  color: var(--pp-ink);
+}
+
+.pp-part-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-part-dur {
+  flex-shrink: 0;
+  color: var(--pp-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Layout ---------- */
 
 .pp-main {

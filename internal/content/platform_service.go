@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,14 +29,26 @@ type PlatformService struct {
 
 	mu        sync.RWMutex
 	rssHubURL string
+
+	// audioMu / audioFlights 让同一条音轨的预热与转录共享下载+转码，避免并发踩同一个缓存文件。
+	audioMu      sync.Mutex
+	audioFlights map[string]*audioFlight
+}
+
+// audioFlight 是一次音轨准备（下载 + 转码）的共享结果。
+type audioFlight struct {
+	done    chan struct{}
+	wavPath string
+	err     error
 }
 
 func NewPlatformService(app *application.App, dataDir string, feed *FeedService, whisper *WhisperService) *PlatformService {
 	return &PlatformService{
-		app:     app,
-		feed:    feed,
-		whisper: whisper,
-		dataDir: dataDir,
+		app:          app,
+		feed:         feed,
+		whisper:      whisper,
+		dataDir:      dataDir,
+		audioFlights: make(map[string]*audioFlight),
 	}
 }
 
@@ -396,6 +409,87 @@ func (s *PlatformService) GetSubtitles(episodeID int64) PlatformSubtitlesResult 
 // GetSubtitlesBySource 按平台与视频 ID 直接取字幕，供粘贴链接播放使用：
 // 这类视频没有 feed_episodes 记录，不能走 GetSubtitles(episodeID)。
 func (s *PlatformService) GetSubtitlesBySource(sourceKind, videoID string) PlatformSubtitlesResult {
+	kind, id, err := normalizePlatformSource(sourceKind, videoID)
+	if err != nil {
+		return PlatformSubtitlesResult{Error: err.Error()}
+	}
+	return s.subtitlesByPlatform(kind, id)
+}
+
+// WarmAudioResult 音轨预热结果。前端在打开在线视频播放器时调用，
+// 提前把音轨下载并转成 16kHz WAV，点「转录」时直接命中，省掉下载等待。
+type WarmAudioResult struct {
+	OK      bool   `json:"ok"`
+	Ready   bool   `json:"ready"`
+	Error   string `json:"error,omitempty"`
+	Kind    string `json:"kind,omitempty"`
+	VideoID string `json:"videoId,omitempty"`
+}
+
+// WarmAudio 后台预下载并转码在线视频音轨。
+// 与转录共用同一份缓存和并发去重：已就绪时立即返回，不重复下载。
+// 预热不需要 Whisper 模型，因此模型未下载时也能先把音轨准备好。
+func (s *PlatformService) WarmAudio(sourceKind, videoID string) WarmAudioResult {
+	kind, id, err := normalizePlatformSource(sourceKind, videoID)
+	if err != nil {
+		return WarmAudioResult{Error: err.Error()}
+	}
+
+	var videoURL, eventKey string
+	switch kind {
+	case platformYouTube:
+		videoID = strings.TrimPrefix(id, "video:")
+		if len(videoID) != 11 {
+			return WarmAudioResult{Error: "无效的 YouTube 视频 ID", Kind: kindLabel(kind)}
+		}
+		videoURL = "https://www.youtube.com/watch?v=" + videoID
+		eventKey = platformSubtitleEventKey(platformYouTube, videoID)
+	case platformBilibili:
+		bvid, cid := splitBiliVideoID(id)
+		if bvid == "" || !strings.HasPrefix(bvid, "BV") {
+			return WarmAudioResult{Error: "无效的 B站视频 ID", Kind: kindLabel(kind)}
+		}
+		videoURL = "https://www.bilibili.com/video/" + bvid
+		keyID := bvid
+		if cid > 0 && s.feed != nil {
+			if page := s.feed.bilibiliPageOfCID(bvid, cid); page > 0 {
+				videoURL = fmt.Sprintf("%s?p=%d", videoURL, page)
+			}
+			keyID = fmt.Sprintf("%s:%d", bvid, cid)
+		}
+		eventKey = platformSubtitleEventKey(platformBilibili, keyID)
+		videoID = bvid
+	default:
+		return WarmAudioResult{Error: "不支持的平台", Kind: kindLabel(kind)}
+	}
+
+	// 已缓存直接返回，不必构造 Cookie，也不要求订阅服务可用
+	if wavPath := cachedOnlineWav(s.onlineAudioDir(eventKey)); wavPath != "" {
+		return WarmAudioResult{OK: true, Ready: true, Kind: kindLabel(kind), VideoID: videoID}
+	}
+
+	var extraArgs []string
+	if kind == platformBilibili && s.feed != nil {
+		cookiePath, err := bilibiliYtDlpCookieFile(s.feed.bilibiliCookie())
+		if err != nil {
+			return WarmAudioResult{Error: err.Error(), Kind: kindLabel(kind), VideoID: videoID}
+		}
+		if cookiePath != "" {
+			defer func() { _ = os.Remove(cookiePath) }()
+			extraArgs = append(extraArgs, "--cookies", cookiePath)
+		}
+	}
+
+	// 预热阶段只准备音轨，不检查 Whisper 模型是否就绪。
+	wavPath, err := s.prepareOnlineAudio(videoURL, eventKey, extraArgs...)
+	if err != nil {
+		return WarmAudioResult{Error: err.Error(), Kind: kindLabel(kind), VideoID: videoID}
+	}
+	return WarmAudioResult{OK: true, Ready: wavPath != "", Kind: kindLabel(kind), VideoID: videoID}
+}
+
+// normalizePlatformSource 归一化平台与视频 ID，供字幕获取和音轨预热共用。
+func normalizePlatformSource(sourceKind, videoID string) (platformKind, string, error) {
 	videoID = strings.TrimSpace(videoID)
 	var kind platformKind
 	switch strings.ToLower(strings.TrimSpace(sourceKind)) {
@@ -412,9 +506,9 @@ func (s *PlatformService) GetSubtitlesBySource(sourceKind, videoID string) Platf
 			videoID = "bv:" + videoID
 		}
 	default:
-		return PlatformSubtitlesResult{Error: "不支持的平台，目前仅支持 YouTube 与 B站"}
+		return platformUnknown, "", fmt.Errorf("不支持的平台，目前仅支持 YouTube 与 B站")
 	}
-	return s.subtitlesByPlatform(kind, videoID)
+	return kind, videoID, nil
 }
 
 // subtitlesByPlatform 按平台 + 视频 ID 取字幕：先读缓存，再抓官方字幕，最后兜底本地转录
@@ -488,43 +582,61 @@ func (s *PlatformService) fetchYouTubeSubtitles(id string) ([]SubtitleCue, error
 	return nil, fmt.Errorf("YouTube 无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
 }
 
+// splitBiliVideoID 把内部标识 "bv:<bvid>" 或 "bv:<bvid>:<cid>" 拆成 bvid 与 cid。
+// cid 为 0 表示未指定分 P，沿用平台默认值（P1）；带 cid 的标识用于多 P 视频的缓存隔离。
+func splitBiliVideoID(id string) (string, int64) {
+	id = strings.TrimPrefix(id, "bv:")
+	if idx := strings.LastIndex(id, ":"); idx >= 0 {
+		if cid, err := strconv.ParseInt(id[idx+1:], 10, 64); err == nil && cid > 0 {
+			return id[:idx], cid
+		}
+		// 后缀不是合法 cid 时不可能是 bvid 的一部分，去掉以避免误判为视频 ID
+		return id[:idx], 0
+	}
+	return id, 0
+}
+
 // fetchBilibiliSubtitles 先抓 B站字幕，接口连续未返回字幕时下载音轨走本地 Whisper 转录。
 func (s *PlatformService) fetchBilibiliSubtitles(id string) ([]SubtitleCue, error) {
-	bvid := strings.TrimPrefix(id, "bv:")
+	bvid, cid := splitBiliVideoID(id)
 	if bvid == "" || !strings.HasPrefix(bvid, "BV") {
 		return nil, fmt.Errorf("无效的 B站视频 ID")
 	}
 
-	cues, subErr := s.fetchBilibiliSubtitleTrack(bvid)
+	cues, subErr := s.fetchBilibiliSubtitleTrack(bvid, cid)
 	if subErr == nil && len(cues) > 0 {
 		return cues, nil
 	}
-	s.app.Logger.Info("B站字幕抓取失败，尝试本地转录", "bvid", bvid, "error", subErr)
+	s.app.Logger.Info("B站字幕抓取失败，尝试本地转录", "bvid", bvid, "cid", cid, "error", subErr)
 
-	cues, trErr := s.transcribeBilibiliAudio(bvid)
+	cues, trErr := s.transcribeBilibiliAudio(bvid, cid)
 	if trErr == nil && len(cues) > 0 {
 		return cues, nil
 	}
 	return nil, fmt.Errorf("B站无可用字幕（%v），本地转录失败（%v）", subErr, trErr)
 }
 
-func (s *PlatformService) fetchBilibiliSubtitleTrack(bvid string) ([]SubtitleCue, error) {
+func (s *PlatformService) fetchBilibiliSubtitleTrack(bvid string, cid int64) ([]SubtitleCue, error) {
 	// BV 转 cid（view 的 subtitle.list 为空，AI 字幕要走 player/v2）
 	client := s.feed.httpClient()
 	cookie := s.feed.bilibiliCookie()
 
-	var viewResp struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Data    struct {
-			Cid int `json:"cid"`
-		} `json:"data"`
-	}
-	if err := fetchBiliJSON(client, cookie, "https://api.bilibili.com/x/web-interface/view?bvid="+bvid, &viewResp); err != nil {
-		return nil, fmt.Errorf("无法访问 B站: %w", err)
-	}
-	if viewResp.Code != 0 {
-		return nil, fmt.Errorf("bilibili api error: %s", viewResp.Message)
+	trackCID := cid
+	if trackCID == 0 {
+		var viewResp struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Data    struct {
+				Cid int64 `json:"cid"`
+			} `json:"data"`
+		}
+		if err := fetchBiliJSON(client, cookie, "https://api.bilibili.com/x/web-interface/view?bvid="+bvid, &viewResp); err != nil {
+			return nil, fmt.Errorf("无法访问 B站: %w", err)
+		}
+		if viewResp.Code != 0 {
+			return nil, fmt.Errorf("bilibili api error: %s", viewResp.Message)
+		}
+		trackCID = viewResp.Data.Cid
 	}
 
 	// player/v2 才会返回 UP 主字幕与 AI 字幕（ai-zh / ai-en）。
@@ -542,7 +654,7 @@ func (s *PlatformService) fetchBilibiliSubtitleTrack(bvid string) ([]SubtitleCue
 			} `json:"subtitle"`
 		} `json:"data"`
 	}
-	playerAPI := fmt.Sprintf("https://api.bilibili.com/x/player/v2?bvid=%s&cid=%d", bvid, viewResp.Data.Cid)
+	playerAPI := fmt.Sprintf("https://api.bilibili.com/x/player/v2?bvid=%s&cid=%d", bvid, trackCID)
 	var fetchErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {

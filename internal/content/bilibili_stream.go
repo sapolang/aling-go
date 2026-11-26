@@ -18,8 +18,9 @@ import (
 
 var bvidRe = regexp.MustCompile(`^BV[0-9A-Za-z]+$`)
 
-// biliMediaHostSuffixes 允许代理的 B站 CDN 域名，避免变成任意地址的开放代理
-var biliMediaHostSuffixes = []string{".bilivideo.com", ".bilivideo.cn", ".hdslb.com"}
+// biliMediaHostSuffixes 允许代理的 B站 CDN 域名，避免变成任意地址的开放代理。
+// B站会把 durl[0].url 动态分配到 *.edge.mountaintoys.cn（每次请求随机子域），需一并放行。
+var biliMediaHostSuffixes = []string{".bilivideo.com", ".bilivideo.cn", ".hdslb.com", ".mountaintoys.cn"}
 
 var biliQualityLabels = map[int]string{
 	127: "8K",
@@ -35,15 +36,26 @@ var biliQualityLabels = map[int]string{
 	16:  "360P",
 }
 
+// BiliStreamPart 是 B站视频的一个分 P。Duration 为该 P 自身时长（秒），
+// 与 BiliStreamResult.Duration（所有 P 累加的总时长）区分。
+type BiliStreamPart struct {
+	CID      int64  `json:"cid"`
+	Page     int    `json:"page"`
+	Title    string `json:"title"`
+	Duration int    `json:"duration"`
+}
+
 type BiliStreamResult struct {
-	OK           bool   `json:"ok"`
-	URL          string `json:"url"`
-	Quality      int    `json:"quality"`
-	QualityLabel string `json:"qualityLabel"`
-	Duration     int    `json:"duration"`
-	Title        string `json:"title"`
-	Cover        string `json:"cover"`
-	Error        string `json:"error"`
+	OK           bool             `json:"ok"`
+	URL          string           `json:"url"`
+	Quality      int              `json:"quality"`
+	QualityLabel string           `json:"qualityLabel"`
+	Duration     int              `json:"duration"`
+	CID          int64            `json:"cid"`
+	Parts        []BiliStreamPart `json:"parts"`
+	Title        string           `json:"title"`
+	Cover        string           `json:"cover"`
+	Error        string           `json:"error"`
 }
 
 type biliViewResponse struct {
@@ -54,17 +66,26 @@ type biliViewResponse struct {
 		Duration int    `json:"duration"`
 		CID      int64  `json:"cid"`
 		Pic      string `json:"pic"`
+		Pages    []struct {
+			CID      int64  `json:"cid"`
+			Page     int    `json:"page"`
+			Part     string `json:"part"`
+			Duration int    `json:"duration"`
+		} `json:"pages"`
 	} `json:"data"`
+}
+
+type biliPlayURLDURL struct {
+	URL       string   `json:"url"`
+	BackupURL []string `json:"backup_url"`
 }
 
 type biliPlayURLResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    struct {
-		Quality int `json:"quality"`
-		DURL    []struct {
-			URL string `json:"url"`
-		} `json:"durl"`
+		Quality int               `json:"quality"`
+		DURL    []biliPlayURLDURL `json:"durl"`
 	} `json:"data"`
 }
 
@@ -74,8 +95,10 @@ func (s *MediaService) SetBilibiliAuth(cookie func() string, client func() *http
 	s.remoteClientFn = client
 }
 
-// GetBilibiliStream 用登录 Cookie 换取可直连的播放地址，返回给前端的是本地代理地址
-func (s *MediaService) GetBilibiliStream(bvid string) BiliStreamResult {
+// GetBilibiliStream 用登录 Cookie 换取可直连的播放地址，返回给前端的是本地代理地址。
+// cid 指定要播放的分 P；传 0 时沿用 view 接口返回的默认分 P（通常是 P1），兼容旧调用方。
+// 返回值同时带上全部分 P 列表供前端切换；Duration 为当前 P 的时长（列表里的总时长是各 P 累加）。
+func (s *MediaService) GetBilibiliStream(bvid string, cid int64) BiliStreamResult {
 	bvid = strings.TrimSpace(bvid)
 	if !bvidRe.MatchString(bvid) {
 		return BiliStreamResult{Error: "视频 ID 不合法"}
@@ -98,20 +121,52 @@ func (s *MediaService) GetBilibiliStream(bvid string) BiliStreamResult {
 		return BiliStreamResult{Error: "该视频没有可播放的分 P"}
 	}
 
-	play, err := fetchBiliPlayURL(client, cookie, bvid, view.Data.CID)
+	parts := make([]BiliStreamPart, 0, len(view.Data.Pages))
+	for _, p := range view.Data.Pages {
+		if p.CID == 0 {
+			continue
+		}
+		parts = append(parts, BiliStreamPart{
+			CID:      p.CID,
+			Page:     p.Page,
+			Title:    p.Part,
+			Duration: p.Duration,
+		})
+	}
+
+	// 校验调用方传入的 cid 确实属于该视频，避免使用任意 cid 取流
+	selected := view.Data.CID
+	selectedDuration := view.Data.Duration
+	if cid > 0 {
+		found := false
+		for _, p := range parts {
+			if p.CID == cid {
+				selected, selectedDuration, found = p.CID, p.Duration, true
+				break
+			}
+		}
+		if !found {
+			return BiliStreamResult{Error: "分 P 不存在", Parts: parts, CID: view.Data.CID}
+		}
+	} else if len(parts) > 0 {
+		// view.Data.Duration 是全部 P 的累加值；单 P 视频两者相等
+		selectedDuration = parts[0].Duration
+	}
+
+	play, err := fetchBiliPlayURL(client, cookie, bvid, selected)
 	if err != nil {
 		return BiliStreamResult{Error: err.Error()}
 	}
 	if play.Code != 0 {
 		return BiliStreamResult{Error: biliAPIError("播放地址", play.Code, play.Message)}
 	}
-	if len(play.Data.DURL) == 0 || play.Data.DURL[0].URL == "" {
-		return BiliStreamResult{Error: "该视频暂不支持直连播放（可能需要大会员或仅提供 DASH 分轨）"}
+	if len(play.Data.DURL) == 0 {
+		return BiliStreamResult{Error: "该视频暂不支持直连播放（可能需要大会员或仅提供 DASH 分轨）", Parts: parts}
 	}
 
-	proxyURL := s.biliProxyURL(play.Data.DURL[0].URL)
+	proxyURL := s.biliProxyURLForDURL(play.Data.DURL[0])
 	if proxyURL == "" {
-		return BiliStreamResult{Error: "播放地址未通过安全校验"}
+		return BiliStreamResult{Error: "播放地址未通过安全校验", Parts: parts}
 	}
 	label := biliQualityLabels[play.Data.Quality]
 	if label == "" {
@@ -122,7 +177,9 @@ func (s *MediaService) GetBilibiliStream(bvid string) BiliStreamResult {
 		URL:          proxyURL,
 		Quality:      play.Data.Quality,
 		QualityLabel: label,
-		Duration:     view.Data.Duration,
+		Duration:     selectedDuration,
+		CID:          selected,
+		Parts:        parts,
 		Title:        view.Data.Title,
 		Cover:        view.Data.Pic,
 	}
@@ -175,6 +232,22 @@ func biliAPIError(what string, code int, message string) string {
 		return fmt.Sprintf("%s接口返回错误码 %d", what, code)
 	}
 	return fmt.Sprintf("%s接口返回错误码 %d: %s", what, code, message)
+}
+
+// biliProxyURLForDURL 按优先级尝试主地址与 B站返回的备用 CDN，取第一个通过安全校验的地址。
+// B站会动态切换 durl[0].url 的 CDN 域名，主地址不在白名单时仍可从 backup_url 兜底。
+func (s *MediaService) biliProxyURLForDURL(durl biliPlayURLDURL) string {
+	candidates := make([]string, 0, 1+len(durl.BackupURL))
+	if durl.URL != "" {
+		candidates = append(candidates, durl.URL)
+	}
+	candidates = append(candidates, durl.BackupURL...)
+	for _, upstream := range candidates {
+		if proxy := s.biliProxyURL(upstream); proxy != "" {
+			return proxy
+		}
+	}
+	return ""
 }
 
 // biliProxyURL 把 B站 播放地址包装成本地代理地址，前端负责带 Cookie 拉流

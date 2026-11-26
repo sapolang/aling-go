@@ -77,6 +77,14 @@ interface PlayClipRequest {
   endTime: number
 }
 
+// B站视频的分 P 信息，供播放页切换 P 使用
+export interface BiliPartItem {
+  cid: number
+  page: number
+  title: string
+  duration: number
+}
+
 // 字幕显示模式：all=全部（双语）、en=仅英文、zh=仅中文、off=隐藏悬浮字幕
 export type SubtitleDisplayMode = 'all' | 'en' | 'zh' | 'off'
 
@@ -94,6 +102,9 @@ interface PlayerStore {
   preferProxy: boolean
   historyCover: string
   historySourceUrl: string
+  // B站分 P：列表与当前 cid（0 表示未指定/单 P）
+  biliParts: BiliPartItem[]
+  biliCID: number
   // 每次 setFilePath 自增，用于区分「重新播放同一个媒体」与页面内已有的播放会话
   playSession: number
   playing: boolean
@@ -134,6 +145,8 @@ interface PlayerStore {
       cover?: string
       sourceUrl?: string
       preferProxy?: boolean
+      biliParts?: BiliPartItem[]
+      biliCID?: number
     },
   ) => void
   setPlaying: (playing: boolean) => void
@@ -176,6 +189,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   preferProxy: false,
   historyCover: '',
   historySourceUrl: '',
+  biliParts: [],
+  biliCID: 0,
   playSession: 0,
   playing: false,
   played: 0,
@@ -220,6 +235,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       preferProxy: opts?.preferProxy ?? false,
       historyCover: opts?.cover ?? '',
       historySourceUrl: opts?.sourceUrl ?? '',
+      biliParts: opts?.biliParts ?? [],
+      biliCID: opts?.biliCID ?? 0,
       playSession: s.playSession + 1,
       playing: false,
       played: 0,

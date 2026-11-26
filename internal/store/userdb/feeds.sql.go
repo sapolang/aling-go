@@ -201,12 +201,13 @@ SELECT id, feed_id, title, description, audio_url, media_url, link, duration, pu
 FROM feed_episodes
 WHERE feed_id = ?
 ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListFeedEpisodesParams struct {
 	FeedID int64
 	Limit  int64
+	Offset int64
 }
 
 type ListFeedEpisodesRow struct {
@@ -224,7 +225,7 @@ type ListFeedEpisodesRow struct {
 }
 
 func (q *Queries) ListFeedEpisodes(ctx context.Context, arg ListFeedEpisodesParams) ([]ListFeedEpisodesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listFeedEpisodes, arg.FeedID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listFeedEpisodes, arg.FeedID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

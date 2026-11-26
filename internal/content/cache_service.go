@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -67,10 +68,17 @@ func NewCacheService(app *application.App, dataDir string, library *LibraryServi
 	return &CacheService{app: app, dataDir: dataDir, library: library}
 }
 
-// ServiceStartup 清理上次异常退出残留的临时文件
+// onlineAudioTTL 在线音轨缓存的保留时长。预热会让每个打开过的在线视频都留下
+// 一份 16kHz WAV，长期不清理会持续堆积；过期的重新预热只需一次下载。
+const onlineAudioTTL = 7 * 24 * time.Hour
+
+// ServiceStartup 清理上次异常退出残留的临时文件与过期的在线音轨缓存
 func (s *CacheService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	if n := s.cleanupTemporary(); n > 0 {
 		loggerOf(s.app).Info("Cleaned temporary cache files", "count", n)
+	}
+	if n := s.cleanupExpiredOnlineAudio(time.Now()); n > 0 {
+		loggerOf(s.app).Info("Cleaned expired online audio cache", "dirs", n)
 	}
 	return nil
 }
@@ -212,6 +220,32 @@ func (s *CacheService) cleanupTemporary() int {
 			if err := os.Remove(path); err == nil {
 				removed++
 			}
+		}
+	}
+	return removed
+}
+
+// cleanupExpiredOnlineAudio 删除超过 TTL 未被使用的在线音轨缓存目录。
+// 每个 online-* 目录对应一个视频，目录修改时间在命中缓存时会被刷新，
+// 因此只有长期未再打开的视频会被回收。传入 now 便于测试控制时间。
+func (s *CacheService) cleanupExpiredOnlineAudio(now time.Time) int {
+	root := filepath.Join(s.dataDir, "aling", "temp-audio")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return 0
+	}
+	cutoff := now.Add(-onlineAudioTTL)
+	removed := 0
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "online-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(root, entry.Name())); err == nil {
+			removed++
 		}
 	}
 	return removed

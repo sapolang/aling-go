@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   AudioLines,
   Captions,
+  ExternalLink,
   FileAudio,
   FileVideo,
   Keyboard,
@@ -29,6 +30,8 @@ import TranscriptPanel from './player/TranscriptPanel'
 import AISentencePanel from './player/AISentencePanel'
 import ShortcutHelpDialog from './player/ShortcutHelpDialog'
 import FavoriteDialog from './player/FavoriteDialog'
+import BiliPartPicker from './player/BiliPartPicker'
+import type { BiliPartItem } from '@/stores/playerStore'
 import { useMediaElement } from './player/useMediaElement'
 import { useWordHover } from './player/useWordHover'
 import { usePlaybackHistory } from './player/usePlaybackHistory'
@@ -59,6 +62,10 @@ export default function PlayerPage() {
   const mediaTitle = usePlayerStore((s) => s.mediaTitle)
   const mediaEpisodeID = usePlayerStore((s) => s.mediaEpisodeID)
   const historyKeyState = usePlayerStore((s) => s.historyKey)
+  const historySourceUrl = usePlayerStore((s) => s.historySourceUrl)
+  const historyCover = usePlayerStore((s) => s.historyCover)
+  const biliParts = usePlayerStore((s) => s.biliParts)
+  const biliCID = usePlayerStore((s) => s.biliCID)
   const preferProxy = usePlayerStore((s) => s.preferProxy)
   const playSession = usePlayerStore((s) => s.playSession)
   const playing = usePlayerStore((s) => s.playing)
@@ -72,6 +79,7 @@ export default function PlayerPage() {
 
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
+  const [partLoading, setPartLoading] = useState(false)
   // 右栏默认跟随内容：没有字幕且未在转录时收起，让舞台铺满；
   // 用户手动切换后以手动选择为准，切换素材时自动失效、回到默认规则
   const [transcriptChoice, setTranscriptChoice] = useState<{
@@ -97,12 +105,18 @@ export default function PlayerPage() {
     const session = playSession
     let cancelled = false
     const st = usePlayerStore.getState()
+
+    // 后台预热音轨：与字幕加载并发执行，后端按视频去重，不会重复下载。
+    // 即使 Whisper 模型还没下载，音轨也会先备好，用户下好模型点转录时直接命中。
+    const bareId = sourceKey.replace(/^(yt:|bili:)/, '')
+    void window.api.platformWarmAudio(sourceKind, bareId).catch(() => {})
+
     st.setTranscribing(true)
     st.setTranscriptionProgress(-1)
     setTranscribingLabel('加载字幕')
 
     window.api
-      .platformGetSubtitlesBySource(sourceKind, sourceKey.replace(/^(yt:|bili:)/, ''))
+      .platformGetSubtitlesBySource(sourceKind, bareId)
       .then((r: PlatformSubtitleResult) => {
         if (cancelled || !r.ok || !r.cues || r.cues.length === 0) return
         const cur = usePlayerStore.getState()
@@ -157,6 +171,19 @@ export default function PlayerPage() {
   const ext = extOf(filePath || '')
   const title = mediaTitle || (filePath ? basename(filePath) : '')
   const historyKey = historyKeyState || filePath || ''
+
+  // 在线视频的原页面地址：入口已保存 sourceUrl 时直接用，缺失时用平台 ID 兜底构造。
+  // 本地文件/播客没有可打开的网页，返回空串由调用方隐藏按钮。
+  const onlineSourceUrl = useMemo(() => {
+    if (sourceKind !== 'youtube' && sourceKind !== 'bilibili') return ''
+    // sourceUrl 来自订阅/历史，只接受网页链接；异常 scheme 时用 ID 兜底构造
+    if (/^https?:\/\//i.test(historySourceUrl)) return historySourceUrl
+    const id = historyKey.replace(/^(yt:|bili:)/, '')
+    if (!id) return ''
+    return sourceKind === 'youtube'
+      ? `https://www.youtube.com/watch?v=${id}`
+      : `https://www.bilibili.com/video/${id}`
+  }, [sourceKind, historySourceUrl, historyKey])
 
   // YouTube 源：iframe 通过 /yt-embed 中转页播放，时间轴由 postMessage 回写 store
   const youtubeId = sourceKind === 'youtube' ? (filePath || '').replace(/^yt:/, '') : ''
@@ -369,6 +396,41 @@ export default function PlayerPage() {
     if (path) await loadSrtFile(path)
   }
 
+  const handleOpenInBrowser = () => {
+    if (!onlineSourceUrl) return
+    void window.api.openExternal(onlineSourceUrl)
+  }
+
+  // 切换 B站分 P：重新取流并替换播放源。带 cid 的 historyKey 让字幕/音轨缓存按 P 隔离。
+  const handleSelectPart = async (part: BiliPartItem) => {
+    if (partLoading) return
+    const bvid = (historyKeyState || '').replace(/^bili:/, '').split(':')[0]
+    if (!bvid) return
+    setPartLoading(true)
+    try {
+      const res = await window.api.getBilibiliStream(bvid, part.cid)
+      if (!res.ok || !res.url) {
+        showToast(res.error || '切换分 P 失败', 'error')
+        return
+      }
+      clearPlayError()
+      usePlayerStore.getState().setFilePath(res.url, mediaTitle || res.title, mediaEpisodeID, {
+        sourceKind: 'bilibili',
+        mediaKind: 'video',
+        historyKey: `bili:${bvid}:${part.cid}`,
+        cover: historyCover,
+        sourceUrl: `https://www.bilibili.com/video/${bvid}`,
+        biliParts,
+        biliCID: part.cid,
+      })
+      if (res.duration > 0) usePlayerStore.getState().setDuration(res.duration)
+    } catch {
+      showToast('切换分 P 失败', 'error')
+    } finally {
+      setPartLoading(false)
+    }
+  }
+
   const transcribe = () => {
     if (!filePath) return
     if (transcribing) {
@@ -430,6 +492,25 @@ export default function PlayerPage() {
             </div>
           </div>
           <div className="pp-top-actions">
+            {sourceKind === 'bilibili' && biliParts.length > 1 && (
+              <BiliPartPicker
+                parts={biliParts}
+                currentCID={biliCID}
+                loading={partLoading}
+                onSelect={(part) => void handleSelectPart(part)}
+              />
+            )}
+            {onlineSourceUrl && (
+              <button
+                type="button"
+                className="pp-ghost-btn"
+                onClick={handleOpenInBrowser}
+                title="在系统浏览器中打开原视频"
+              >
+                <ExternalLink />
+                <span>浏览器打开</span>
+              </button>
+            )}
             {filePath && (
               <button
                 type="button"

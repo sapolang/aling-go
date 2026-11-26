@@ -124,6 +124,7 @@ import {
   SetRSSHubURL,
   GetSubtitles,
   GetSubtitlesBySource,
+  WarmAudio as PlatformWarmAudio,
   TranscribePodcast as PlatformTranscribePodcast,
 } from '../../bindings/aling-go/internal/content/platformservice'
 
@@ -247,14 +248,14 @@ export function initBridge(): void {
     feedAdd: (url: string) => FeedAdd(url),
     feedRemove: (id: number, deleteDownloads: boolean) => FeedRemove(id, deleteDownloads),
     feedRefresh: (id: number) => FeedRefresh(id),
-    feedEpisodes: (id: number, limit: number) =>
-      FeedEpisodes(id, limit).then((r) => ({ ...r, episodes: r.episodes ?? [] })),
+    feedEpisodes: (id: number, limit: number, offset: number) =>
+      FeedEpisodes(id, limit, offset).then((r) => ({ ...r, episodes: r.episodes ?? [] })),
     episodeDownload: (id: number) => EpisodeDownload(id),
     feedGetProxy: () => FeedGetProxy(),
     feedSetProxy: (proxy: string) => FeedSetProxy(proxy),
     feedGetBilibiliCookie: () => FeedGetBilibiliCookie(),
     feedSetBilibiliCookie: (cookie: string) => FeedSetBilibiliCookie(cookie),
-    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid),
+    getBilibiliStream: (bvid: string, cid?: number) => GetBilibiliStream(bvid, cid || 0),
     feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin(),
     feedPollBilibiliQRLogin: (key: string) => FeedPollBilibiliQRLogin(key),
     feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) =>
@@ -265,6 +266,8 @@ export function initBridge(): void {
     platformGetSubtitles: (episodeId: number) => GetSubtitles(episodeId),
     platformGetSubtitlesBySource: (sourceKind: string, videoID: string) =>
       GetSubtitlesBySource(sourceKind, videoID),
+    platformWarmAudio: (sourceKind: string, videoID: string) =>
+      PlatformWarmAudio(sourceKind, videoID),
     platformTranscribePodcast: (episodeId: number, force: boolean) =>
       PlatformTranscribePodcast(episodeId, force),
 

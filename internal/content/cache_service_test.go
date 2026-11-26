@@ -272,3 +272,63 @@ func TestEnforceTranscodeLimitKeepsNewestWhenOverLimit(t *testing.T) {
 		t.Fatalf("刚生成的结果不应被删除: %v", err)
 	}
 }
+
+func TestCleanupExpiredOnlineAudio(t *testing.T) {
+	dataDir := t.TempDir()
+	s := &CacheService{dataDir: dataDir}
+	root := filepath.Join(dataDir, "aling", "temp-audio")
+
+	stale := filepath.Join(root, "online-stale")
+	fresh := filepath.Join(root, "online-fresh")
+	other := filepath.Join(root, "custom-cache")
+	writeCacheFile(t, stale, "audio-16k.wav", 100)
+	writeCacheFile(t, fresh, "audio-16k.wav", 100)
+	writeCacheFile(t, other, "x.wav", 100)
+
+	now := time.Now()
+	old := now.Add(-8 * 24 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(other, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	if removed := s.cleanupExpiredOnlineAudio(now); removed != 1 {
+		t.Fatalf("清理目录数 = %d, want 1", removed)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("过期缓存应被删除: %v", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("近期缓存应保留: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("非 online- 目录不应被清理: %v", err)
+	}
+}
+
+func TestCleanupExpiredOnlineAudioSkipsRefreshedDir(t *testing.T) {
+	dataDir := t.TempDir()
+	s := &CacheService{dataDir: dataDir}
+	dir := filepath.Join(dataDir, "aling", "temp-audio", "online-refreshed")
+	writeCacheFile(t, dir, "audio-16k.wav", 100)
+
+	now := time.Now()
+	old := now.Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(dir, old, old); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟命中缓存时刷新 mtime
+	refreshed := now.Add(-time.Hour)
+	if err := os.Chtimes(dir, refreshed, refreshed); err != nil {
+		t.Fatal(err)
+	}
+
+	if removed := s.cleanupExpiredOnlineAudio(now); removed != 0 {
+		t.Fatalf("刚使用过的缓存不应被清理, removed = %d", removed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "audio-16k.wav")); err != nil {
+		t.Fatalf("缓存文件应保留: %v", err)
+	}
+}

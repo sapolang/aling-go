@@ -37,7 +37,7 @@ SELECT id, feed_id, title, description, audio_url, media_url, link, duration, pu
 FROM feed_episodes
 WHERE feed_id = ?
 ORDER BY CASE WHEN published_at = '' THEN 1 ELSE 0 END, published_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;
 
 -- name: UpsertFeedEpisode :exec
 INSERT INTO feed_episodes (feed_id, guid, title, description, audio_url, media_url, link, duration, published_at, image)

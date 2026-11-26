@@ -1,17 +1,21 @@
 package content
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 
 	"aling-go/internal/config"
 	"aling-go/internal/core"
 	"aling-go/internal/store"
+	"aling-go/internal/store/userdb"
 )
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -299,6 +303,93 @@ func TestBilibiliProxyUsesServerSideStreamID(t *testing.T) {
 	}
 }
 
+func TestBilibiliProxyFallsBackToBackupCDN(t *testing.T) {
+	const backup = "https://upos-sz-mirrorcos.bilivideo.com/upgcxcode/a.mp4?e=tok"
+
+	t.Run("rotated CDN host is allowed", func(t *testing.T) {
+		s := &MediaService{mediaPort: 18080}
+		primary := "https://q6ux09t.edge.mountaintoys.cn:4483/upgcxcode/a.mp4?e=tok"
+		proxy := s.biliProxyURLForDURL(biliPlayURLDURL{URL: primary, BackupURL: []string{backup}})
+		if proxy == "" {
+			t.Fatal("primary CDN host should pass validation")
+		}
+		if s.biliUpstream != primary {
+			t.Fatalf("biliUpstream = %q, want %q", s.biliUpstream, primary)
+		}
+	})
+
+	t.Run("fallback to backup when primary is rejected", func(t *testing.T) {
+		s := &MediaService{mediaPort: 18080}
+		proxy := s.biliProxyURLForDURL(biliPlayURLDURL{
+			URL:       "https://cdn.example.com/a.mp4",
+			BackupURL: []string{"http://upos-sz-mirror.bilivideo.com/a.mp4", backup},
+		})
+		if proxy == "" {
+			t.Fatal("should fall back to an allowed backup URL")
+		}
+		if s.biliUpstream != backup {
+			t.Fatalf("biliUpstream = %q, want %q", s.biliUpstream, backup)
+		}
+	})
+
+	t.Run("reject all unsafe candidates", func(t *testing.T) {
+		s := &MediaService{mediaPort: 18080}
+		proxy := s.biliProxyURLForDURL(biliPlayURLDURL{
+			URL:       "https://evil.example/a.mp4",
+			BackupURL: []string{"https://bilivideo.com.evil.example/a.mp4"},
+		})
+		if proxy != "" {
+			t.Fatalf("biliProxyURLForDURL = %q, want empty", proxy)
+		}
+		if s.biliStreamID != "" || s.biliUpstream != "" {
+			t.Fatal("rejected candidates must not be registered as upstream")
+		}
+	})
+}
+
+// biliRoundTripperFunc 把发往 B站 API 的请求重定向到本地测试服务
+type biliRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f biliRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestGetBilibiliStreamWithRotatedCDN(t *testing.T) {
+	viewJSON := `{"code":0,"message":"OK","data":{"title":"测试视频","duration":42,"cid":12345,"pic":"https://i0.hdslb.com/bfs/archive/cover.jpg"}}`
+	playJSON := `{"code":0,"message":"OK","data":{"quality":64,"durl":[{"url":"https://q6ux09t.edge.mountaintoys.cn:4483/upgcxcode/v.mp4?e=tok","backup_url":["https://upos-sz-mirrorcos.bilivideo.com/upgcxcode/v.mp4?e=tok"]}]}}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "playurl") {
+			_, _ = io.WriteString(w, playJSON)
+			return
+		}
+		_, _ = io.WriteString(w, viewJSON)
+	}))
+	defer srv.Close()
+
+	s := &MediaService{mediaPort: 18080}
+	s.SetBilibiliAuth(func() string { return "test-cookie" }, func() *http.Client {
+		return &http.Client{Transport: biliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = strings.TrimPrefix(srv.URL, "http://")
+			return http.DefaultTransport.RoundTrip(req)
+		})}
+	})
+
+	res := s.GetBilibiliStream("BV1vHy2zSEGp", 0)
+	if !res.OK || res.URL == "" {
+		t.Fatalf("GetBilibiliStream failed: %+v", res)
+	}
+	if res.Title != "测试视频" || res.Duration != 42 || res.Quality != 64 {
+		t.Fatalf("unexpected stream result: %+v", res)
+	}
+	if !strings.Contains(res.URL, "/bili-stream?id=") {
+		t.Fatalf("unexpected proxy URL: %q", res.URL)
+	}
+	if !strings.HasPrefix(s.biliUpstream, "https://q6ux09t.edge.mountaintoys.cn:4483/") {
+		t.Fatalf("unexpected upstream: %q", s.biliUpstream)
+	}
+}
+
 func TestDetectPlatformAnchorsURL(t *testing.T) {
 	tests := []struct {
 		name string
@@ -510,4 +601,131 @@ func TestPodcastStreamForwardsRangeForMediaURL(t *testing.T) {
 	if recorder.Body.String() != "data" {
 		t.Errorf("body = %q, want data", recorder.Body.String())
 	}
+}
+
+// 多 P 视频：cid 选择对应分 P，时长用该 P 自身时长而非累加总时长，并校验非法 cid。
+func TestGetBilibiliStreamParts(t *testing.T) {
+	viewJSON := `{"code":0,"message":"OK","data":{"title":"合集视频","duration":2108,"cid":111,"pic":"https://i0.hdslb.com/bfs/archive/cover.jpg","pages":[{"cid":111,"page":1,"part":"导览","duration":295},{"cid":222,"page":2,"part":"正片","duration":1813}]}}`
+	playJSON := `{"code":0,"message":"OK","data":{"quality":64,"durl":[{"url":"https://upos-sz-mirrorcos.bilivideo.com/upgcxcode/v.mp4?e=tok"}]}}`
+
+	var seenCIDs []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "playurl") {
+			seenCIDs = append(seenCIDs, r.URL.Query().Get("cid"))
+			_, _ = io.WriteString(w, playJSON)
+			return
+		}
+		_, _ = io.WriteString(w, viewJSON)
+	}))
+	defer srv.Close()
+
+	s := &MediaService{mediaPort: 18080}
+	s.SetBilibiliAuth(func() string { return "test-cookie" }, func() *http.Client {
+		return &http.Client{Transport: biliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = strings.TrimPrefix(srv.URL, "http://")
+			return http.DefaultTransport.RoundTrip(req)
+		})}
+	})
+
+	// 默认取 P1，时长为该 P 自身时长（不是 2108 秒的总时长）
+	def := s.GetBilibiliStream("BV1BWsm6bEy1", 0)
+	if !def.OK || def.CID != 111 || def.Duration != 295 {
+		t.Fatalf("默认分 P 结果 = %+v, want CID=111 Duration=295", def)
+	}
+	if len(def.Parts) != 2 || def.Parts[1].CID != 222 || def.Parts[1].Title != "正片" {
+		t.Fatalf("分 P 列表不正确: %+v", def.Parts)
+	}
+
+	// 指定 P2：取流 cid 与时长都切到 P2
+	res := s.GetBilibiliStream("BV1BWsm6bEy1", 222)
+	if !res.OK || res.CID != 222 || res.Duration != 1813 {
+		t.Fatalf("指定 P2 结果 = %+v, want CID=222 Duration=1813", res)
+	}
+	if len(seenCIDs) != 2 || seenCIDs[0] != "111" || seenCIDs[1] != "222" {
+		t.Fatalf("playurl 请求的 cid = %v, want [111 222]", seenCIDs)
+	}
+
+	// 非法 cid 被拒绝，不发起取流请求
+	bad := s.GetBilibiliStream("BV1BWsm6bEy1", 999)
+	if bad.OK || bad.Error == "" {
+		t.Fatalf("非法 cid 应报错: %+v", bad)
+	}
+	if len(seenCIDs) != 2 {
+		t.Fatalf("非法 cid 不应请求 playurl, seen = %v", seenCIDs)
+	}
+}
+
+func TestSplitBiliVideoID(t *testing.T) {
+	cases := []struct {
+		in   string
+		bvid string
+		cid  int64
+	}{
+		{"bv:BV1BWsm6bEy1", "BV1BWsm6bEy1", 0},
+		{"bv:BV1BWsm6bEy1:222", "BV1BWsm6bEy1", 222},
+		{"BV1vHy2zSEGp:999", "BV1vHy2zSEGp", 999},
+		{"bv:BV1vHy2zSEGp:bad", "BV1vHy2zSEGp", 0},
+	}
+	for _, c := range cases {
+		bvid, cid := splitBiliVideoID(c.in)
+		if bvid != c.bvid || cid != c.cid {
+			t.Errorf("splitBiliVideoID(%q) = (%q, %d), want (%q, %d)", c.in, bvid, cid, c.bvid, c.cid)
+		}
+	}
+}
+
+// 节目列表分页：limit+1 探测 HasMore，offset 递增不重不漏。
+func TestFeedEpisodesPagination(t *testing.T) {
+	db := setupFeedTestDB(t)
+	ctx := context.Background()
+	const feedID = int64(77)
+
+	res, err := q().AddFeed(ctx, userdb.AddFeedParams{
+		Url: "https://example.com/podcast.xml", Title: "测试订阅",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fid := res
+
+	for i := 0; i < 7; i++ {
+		if err := q().UpsertFeedEpisode(ctx, userdb.UpsertFeedEpisodeParams{
+			FeedID: fid, Guid: fmt.Sprintf("guid-%d", i),
+			Title: fmt.Sprintf("节目 %d", i), PublishedAt: fmt.Sprintf("2026-01-%02dT00:00:00Z", i+1),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = feedID
+
+	s := &FeedService{}
+	first := s.FeedEpisodes(fid, 3, 0)
+	if first.Error != "" || len(first.Episodes) != 3 || !first.HasMore {
+		t.Fatalf("第一页 = %+v, want 3 条且 HasMore", first)
+	}
+	if first.Episodes[0].Title != "节目 6" || first.Episodes[2].Title != "节目 4" {
+		t.Fatalf("第一页顺序不对: %s / %s", first.Episodes[0].Title, first.Episodes[2].Title)
+	}
+
+	second := s.FeedEpisodes(fid, 3, 3)
+	if len(second.Episodes) != 3 || !second.HasMore {
+		t.Fatalf("第二页 = %+v, want 3 条且 HasMore", second)
+	}
+
+	last := s.FeedEpisodes(fid, 3, 6)
+	if len(last.Episodes) != 1 || last.HasMore {
+		t.Fatalf("末页 = %+v, want 1 条且 !HasMore", last)
+	}
+	if last.Episodes[0].Title != "节目 0" {
+		t.Fatalf("末页标题 = %s, want 节目 0", last.Episodes[0].Title)
+	}
+
+	// 边界：offset 超出范围返回空且无更多
+	beyond := s.FeedEpisodes(fid, 3, 99)
+	if len(beyond.Episodes) != 0 || beyond.HasMore {
+		t.Fatalf("越界页 = %+v, want 空且 !HasMore", beyond)
+	}
+	_ = db
 }

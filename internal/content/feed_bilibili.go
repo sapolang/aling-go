@@ -280,60 +280,77 @@ func (s *FeedService) bilibiliSignWBI(params url.Values, mixinKey string) string
 
 // bilibiliVideosByWBI 通过 WBI 签名的空间投稿接口拉取视频列表
 func (s *FeedService) bilibiliVideosByWBI(mid string) ([]FeedEpisode, error) {
-	const maxEpisodes = 30
+	const (
+		maxEpisodes = 200
+		pageSize    = 50
+		maxPages    = maxEpisodes / pageSize
+	)
 
 	mixinKey, err := s.bilibiliWbiMixinKey()
 	if err != nil {
 		return nil, err
 	}
 
-	params := url.Values{}
-	params.Set("mid", mid)
-	params.Set("ps", strconv.Itoa(maxEpisodes))
-	params.Set("pn", "1")
-	params.Set("order", "pubdate")
-	params.Set("platform", "web")
-	signed := s.bilibiliSignWBI(params, mixinKey)
-
-	req, _ := http.NewRequest(http.MethodGet, "https://api.bilibili.com/x/space/wbi/arc/search?"+signed, nil)
-	req.Header.Set("User-Agent", bilibiliWebUA)
-	req.Header.Set("Referer", "https://space.bilibili.com/"+mid)
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Cookie", s.bilibiliCookie())
-
-	resp, err := s.httpClient().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("拉取B站视频列表失败，请检查网络: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("拉取B站视频列表失败：B站返回 HTTP %d%s", resp.StatusCode, s.bilibiliRiskHint())
-	}
-
-	var apiResp biliArcSearchResp
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		// 风控命中时返回 HTML 页面而不是 JSON
-		return nil, fmt.Errorf("拉取B站视频列表失败：B站返回了网页而不是数据%s", s.bilibiliRiskHint())
-	}
-	if apiResp.Code != 0 {
-		return nil, fmt.Errorf("拉取B站视频列表失败：B站接口返回 %d %s%s", apiResp.Code, apiResp.Message, s.bilibiliRiskHint())
-	}
-
 	episodes := make([]FeedEpisode, 0, maxEpisodes)
-	for _, v := range apiResp.Data.List.VList {
-		if v.BVID == "" {
-			continue
+	for pn := 1; pn <= maxPages && len(episodes) < maxEpisodes; pn++ {
+		params := url.Values{}
+		params.Set("mid", mid)
+		params.Set("ps", strconv.Itoa(pageSize))
+		params.Set("pn", strconv.Itoa(pn))
+		params.Set("order", "pubdate")
+		params.Set("platform", "web")
+		signed := s.bilibiliSignWBI(params, mixinKey)
+
+		req, _ := http.NewRequest(http.MethodGet, "https://api.bilibili.com/x/space/wbi/arc/search?"+signed, nil)
+		req.Header.Set("User-Agent", bilibiliWebUA)
+		req.Header.Set("Referer", "https://space.bilibili.com/"+mid)
+		req.Header.Set("Accept", "application/json, text/plain, */*")
+		req.Header.Set("Cookie", s.bilibiliCookie())
+
+		resp, err := s.httpClient().Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("拉取B站视频列表失败，请检查网络: %w", err)
 		}
-		episodes = append(episodes, FeedEpisode{
-			Title:       strings.TrimSpace(v.Title),
-			Description: stripHTML(v.Description),
-			Link:        "https://www.bilibili.com/video/" + v.BVID,
-			Duration:    parseBilibiliDuration(v.Length),
-			PublishedAt: time.Unix(v.Created, 0).Format(time.RFC3339),
-			Image:       normalizeBilibiliPic(v.Pic),
-			GUID:        v.BVID,
-		})
+		var apiResp biliArcSearchResp
+		decodeErr := json.NewDecoder(resp.Body).Decode(&apiResp)
+		_ = resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("拉取B站视频列表失败：B站返回 HTTP %d%s", resp.StatusCode, s.bilibiliRiskHint())
+		}
+		if decodeErr != nil {
+			// 风控命中时返回 HTML 页面而不是 JSON
+			return nil, fmt.Errorf("拉取B站视频列表失败：B站返回了网页而不是数据%s", s.bilibiliRiskHint())
+		}
+		if apiResp.Code != 0 {
+			return nil, fmt.Errorf("拉取B站视频列表失败：B站接口返回 %d %s%s", apiResp.Code, apiResp.Message, s.bilibiliRiskHint())
+		}
+		if len(apiResp.Data.List.VList) == 0 {
+			break
+		}
+
+		for _, v := range apiResp.Data.List.VList {
+			if v.BVID == "" {
+				continue
+			}
+			episodes = append(episodes, FeedEpisode{
+				Title:       strings.TrimSpace(v.Title),
+				Description: stripHTML(v.Description),
+				Link:        "https://www.bilibili.com/video/" + v.BVID,
+				Duration:    parseBilibiliDuration(v.Length),
+				PublishedAt: time.Unix(v.Created, 0).Format(time.RFC3339),
+				Image:       normalizeBilibiliPic(v.Pic),
+				GUID:        v.BVID,
+			})
+			if len(episodes) >= maxEpisodes {
+				break
+			}
+		}
+
+		// 该 UP 主的全部投稿已取完，不必继续翻页
+		if apiResp.Data.Page.Count > 0 && len(episodes) >= apiResp.Data.Page.Count {
+			break
+		}
 	}
 	return episodes, nil
 }
@@ -342,8 +359,8 @@ func (s *FeedService) bilibiliVideosByWBI(mid string) ([]FeedEpisode, error) {
 // features 参数不能省略：省略后接口仍返回 code=0，但 items 为空。
 func (s *FeedService) bilibiliVideosByDynamic(mid string) ([]FeedEpisode, error) {
 	const (
-		maxEpisodes = 30
-		maxPages    = 3
+		maxEpisodes = 200
+		maxPages    = 10
 	)
 
 	episodes := make([]FeedEpisode, 0, maxEpisodes)

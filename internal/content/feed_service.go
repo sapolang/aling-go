@@ -70,7 +70,9 @@ type FeedListResult struct {
 
 type FeedEpisodesResult struct {
 	Episodes []FeedEpisode `json:"episodes"`
-	Error    string        `json:"error"`
+	// HasMore 为 true 表示后面还有节目，前端据此显示「加载更多」
+	HasMore bool   `json:"hasMore"`
+	Error   string `json:"error"`
 }
 
 // FeedService 负责播客 RSS 订阅：拉取订阅源、解析节目列表、按需下载音频到本地。
@@ -368,17 +370,26 @@ func (s *FeedService) FeedRemove(feedID int64, deleteDownloads bool) ActionResul
 	return ActionResult{OK: true, Message: "已取消订阅"}
 }
 
-// FeedEpisodes 返回订阅源下的节目列表，limit <= 0 时默认 100 条
-func (s *FeedService) FeedEpisodes(feedID int64, limit int) FeedEpisodesResult {
+// FeedEpisodes 分页返回订阅源下的节目列表。limit <= 0 时默认 30 条，offset < 0 视为 0。
+// 多查一条用于判断 HasMore，避免额外 COUNT 查询。
+func (s *FeedService) FeedEpisodes(feedID int64, limit, offset int) FeedEpisodesResult {
 	if limit <= 0 || limit > 500 {
-		limit = 100
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	rows, err := q().ListFeedEpisodes(context.Background(), userdb.ListFeedEpisodesParams{
 		FeedID: feedID,
-		Limit:  int64(limit),
+		Limit:  int64(limit) + 1,
+		Offset: int64(offset),
 	})
 	if err != nil {
 		return FeedEpisodesResult{Episodes: []FeedEpisode{}, Error: err.Error()}
+	}
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
 	}
 
 	episodes := make([]FeedEpisode, 0, len(rows))
@@ -410,7 +421,7 @@ func (s *FeedService) FeedEpisodes(feedID int64, limit int) FeedEpisodesResult {
 		}
 		episodes = append(episodes, e)
 	}
-	return FeedEpisodesResult{Episodes: episodes}
+	return FeedEpisodesResult{Episodes: episodes, HasMore: hasMore}
 }
 
 type feedMeta struct {

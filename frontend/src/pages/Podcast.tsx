@@ -80,6 +80,8 @@ export default function PodcastPage() {
     selectedFeedId,
     loadingFeeds,
     loadingEpisodes,
+    hasMoreEpisodes,
+    loadingMoreEpisodes,
     refreshing,
     downloadProgress,
     loadFeeds,
@@ -87,6 +89,7 @@ export default function PodcastPage() {
     removeFeed,
     refreshFeed,
     selectFeed,
+    loadMoreEpisodes,
     setDownloadProgress,
   } = useFeedStore()
 
@@ -309,12 +312,22 @@ export default function PodcastPage() {
         showToast(res.error || '获取 B站 播放地址失败', 'error')
         return
       }
+      const parts = (res.parts || []).map((p) => ({
+        cid: p.cid,
+        page: p.page,
+        title: p.title,
+        duration: p.duration,
+      }))
+      const cid = res.cid || 0
       player.setFilePath(res.url, ep.title || res.title || 'B站 视频', ep.id, {
         sourceKind: 'bilibili',
         mediaKind: 'video',
-        historyKey: `bili:${bvid}`,
+        // 带 cid 的 historyKey 让不同分 P 的字幕/音轨缓存各自隔离
+        historyKey: cid ? `bili:${bvid}:${cid}` : `bili:${bvid}`,
         cover: ep.image,
         sourceUrl: `https://www.bilibili.com/video/${bvid}`,
+        biliParts: parts,
+        biliCID: cid,
       })
       if (res.duration > 0) player.setDuration(res.duration)
       openPlayer()
@@ -606,94 +619,115 @@ export default function PodcastPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {episodes.map((ep) => {
-                    const pct = downloadProgress[ep.id]
-                    const downloading = pct !== undefined
-                    const isOnlineOnly = !ep.audioUrl && !!ep.link
-                    const isVideo = !!ep.mediaUrl || isOnlineOnly
-                    const thumb = ep.image || selectedFeed?.image || ''
-                    const meta = [formatDate(ep.publishedAt), formatDuration(ep.duration)]
-                      .filter(Boolean)
-                      .join(' · ')
-                    return (
-                      <div
-                        key={ep.id}
-                        onClick={() => !downloading && handleEpisodeClick(ep)}
-                        className={`group rounded-lg border bg-card overflow-hidden transition-colors ${
-                          downloading ? 'opacity-80' : 'cursor-pointer hover:border-primary/50'
-                        }`}
-                      >
-                        {/* 缩略图 */}
-                        <div className="relative aspect-video bg-muted overflow-hidden">
-                          {thumb ? (
-                            <img
-                              src={thumb}
-                              alt={ep.title}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                              onError={(e) => {
-                                ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
-                              <PlayCircle className="h-10 w-10" />
-                            </div>
-                          )}
-                          {/* 悬浮播放图标 */}
-                          {!downloading && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
-                                  <Play className="h-6 w-6 text-black ml-0.5" />
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {episodes.map((ep) => {
+                      const pct = downloadProgress[ep.id]
+                      const downloading = pct !== undefined
+                      const isOnlineOnly = !ep.audioUrl && !!ep.link
+                      const isVideo = !!ep.mediaUrl || isOnlineOnly
+                      const thumb = ep.image || selectedFeed?.image || ''
+                      const meta = [formatDate(ep.publishedAt), formatDuration(ep.duration)]
+                        .filter(Boolean)
+                        .join(' · ')
+                      return (
+                        <div
+                          key={ep.id}
+                          onClick={() => !downloading && handleEpisodeClick(ep)}
+                          className={`group rounded-lg border bg-card overflow-hidden transition-colors ${
+                            downloading ? 'opacity-80' : 'cursor-pointer hover:border-primary/50'
+                          }`}
+                        >
+                          {/* 缩略图 */}
+                          <div className="relative aspect-video bg-muted overflow-hidden">
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt={ep.title}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
+                                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
+                                <PlayCircle className="h-10 w-10" />
+                              </div>
+                            )}
+                            {/* 悬浮播放图标 */}
+                            {!downloading && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                                    <Play className="h-6 w-6 text-black ml-0.5" />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
-                          {isVideo && (
-                            <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
-                              <PlayCircle className="h-3 w-3" />
-                              视频
-                            </span>
-                          )}
-                          {ep.localPath && (
-                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
-                              <Check className="h-3 w-3" />
-                              已下载
-                            </span>
-                          )}
-                          {downloading && (
-                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                              <div className="text-center text-white">
-                                <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                                <span className="text-sm">{pct}%</span>
+                            )}
+                            {isVideo && (
+                              <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
+                                <PlayCircle className="h-3 w-3" />
+                                视频
+                              </span>
+                            )}
+                            {ep.localPath && (
+                              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
+                                <Check className="h-3 w-3" />
+                                已下载
+                              </span>
+                            )}
+                            {downloading && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <div className="text-center text-white">
+                                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                                  <span className="text-sm">{pct}%</span>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                          {biliLoadingId === ep.id && (
-                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 text-white">
-                              <Loader2 className="h-6 w-6 animate-spin" />
-                              <span className="text-xs">获取播放地址…</span>
-                            </div>
-                          )}
-                        </div>
-                        {/* 内容 */}
-                        <div className="p-3 space-y-1.5">
-                          <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">
-                            {ep.title || '未命名节目'}
-                          </p>
-                          {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
-                          {ep.description && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {ep.description}
+                            )}
+                            {biliLoadingId === ep.id && (
+                              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 text-white">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                                <span className="text-xs">获取播放地址…</span>
+                              </div>
+                            )}
+                          </div>
+                          {/* 内容 */}
+                          <div className="p-3 space-y-1.5">
+                            <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">
+                              {ep.title || '未命名节目'}
                             </p>
-                          )}
+                            {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
+                            {ep.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {ep.description}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                  {hasMoreEpisodes ? (
+                    <div className="flex flex-col items-center gap-2 py-5">
+                      <Button
+                        variant="outline"
+                        onClick={() => void loadMoreEpisodes()}
+                        disabled={loadingMoreEpisodes}
+                      >
+                        {loadingMoreEpisodes && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {loadingMoreEpisodes ? '加载中…' : '加载更多'}
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        已显示 {episodes.length} 期 · 还有更多
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-center text-xs text-muted-foreground py-5">
+                      已显示全部 {episodes.length} 期
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>
