@@ -112,7 +112,7 @@ func NewWhisperService(app *application.App, dataDir string, store *config.Store
 		dataDir:     dataDir,
 		store:       store,
 		modelFile:   "ggml-tiny.bin",
-		whisperLang: "en",
+		whisperLang: "auto",
 		dlProgress:  -1,
 	}
 	st := store.Settings()
