@@ -27,6 +27,7 @@ import {
   BookPlus,
 } from 'lucide-react'
 import { confirmDialog, showToast } from '@/components/feedback'
+import { LoadingState, ErrorState } from '@/components/AsyncState'
 import type { SubtitleItem } from '@/types/api'
 
 interface FavoriteClip {
@@ -71,20 +72,46 @@ export default function FavoritesPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [mediaPort, setMediaPort] = useState(0)
   const [mediaError, setMediaError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const mediaRef = useRef<{ el: HTMLMediaElement | null }>({ el: null })
   // 复习队列：进入复习时对当前筛选结果做快照
   const [reviewMode, setReviewMode] = useState(false)
   const [reviewQueue, setReviewQueue] = useState<FavoriteClip[]>([])
   const [reviewIndex, setReviewIndex] = useState(0)
 
-  const loadTags = () => window.api.favoriteTagsList().then((t: FavoriteTag[]) => setTags(t || []))
+  const loadTags = () =>
+    window.api
+      .favoriteTagsList()
+      .then((t: FavoriteTag[]) => setTags(t || []))
+      .catch(() => setLoadError('标签加载失败'))
 
-  const loadClips = (tagId: number) =>
-    window.api.favoriteList(tagId).then((list: FavoriteClip[]) => setClips(list || []))
+  // showLoading=false 用于标签增删改后的刷新，避免闪一下加载态
+  const loadClips = (tagId: number, showLoading = true) => {
+    if (showLoading) {
+      setLoading(true)
+      setLoadError('')
+    }
+    return window.api
+      .favoriteList(tagId)
+      .then((list: FavoriteClip[]) => setClips(list || []))
+      .catch(() => setLoadError('收藏片段加载失败'))
+      .finally(() => {
+        if (showLoading) setLoading(false)
+      })
+  }
+
+  const reload = () => {
+    loadTags()
+    loadClips(selectedTag)
+  }
 
   useEffect(() => {
     loadTags()
-    window.api.getMediaPort().then(setMediaPort)
+    window.api
+      .getMediaPort()
+      .then(setMediaPort)
+      .catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -156,7 +183,7 @@ export default function FavoritesPage() {
     await window.api.favoriteTagDelete(id)
     if (selectedTag === id) setSelectedTag(0)
     loadTags()
-    loadClips(selectedTag === id ? 0 : selectedTag)
+    loadClips(selectedTag === id ? 0 : selectedTag, false)
   }
 
   const deleteClip = async (id: number) => {
@@ -507,7 +534,11 @@ export default function FavoritesPage() {
         </div>
       )}
 
-      {reviewMode && reviewClip ? (
+      {loading ? (
+        <LoadingState text="正在加载收藏…" />
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={reload} />
+      ) : reviewMode && reviewClip ? (
         <Card className="max-w-2xl mx-auto p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

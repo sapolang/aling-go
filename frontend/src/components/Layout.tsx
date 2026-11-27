@@ -66,13 +66,11 @@ export function Layout({
   // 粘贴解析期间避免重复触发
   const linkBusyRef = useRef(false)
 
-  // 窄窗口下自动收起侧栏，给内容留出空间
+  // 跟随窗口宽度自动展开/收起侧栏：窄窗口收起给内容留空间，拉宽后恢复
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
-    if (mq.matches) setCollapsed(true)
-    const onChange = (e: MediaQueryListEvent) => {
-      if (e.matches) setCollapsed(true)
-    }
+    setCollapsed(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setCollapsed(e.matches)
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])

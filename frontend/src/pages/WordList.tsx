@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { Search, Trash2, Edit, Plus } from 'lucide-react'
 import { confirmDialog } from '@/components/feedback'
+import { LoadingState, ErrorState } from '@/components/AsyncState'
 import AddWordModal from '@/components/AddWordModal'
 
 const levelLabels = ['待学习', '遗忘', '模糊', '熟悉']
@@ -57,22 +58,31 @@ const WordRow = memo(function WordRow({
             </div>
             <p className="text-sm text-muted-foreground truncate">{word.definition}</p>
           </div>
-          <div className="hidden md:flex gap-1 items-center flex-wrap justify-end">
-            {word.tags
-              .split(',')
-              .filter(Boolean)
-              .map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-xs">
-                  {tag.trim()}
-                </Badge>
-              ))}
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(word)}>
+          <div className="flex gap-1 items-center flex-wrap justify-end">
+            <div className="hidden md:flex gap-1 items-center flex-wrap justify-end">
+              {word.tags
+                .split(',')
+                .filter(Boolean)
+                .map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag.trim()}
+                  </Badge>
+                ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="编辑"
+              onClick={() => onEdit(word)}
+            >
               <Edit className="h-3 w-3" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-destructive"
+              title="删除"
               onClick={() => onDelete(word)}
             >
               <Trash2 className="h-3 w-3" />
@@ -88,6 +98,8 @@ export default function WordListPage() {
   const {
     words,
     tags,
+    loading,
+    error,
     loadWords,
     loadTags,
     deleteWord,
@@ -219,7 +231,11 @@ export default function WordListPage() {
       )}
 
       <div className="flex-1 min-h-0">
-        {filteredWords.length === 0 ? (
+        {loading ? (
+          <LoadingState text="正在加载生词…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={loadWords} />
+        ) : filteredWords.length === 0 ? (
           <Card className="py-12 text-center text-muted-foreground">
             <p>{searchQuery ? '没有匹配结果' : '生词库为空'}</p>
           </Card>

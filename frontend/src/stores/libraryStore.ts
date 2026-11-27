@@ -12,6 +12,7 @@ interface LibraryState {
   files: LibraryFile[]
   folders: Folder[]
   loading: boolean
+  error: string | null
   category: Category
   viewMode: ViewMode
   sortBy: SortBy
@@ -36,6 +37,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   files: [],
   folders: [],
   loading: false,
+  error: null,
   category: 'all',
   viewMode: 'grid',
   sortBy: 'addedAt',
@@ -45,9 +47,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   searchQuery: '',
 
   load: async () => {
-    set({ loading: true })
-    const data = await window.api.libraryList()
-    set({ files: data.files ?? [], folders: data.folders ?? [], loading: false })
+    set({ loading: true, error: null })
+    try {
+      const data = await window.api.libraryList()
+      set({ files: data.files ?? [], folders: data.folders ?? [] })
+    } catch {
+      set({ error: '文件库加载失败' })
+    } finally {
+      set({ loading: false })
+    }
   },
 
   setCategory: (category) => set({ category, editing: false, selectedPaths: new Set() }),
