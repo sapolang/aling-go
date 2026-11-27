@@ -647,7 +647,7 @@
   border: 1px solid hsl(var(--primary) / 0.28);
   background: hsl(var(--primary) / 0.08);
   font-family: var(--pp-mono);
-  font-size: 9px;
+  font-size: var(--pp-text-xs);
   letter-spacing: 0.12em;
   color: var(--pp-accent);
 }
@@ -830,6 +830,20 @@
 .pp-pin:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* 画面字幕开关：控制条右上角、固定按钮左侧 */
+.pp-caption-toggle {
+  right: 42px;
+}
+
+.pp-caption-toggle[aria-pressed='false'] {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.pp-caption-toggle:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* ---------- Transport ---------- */
@@ -1329,7 +1343,7 @@
   border-radius: 999px;
   background: hsl(var(--muted));
   font-family: var(--pp-mono);
-  font-size: 9px;
+  font-size: var(--pp-text-xs);
   color: var(--pp-dim);
 }
 
@@ -1567,7 +1581,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 5px;
-  font-size: 9px;
+  font-size: var(--pp-text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--pp-dim);

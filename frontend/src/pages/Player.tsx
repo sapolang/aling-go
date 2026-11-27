@@ -80,7 +80,7 @@ export default function PlayerPage() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [transcribingLabel, setTranscribingLabel] = useState('')
   const [partLoading, setPartLoading] = useState(false)
-  // 右栏默认跟随内容：没有字幕且未在转录时收起，让舞台铺满；
+  // 右栏字幕面板默认收起，让舞台铺满；
   // 用户手动切换后以手动选择为准，切换素材时自动失效、回到默认规则
   const [transcriptChoice, setTranscriptChoice] = useState<{
     path: string | null
@@ -440,8 +440,7 @@ export default function PlayerPage() {
   const togglePlay = () => runAction('playPause')
 
   const showDeck = isAudio || focusMode
-  const hasTranscript = subtitles.length > 0
-  const showTranscript = transcriptChoice?.path === filePath ? transcriptChoice.open : hasTranscript
+  const showTranscript = transcriptChoice?.path === filePath ? transcriptChoice.open : false
   const setTranscriptOpen = (open: boolean) => setTranscriptChoice({ path: filePath, open })
   const deckPlaying = playing && (isYouTube || (!!filePath && activeMediaPath === filePath))
 
