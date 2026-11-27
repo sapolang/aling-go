@@ -1,14 +1,12 @@
-/* PDF 精听页：沿用全局主题令牌，只在这里定义阅读区的排版尺度 */
+/* PDF 朗读页：沿用全局主题令牌，阅读区直接渲染原始 PDF 页面 */
 
 .pdf-listen-root {
   --pdf-line: hsl(var(--border));
   --pdf-card: hsl(var(--card));
   --pdf-muted: hsl(var(--muted-foreground));
   --pdf-accent: hsl(var(--primary));
-  --pdf-accent-soft: hsl(var(--primary) / 0.1);
+  --pdf-accent-soft: hsl(var(--primary) / 0.12);
   --pdf-hover: hsl(var(--accent) / 0.58);
-  /* 正文字号缩放系数，由页面上的字号按钮调节并持久化 */
-  --pdf-font-scale: 1;
   min-height: 0;
   color: hsl(var(--foreground));
 }
@@ -99,129 +97,97 @@
   text-align: center;
 }
 
-.pdf-pill:focus-visible,
-.pdf-row-action:focus-visible {
+.pdf-pill:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }
 
-.pdf-sentence-list {
+/* 原 PDF 页面滚动区 */
+.pdf-page-scroll {
+  position: relative;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
+  padding: 18px 12px 32px;
   border: 1px solid var(--pdf-line);
   border-radius: calc(var(--radius) + 2px);
-  background: var(--pdf-card);
+  background: hsl(var(--muted) / 0.35);
 }
 
-.pdf-sentence-shell {
-  padding: 2px 8px;
+.pdf-no-text {
+  margin: 0 auto 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: hsl(var(--muted));
+  color: var(--pdf-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
-.pdf-sentence-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
-  padding: 8px 8px 8px 6px;
-  border-left: 3px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
+.pdf-page {
+  position: relative;
+  margin: 0 auto 20px;
+  background: #fff;
+  box-shadow: 0 2px 14px hsl(var(--foreground) / 0.14);
 }
 
-.pdf-sentence-row:hover {
-  background: var(--pdf-hover);
+.pdf-page-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.pdf-sentence-row.is-active {
-  border-left-color: var(--pdf-accent);
-  background: var(--pdf-accent-soft);
+.pdf-page-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b91c1c;
+  font-size: 12px;
 }
 
-.pdf-sentence-row.is-past .pdf-sentence-text {
-  opacity: 0.62;
-}
-
-.pdf-sentence-page {
-  padding-top: 4px;
+.pdf-page-number {
+  position: absolute;
+  right: -2px;
+  bottom: -18px;
   color: var(--pdf-muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  text-align: right;
 }
 
-.pdf-sentence-text {
-  min-width: 0;
-  font-size: calc(17px * var(--pdf-font-scale));
-  line-height: 1.72;
-  overflow-wrap: anywhere;
-  transition:
-    filter 0.16s ease,
-    opacity 0.16s ease;
+/* 句子高亮层：与 canvas 同尺寸，透明覆盖在原文之上 */
+.pdf-page-highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
-.pdf-sentence-row.is-blind .pdf-sentence-text {
-  filter: blur(5px);
-  user-select: none;
-}
-
-/* 悬停、键盘聚焦和点击偷看都只临时揭开当前句 */
-.pdf-sentence-row.is-blind:hover .pdf-sentence-text,
-.pdf-sentence-row.is-blind:focus-visible .pdf-sentence-text {
-  filter: none;
-}
-
-.pdf-sentence-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding-top: 1px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.pdf-sentence-row:hover .pdf-sentence-actions,
-.pdf-sentence-row.is-active .pdf-sentence-actions {
-  opacity: 1;
-}
-
-.pdf-row-action {
-  display: inline-flex;
-  height: 24px;
-  width: 24px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  color: var(--pdf-muted);
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.pdf-row-action:hover {
-  background: var(--pdf-accent-soft);
-  color: var(--pdf-accent);
-}
-
-.pdf-word {
-  border-radius: 3px;
+.pdf-page-highlight {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  pointer-events: auto;
   cursor: pointer;
-  transition: background-color 0.12s ease;
+  transition:
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
 }
 
-.pdf-word:hover {
+.pdf-page-highlight:hover {
   background: hsl(var(--primary) / 0.14);
 }
 
-.pdf-word.is-saved {
-  color: var(--pdf-accent);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
+.pdf-page-highlight.is-active {
+  background: hsl(var(--primary) / 0.3);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.42);
+}
+
+.pdf-page-highlight:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
 }
 
 .pdf-listen-hint {

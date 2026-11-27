@@ -82,6 +82,7 @@ type PdfSentence struct {
 	ID         int64
 	DocumentID int64
 	Page       int64
+	Paragraph  int64
 	Idx        int64
 	Text       string
 }

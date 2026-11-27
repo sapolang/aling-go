@@ -1,21 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import {
   ArrowLeft,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
   Download,
-  Eye,
-  EyeOff,
   FileText,
   Loader2,
   Pause,
   Play,
-  Repeat1,
   RotateCcw,
-  Sparkles,
   Volume2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -33,42 +27,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import WordHoverCard from '@/components/WordHoverCard'
-import WordLookupModal from '@/components/WordLookupModal'
-import AISentencePanel from '@/pages/player/AISentencePanel'
-import { useAIPanel } from '@/pages/player/useAIPanel'
+import { PdfPageView } from '@/components/PdfPageView'
 import { showToast } from '@/components/feedback'
-import { useTtsQueuePlayer } from '@/hooks/useTtsQueuePlayer'
-import { useTextWordHover } from '@/hooks/useTextWordHover'
+import { usePdfReadAloud } from '@/hooks/usePdfReadAloud'
 import { TTS_VOICE_STORAGE_KEY as VOICE_STORAGE_KEY } from '@/lib/tts'
-import { useWordStore } from '@/stores/wordStore'
-import type {
-  EngineStatus,
-  InstallProgress,
-  PDFDocument,
-  PDFSentence,
-  SubtitleItem,
-} from '@/types/api'
+import {
+  loadPdfDocument,
+  type PdfDocumentData,
+  type PdfReadParagraph,
+  type PdfSentenceSpan,
+} from '@/lib/pdfReader'
+import type { EngineStatus, InstallProgress } from '@/types/api'
 import './PdfListenPlayer.css'
 
 const RATES = [0.6, 0.8, 1, 1.2, 1.5]
-const GAPS = [0, 1, 2]
 
-// 正文字号缩放：0.8~1.8，步进 0.1，与播放器的字幕字号手感一致
-const FONT_SCALE_KEY = 'aling.pdfFontScale'
-const FONT_SCALE_MIN = 0.8
-const FONT_SCALE_MAX = 1.8
-const FONT_SCALE_STEP = 0.1
+// 页面缩放：0.75~2，步进 0.1。原 PDF 版式不变，只整体放大缩小。
+const SCALE_MIN = 0.75
+const SCALE_MAX = 2
+const SCALE_STEP = 0.1
 
-const loadFontScale = (): number => {
-  if (typeof localStorage === 'undefined') return 1
-  const value = parseFloat(localStorage.getItem(FONT_SCALE_KEY) ?? '')
-  if (!Number.isFinite(value)) return 1
-  return Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, value)) * 10) / 10
-}
+// 每次打开默认放大到 150%，缩放调整仅在当前阅读会话生效。
+const DEFAULT_SCALE = 1.5
 
-// 与 internal/tts/install.go 的 localVoiceCatalog 保持一致，
-// TTSStatus 只返回已安装模型，因此安装对话框需要这份可安装清单。
+// 与 internal/tts/install.go 的 localVoiceCatalog 保持一致
 const LOCAL_VOICES = [
   { id: 'en_US-lessac-medium', name: 'Lessac · 美式女声（推荐）' },
   { id: 'en_US-amy-medium', name: 'Amy · 美式女声' },
@@ -86,8 +68,12 @@ const ENGINE_LABELS: Record<string, string> = {
   browser: '浏览器语音（降级）',
 }
 
-function sentenceToSubtitle(index: number, sentence: PDFSentence): SubtitleItem {
-  return { id: index + 1, startTime: 0, endTime: 0, text: sentence.text }
+/** 进度以全局句下标存储，找到它所属的段落下标。 */
+function findParagraphIndex(paragraphs: PdfReadParagraph[], sentenceIndex: number): number {
+  for (let i = paragraphs.length - 1; i >= 0; i--) {
+    if (paragraphs[i].firstSentence <= sentenceIndex) return i
+  }
+  return 0
 }
 
 export default function PdfListenPlayer() {
@@ -96,141 +82,112 @@ export default function PdfListenPlayer() {
   const routeState = (location.state ?? {}) as PdfRouteState
   const path = routeState.path || ''
 
-  const [doc, setDoc] = useState<PDFDocument | null>(null)
+  const [reader, setReader] = useState<PdfDocumentData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [voice, setVoice] = useState(
     () => localStorage.getItem(VOICE_STORAGE_KEY) || 'en-US-AriaNeural',
   )
   const [status, setStatus] = useState<EngineStatus | null>(null)
-  // 默认显示原文，用户主动开启盲听后才会模糊遮蔽。
-  const [blind, setBlind] = useState(false)
-  const [peekIndex, setPeekIndex] = useState<number | null>(null)
   const [autoFollow, setAutoFollow] = useState(true)
   const [installOpen, setInstallOpen] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null)
   const [resumeIndex, setResumeIndex] = useState(0)
-  // 正文字号缩放系数，用户可调并持久化
-  const [fontScale, setFontScale] = useState(loadFontScale)
+  const [scale, setScale] = useState(DEFAULT_SCALE)
+  const [docVersion, setDocVersion] = useState(0)
 
-  // 调整正文字号：立即生效并写入本地，下次打开保持
-  const adjustFontScale = useCallback((delta: number) => {
-    setFontScale((prev) => {
-      const next =
-        Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, prev + delta)) * 10) / 10
-      if (next !== prev) {
-        try {
-          localStorage.setItem(FONT_SCALE_KEY, String(next))
-        } catch {
-          // 隐私模式等场景写入会抛错，忽略即可
-        }
-      }
-      return next
-    })
-  }, [])
-
-  const virtuosoRef = useRef<VirtuosoHandle>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const readerRef = useRef<PdfDocumentData | null>(null)
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressIndexRef = useRef(0)
   const progressPathRef = useRef('')
   const seekedRef = useRef('')
-  const docPathRef = useRef('')
 
-  const sentences = useMemo(() => doc?.sentences ?? [], [doc])
+  const adjustScale = useCallback((delta: number) => {
+    setScale((prev) => Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, prev + delta)) * 10) / 10)
+  }, [])
 
-  // 生词库词表：已收藏的词在正文中高亮
-  const savedWordList = useWordStore((s) => s.words)
-  const loadWords = useWordStore((s) => s.loadWords)
-  const savedWords = useMemo(
-    () => new Set(savedWordList.map((w) => w.word.toLowerCase())),
-    [savedWordList],
-  )
-  useEffect(() => {
-    void loadWords()
-  }, [loadWords])
+  const paragraphs = useMemo(() => reader?.paragraphs ?? [], [reader])
+  const paragraphsRef = useRef(paragraphs)
+  paragraphsRef.current = paragraphs
 
-  const isSavedWord = useCallback(
-    (part: string) => {
-      let clean = part.toLowerCase().replace(/[^a-z0-9\-']/g, '')
-      if (clean.endsWith("'s")) clean = clean.slice(0, -2)
-      return clean.length > 1 && savedWords.has(clean)
-    },
-    [savedWords],
-  )
+  const sentencesByPage = useMemo(() => {
+    const map = new Map<number, PdfSentenceSpan[]>()
+    for (const sentence of reader?.sentences ?? []) {
+      const list = map.get(sentence.page) ?? []
+      list.push(sentence)
+      map.set(sentence.page, list)
+    }
+    return map
+  }, [reader])
 
-  const saveProgress = useCallback((index: number, immediate = false) => {
+  // progressIndexRef 与后端 last_sentence 同语义：以全局句为单位的游标。
+  const saveProgress = useCallback((sentenceIdx: number, immediate = false) => {
     const pathNow = progressPathRef.current
     if (!pathNow) return
-    progressIndexRef.current = index
+    progressIndexRef.current = sentenceIdx
     if (progressTimer.current) {
       clearTimeout(progressTimer.current)
       progressTimer.current = null
     }
+    const commit = () => {
+      void window.api.pdfUpdateProgress(pathNow, sentenceIdx).catch(() => {})
+    }
     if (immediate) {
-      void window.api.pdfUpdateProgress(pathNow, index).catch(() => {})
+      commit()
       return
     }
     progressTimer.current = setTimeout(() => {
       progressTimer.current = null
-      void window.api.pdfUpdateProgress(pathNow, index).catch(() => {})
+      commit()
     }, 700)
   }, [])
 
+  // hook 回报的是段落下标，换算成该段首句的全局句下标再落库。
   const handleIndexChange = useCallback(
-    (index: number) => {
-      setResumeIndex(index)
-      // 点击某句会先“偷看”，播放推进到下一句后重新遮住。
-      setPeekIndex((peek) => (peek !== null && peek !== index ? null : peek))
-      saveProgress(index)
+    (paragraphIdx: number) => {
+      saveProgress(paragraphsRef.current[paragraphIdx]?.firstSentence ?? 0)
     },
     [saveProgress],
   )
 
-  const player = useTtsQueuePlayer({
-    sentences,
+  const sourceKey = `${path}#${docVersion}`
+  const player = usePdfReadAloud({
+    paragraphs,
     voice,
-    sourceKey: path,
+    sourceKey,
     initialIndex: resumeIndex,
     onIndexChange: handleIndexChange,
     onError: (message) => showToast(message, 'warning'),
   })
   const {
     index,
+    sentenceIndex,
     playing,
     loading: audioLoading,
     engine,
     rate,
-    repeat,
-    gap,
     playAt,
     seek,
     toggle,
     next,
     prev,
     setRate,
-    setRepeat,
-    setGap,
   } = player
 
-  const hover = useTextWordHover({
-    isSavedWord,
-    onWordOpen: () => {
-      if (playing) toggle()
-    },
-  })
-  const ai = useAIPanel(path)
+  const globalSentenceIndex = paragraphs[index]
+    ? paragraphs[index].firstSentence + sentenceIndex
+    : 0
 
-  // 打开文档：并行取句子索引与 TTS 能力，避免先播放再切发音导致队列被重置。
+  // 打开文档：读取原 PDF 字节，用 pdf.js 渲染并提取句子位置。
   useEffect(() => {
     let cancelled = false
-    docPathRef.current = path
     progressPathRef.current = path
     seekedRef.current = ''
-    setDoc(null)
+    setReader(null)
     setError('')
     setLoading(true)
-    setPeekIndex(null)
     setResumeIndex(0)
 
     if (!path) {
@@ -243,20 +200,27 @@ export default function PdfListenPlayer() {
 
     ;(async () => {
       try {
-        const [loadResult, engineStatus] = await Promise.all([
-          window.api.pdfLoad(path),
+        const [fileResult, loadResult, engineStatus] = await Promise.all([
+          window.api.pdfReadFile(path),
+          window.api.pdfLoad(path).catch(() => null),
           window.api.ttsStatus().catch(() => null),
         ])
         if (cancelled) return
-        if (!loadResult?.ok || !loadResult.document) {
-          setError(loadResult?.error || '无法解析这个 PDF')
+        if (!fileResult?.ok || !fileResult.data) {
+          setError(fileResult?.error || '无法读取原 PDF 文件')
           setLoading(false)
           return
         }
-        const loaded = loadResult.document
-        setDoc(loaded)
-        setResumeIndex(loaded.lastSentence)
-        progressIndexRef.current = loaded.lastSentence
+        const data = await loadPdfDocument(fileResult.data)
+        if (cancelled) {
+          void data.dispose()
+          return
+        }
+        readerRef.current = data
+        setReader(data)
+        const lastSentence = loadResult?.document?.lastSentence ?? 0
+        setResumeIndex(findParagraphIndex(data.paragraphs, lastSentence))
+        progressIndexRef.current = lastSentence
         if (engineStatus) {
           setStatus(engineStatus)
           const allVoices = [
@@ -274,47 +238,47 @@ export default function PdfListenPlayer() {
         setLoading(false)
       } catch (err) {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : '加载 PDF 失败')
+        setError(err instanceof Error ? err.message : '打开 PDF 失败')
         setLoading(false)
       }
     })()
 
     return () => {
       cancelled = true
+      // 重新解析或切换文档时释放上一份 pdf.js 资源
+      const previous = readerRef.current
+      readerRef.current = null
+      if (previous) void previous.dispose()
     }
     // voice 只用于无可用引擎状态时的兜底，不应触发重新加载文档
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path])
+  }, [path, docVersion])
 
-  // 打开后把游标定位到上次停下的句子，但不自动播放——由用户手动点播放开始。
-  // seekedRef 保证同一文档只定位一次，切文档后随 doc 重置。
+  // 打开后把游标定位到上次停下的段落，但不自动播放。
   useEffect(() => {
-    if (!doc || sentences.length === 0) return
-    if (seekedRef.current === doc.path) return
-    seekedRef.current = doc.path
-    seek(doc.lastSentence)
-  }, [doc, seek, sentences])
+    if (!reader || paragraphs.length === 0) return
+    if (seekedRef.current === sourceKey) return
+    seekedRef.current = sourceKey
+    seek(resumeIndex)
+  }, [reader, paragraphs, resumeIndex, seek, sourceKey])
 
-  // 当前句变化时跟随滚动；用户关闭跟随后只保留高亮。
+  // 跟随朗读：滚到当前句所在页的句子位置。
   useEffect(() => {
-    if (!autoFollow) return
+    if (!autoFollow || !reader) return
+    const sentence = reader.sentences[globalSentenceIndex]
+    if (!sentence) return
     const timer = setTimeout(() => {
-      virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'smooth' })
-    }, 60)
+      const container = scrollRef.current
+      const pageEl = container?.querySelector<HTMLElement>(`[data-page="${sentence.page}"]`)
+      if (!container || !pageEl) return
+      const firstRect = sentence.parts
+        .map((part) => reader.items[part.itemIndex])
+        .find((item) => item && item.page === sentence.page)?.rect
+      const top = pageEl.offsetTop + (firstRect?.y ?? 0) * scale - 110
+      container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    }, 80)
     return () => clearTimeout(timer)
-  }, [index, autoFollow, doc])
-
-  // 字号变化会让列表整体重排，滚动位置随之漂移；跟随模式下重新居中当前句，
-  // 避免用户调完字号后不知道读到哪了。
-  useEffect(() => {
-    if (!autoFollow) return
-    const timer = setTimeout(() => {
-      virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' })
-    }, 60)
-    return () => clearTimeout(timer)
-    // fontScale 变化才触发；index 变化由上面的 effect 负责
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fontScale, autoFollow])
+  }, [globalSentenceIndex, autoFollow, reader, scale])
 
   // 安装进度事件由后端推送，页面关闭时取消订阅。
   useEffect(() => {
@@ -323,7 +287,7 @@ export default function PdfListenPlayer() {
     })
   }, [])
 
-  // 离开页面时立即落盘，避免最后一句进度丢失。
+  // 离开页面时立即落盘，避免最后一段进度丢失。
   useEffect(() => {
     return () => {
       if (progressTimer.current) {
@@ -335,10 +299,13 @@ export default function PdfListenPlayer() {
           .pdfUpdateProgress(progressPathRef.current, progressIndexRef.current)
           .catch(() => {})
       }
+      const data = readerRef.current
+      readerRef.current = null
+      if (data) void data.dispose()
     }
   }, [])
 
-  // 键盘快捷键：空格播放/暂停，左右切句，R 单句复读，B 盲听，+/- 调字号。
+  // 键盘快捷键：空格播放/暂停，左右切段，+/- 缩放页面。
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -349,7 +316,7 @@ export default function PdfListenPlayer() {
       ) {
         return
       }
-      if (installOpen || hover.showLookup || ai.aiTarget || ai.aiExplain) return
+      if (installOpen) return
       if (e.code === 'Space') {
         e.preventDefault()
         toggle()
@@ -359,34 +326,17 @@ export default function PdfListenPlayer() {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         next()
-      } else if (e.key.toLowerCase() === 'r') {
-        e.preventDefault()
-        setRepeat(!repeat)
-      } else if (e.key.toLowerCase() === 'b') {
-        e.preventDefault()
-        setBlind((v) => !v)
       } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
         e.preventDefault()
-        adjustFontScale(FONT_SCALE_STEP)
+        adjustScale(SCALE_STEP)
       } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
         e.preventDefault()
-        adjustFontScale(-FONT_SCALE_STEP)
+        adjustScale(-SCALE_STEP)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [
-    adjustFontScale,
-    ai.aiExplain,
-    ai.aiTarget,
-    hover.showLookup,
-    installOpen,
-    next,
-    prev,
-    repeat,
-    setRepeat,
-    toggle,
-  ])
+  }, [adjustScale, installOpen, next, prev, toggle])
 
   const handleVoiceChange = (nextVoice: string) => {
     setVoice(nextVoice)
@@ -414,12 +364,13 @@ export default function PdfListenPlayer() {
     }
   }
 
-  const handleRowClick = (sentenceIndex: number) => {
-    hover.cancelHover()
-    ai.closeAll()
-    setPeekIndex(sentenceIndex)
-    playAt(sentenceIndex)
-  }
+  const handleSentenceClick = useCallback(
+    (sentence: PdfSentenceSpan) => {
+      const paragraphIndex = paragraphs.findIndex((p) => p.number === sentence.paragraph)
+      if (paragraphIndex >= 0) playAt(paragraphIndex)
+    },
+    [paragraphs, playAt],
+  )
 
   const handleViewPdf = () => {
     if (!path) return
@@ -436,18 +387,8 @@ export default function PdfListenPlayer() {
         showToast(result?.error || '重新解析失败', 'error')
         return
       }
-      // 强制 pdfImport 替换了后端索引，重新 load 一次拿完整 doc + 保留的进度
-      const reload = await window.api.pdfLoad(path)
-      if (!reload?.ok || !reload.document) {
-        showToast(result?.error || '重新解析后加载失败', 'error')
-        return
-      }
-      const loaded = reload.document
-      setDoc(loaded)
-      setResumeIndex(loaded.lastSentence)
-      progressIndexRef.current = loaded.lastSentence
-      setPeekIndex(null)
-      showToast(`已重新解析：${loaded.pageCount} 页，${loaded.sentenceCount} 句`, 'success')
+      setDocVersion((v) => v + 1)
+      showToast(`已重新解析：${result.pageCount} 页，${result.sentenceCount} 句`, 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : '重新解析失败', 'error')
     } finally {
@@ -459,27 +400,26 @@ export default function PdfListenPlayer() {
     () => [...(status?.edgeVoices ?? []), ...(status?.localModels ?? [])],
     [status],
   )
-  const activeSentence = sentences[index]
-  const total = sentences.length
+  const activePage = reader?.sentences[globalSentenceIndex]?.page ?? 0
   const engineLabel = ENGINE_LABELS[engine] || '准备就绪'
 
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-3rem)] items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        正在解析 PDF 并提取句子…
+        正在打开原始 PDF 并提取朗读位置…
       </div>
     )
   }
 
-  if (error || !doc) {
+  if (error || !reader) {
     return (
       <div className="flex h-[calc(100vh-3rem)] flex-col items-center justify-center gap-4 text-center">
         <FileText className="h-10 w-10 text-muted-foreground" />
         <div>
-          <p className="text-lg font-medium">PDF 精听不可用</p>
+          <p className="text-lg font-medium">PDF 朗读不可用</p>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            {error || '没有可朗读的句子'}
+            {error || '没有可朗读的内容'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -497,10 +437,7 @@ export default function PdfListenPlayer() {
   }
 
   return (
-    <div
-      className="pdf-listen-root flex h-[calc(100vh-3rem)] min-h-[520px] flex-col"
-      style={{ '--pdf-font-scale': fontScale } as CSSProperties}
-    >
+    <div className="pdf-listen-root flex h-[calc(100vh-3rem)] min-h-[520px] flex-col">
       <header className="pdf-listen-header">
         <div className="flex min-w-0 items-start gap-3">
           <Button
@@ -513,12 +450,12 @@ export default function PdfListenPlayer() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold" title={doc.title}>
-              {doc.title || routeState.name || 'PDF 精听'}
+            <h1 className="truncate text-xl font-semibold" title={path}>
+              {routeState.name || path.split('/').pop() || 'PDF 朗读'}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {doc.pageCount} 页 · {doc.sentenceCount} 句
-              {activeSentence ? ` · 当前第 ${activeSentence.page} 页` : ''} · {engineLabel}
+              {reader.pageCount} 页 · {paragraphs.length} 段
+              {activePage ? ` · 当前第 ${activePage} 页` : ''} · {engineLabel}
             </p>
           </div>
         </div>
@@ -551,7 +488,7 @@ export default function PdfListenPlayer() {
             variant="ghost"
             size="sm"
             className="h-8 text-xs text-muted-foreground"
-            title="文件内容变更后重新提取句子"
+            title="文件内容变更后重新提取朗读位置"
             disabled={reindexing}
             onClick={() => void handleReindex()}
           >
@@ -580,9 +517,9 @@ export default function PdfListenPlayer() {
             variant="outline"
             size="icon"
             className="h-9 w-9"
-            title="上一句（←）"
+            title="上一段（←）"
             onClick={prev}
-            disabled={total === 0}
+            disabled={paragraphs.length === 0}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -591,7 +528,7 @@ export default function PdfListenPlayer() {
             className="h-10 w-10 rounded-full"
             title={playing ? '暂停（空格）' : '播放（空格）'}
             onClick={toggle}
-            disabled={total === 0}
+            disabled={paragraphs.length === 0}
           >
             {audioLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -605,21 +542,11 @@ export default function PdfListenPlayer() {
             variant="outline"
             size="icon"
             className="h-9 w-9"
-            title="下一句（→）"
+            title="下一段（→）"
             onClick={next}
-            disabled={total === 0}
+            disabled={paragraphs.length === 0}
           >
             <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={repeat ? 'secondary' : 'ghost'}
-            size="icon"
-            className={`h-9 w-9 ${repeat ? 'text-primary' : ''}`}
-            title="单句无限复读（R）"
-            aria-pressed={repeat}
-            onClick={() => setRepeat(!repeat)}
-          >
-            <Repeat1 className="h-4 w-4" />
           </Button>
         </div>
 
@@ -642,41 +569,25 @@ export default function PdfListenPlayer() {
         <div className="pdf-listen-divider" />
 
         <div className="flex items-center gap-1.5">
-          <span className="pdf-listen-label">句间停顿</span>
-          {GAPS.map((value) => (
-            <button
-              type="button"
-              key={value}
-              className={`pdf-pill ${gap === value ? 'is-active' : ''}`}
-              onClick={() => setGap(value)}
-            >
-              {value === 0 ? '0s' : `${value}s`}
-            </button>
-          ))}
-        </div>
-
-        <div className="pdf-listen-divider" />
-
-        <div className="flex items-center gap-1.5">
-          <span className="pdf-listen-label">字号</span>
+          <span className="pdf-listen-label">缩放</span>
           <button
             type="button"
             className="pdf-pill"
-            title="减小正文字号（-）"
-            aria-label="减小正文字号"
-            disabled={fontScale <= FONT_SCALE_MIN}
-            onClick={() => adjustFontScale(-FONT_SCALE_STEP)}
+            title="缩小页面（-）"
+            aria-label="缩小页面"
+            disabled={scale <= SCALE_MIN}
+            onClick={() => adjustScale(-SCALE_STEP)}
           >
             A-
           </button>
-          <span className="pdf-font-scale-value">{Math.round(fontScale * 100)}%</span>
+          <span className="pdf-font-scale-value">{Math.round(scale * 100)}%</span>
           <button
             type="button"
             className="pdf-pill"
-            title="增大正文字号（+）"
-            aria-label="增大正文字号"
-            disabled={fontScale >= FONT_SCALE_MAX}
-            onClick={() => adjustFontScale(FONT_SCALE_STEP)}
+            title="放大页面（+）"
+            aria-label="放大页面"
+            disabled={scale >= SCALE_MAX}
+            onClick={() => adjustScale(SCALE_STEP)}
           >
             A+
           </button>
@@ -685,16 +596,6 @@ export default function PdfListenPlayer() {
         <div className="pdf-listen-divider" />
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className={`pdf-pill flex items-center gap-1.5 ${blind ? 'is-active' : ''}`}
-            aria-pressed={blind}
-            title="盲听时模糊原文，悬停或点击句子可偷看（B）"
-            onClick={() => setBlind((v) => !v)}
-          >
-            {blind ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            盲听
-          </button>
           <button
             type="button"
             className={`pdf-pill ${autoFollow ? 'is-active' : ''}`}
@@ -707,110 +608,34 @@ export default function PdfListenPlayer() {
         </div>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="tabular-nums">{total === 0 ? '0 / 0' : `${index + 1} / ${total}`}</span>
-          {activeSentence && (
-            <span className="flex items-center gap-1">
-              <BookOpen className="h-3.5 w-3.5" />
-              P.{activeSentence.page}
-            </span>
-          )}
+          <span className="tabular-nums">
+            {paragraphs.length === 0 ? '0 / 0' : `${index + 1} / ${paragraphs.length}`}
+          </span>
+          {activePage > 0 && <span className="tabular-nums">P.{activePage}</span>}
         </div>
       </div>
 
-      <div className="pdf-sentence-list">
-        {total === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            没有从该 PDF 中提取到可朗读的句子
-          </div>
-        ) : (
-          <Virtuoso
-            ref={virtuosoRef}
-            data={sentences}
-            computeItemKey={(_, item) => item.index}
-            increaseViewportBy={400}
-            itemContent={(sentenceIndex, sentence) => {
-              const isActive = sentenceIndex === index
-              const isBlind = blind && peekIndex !== sentenceIndex
-              return (
-                <div className="pdf-sentence-shell">
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-current={isActive ? 'true' : undefined}
-                    className={`pdf-sentence-row ${isActive ? 'is-active' : ''} ${
-                      isBlind ? 'is-blind' : ''
-                    } ${sentenceIndex < index ? 'is-past' : ''}`}
-                    onClick={() => handleRowClick(sentenceIndex)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter' && e.key !== ' ') return
-                      e.preventDefault()
-                      e.stopPropagation()
-                      handleRowClick(sentenceIndex)
-                    }}
-                  >
-                    <span className="pdf-sentence-page" title={`第 ${sentence.page} 页`}>
-                      {sentence.page}
-                    </span>
-                    <span className="pdf-sentence-text">
-                      {hover.renderWords(sentence.text, sentence.text, `s-${sentence.index}`)}
-                    </span>
-                    <span className="pdf-sentence-actions">
-                      <button
-                        type="button"
-                        className="pdf-row-action"
-                        title="用 AI 翻译/详解本句"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          hover.cancelHover()
-                          ai.toggleForSubtitle(sentenceToSubtitle(sentenceIndex, sentence))
-                        }}
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  </div>
-                </div>
-              )
-            }}
-          />
+      <div ref={scrollRef} className="pdf-page-scroll">
+        {paragraphs.length === 0 && (
+          <p className="pdf-no-text">这份 PDF 没有可提取的文字，页面仍可查看，但无法朗读。</p>
         )}
+        {Array.from({ length: reader.pageCount }, (_, i) => i + 1).map((pageNo) => (
+          <PdfPageView
+            key={`${sourceKey}-${pageNo}`}
+            pdf={reader.pdf}
+            pageNumber={pageNo}
+            scale={scale}
+            sentences={sentencesByPage.get(pageNo) ?? []}
+            items={reader.items}
+            activeSentenceIndex={globalSentenceIndex}
+            onSentenceClick={handleSentenceClick}
+          />
+        ))}
       </div>
 
       <p className="pdf-listen-hint">
-        空格播放/暂停 · ←/→ 切句 · R 单句复读 · B 盲听 · +/- 调字号 · 点击句子从该句连播
+        空格播放/暂停 · ←/→ 切段 · +/- 缩放 · 点击页面上的句子从该段连播
       </p>
-
-      {hover.hover && (
-        <WordHoverCard
-          word={hover.hover.word}
-          sentence={hover.hover.sentence}
-          anchor={hover.hover.anchor}
-          onMouseEnter={hover.keepHover}
-          onMouseLeave={hover.scheduleHideHover}
-          onAdded={loadWords}
-        />
-      )}
-
-      {hover.showLookup && hover.selectedWord && (
-        <WordLookupModal
-          word={hover.selectedWord}
-          sentence={hover.currentSentence}
-          onClose={() => {
-            hover.closeLookup()
-            void loadWords()
-          }}
-        />
-      )}
-
-      <AISentencePanel
-        aiTarget={ai.aiTarget}
-        aiTranslate={ai.aiTranslate}
-        aiExplain={ai.aiExplain}
-        onTranslate={() => void ai.translate()}
-        onExplain={() => void ai.explain()}
-        onCloseTarget={ai.closeTarget}
-        onDismissExplain={ai.dismissExplain}
-      />
 
       <Dialog open={installOpen} onOpenChange={(open) => !installing && setInstallOpen(open)}>
         <DialogContent className="max-w-md">

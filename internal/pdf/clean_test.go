@@ -113,6 +113,37 @@ func TestSplitLongSentence(t *testing.T) {
 	}
 }
 
+func TestSplitParagraphSentencesKeepsParagraphs(t *testing.T) {
+	text := "First one. First two.\n\nSecond one. Second two."
+	got := SplitParagraphSentences(text)
+	if len(got) != 2 {
+		t.Fatalf("段落数 = %d, want 2: %#v", len(got), got)
+	}
+	if len(got[0]) != 2 || len(got[1]) != 2 {
+		t.Fatalf("每段句数错误: %#v", got)
+	}
+	if got[0][0] != "First one." || got[1][1] != "Second two." {
+		t.Fatalf("段落归属错误: %#v", got)
+	}
+}
+
+func TestBuildSentencesNumbersParagraphsAcrossPages(t *testing.T) {
+	pages := []PageText{
+		{Page: 1, Text: "P1 para one. P1 para two.\n\nFirst page second paragraph."},
+		{Page: 2, Text: "Second page first paragraph."},
+	}
+	sentences := BuildSentences(pages)
+	if len(sentences) != 4 {
+		t.Fatalf("句子数量 = %d, want 4: %#v", len(sentences), sentences)
+	}
+	wantParagraphs := []int{1, 1, 2, 3}
+	for i, s := range sentences {
+		if s.Paragraph != wantParagraphs[i] {
+			t.Fatalf("第 %d 句段落号 = %d, want %d: %#v", i, s.Paragraph, wantParagraphs[i], sentences)
+		}
+	}
+}
+
 func TestBuildSentencesKeepsPageNumbers(t *testing.T) {
 	pages := []PageText{
 		{Page: 1, Text: "First page sentence. Another one."},

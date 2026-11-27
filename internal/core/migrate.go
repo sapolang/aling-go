@@ -10,6 +10,7 @@ import (
 func migrateIfNeeded(dataDir string) {
 	migrateSRS()
 	migrateFavoriteClips()
+	migratePDFParagraphs()
 
 	migrateFlag := filepath.Join(dataDir, ".migrated")
 	if _, err := os.Stat(migrateFlag); err == nil {
@@ -101,4 +102,10 @@ func migrateFavoriteClips() {
 	for _, c := range cols {
 		_, _ = DB.Exec("ALTER TABLE favorite_clips ADD COLUMN " + c.name + " " + c.def)
 	}
+}
+
+// migratePDFParagraphs 给旧库已索引的 PDF 句子补段落列。
+// 旧数据没有段落信息，统一归到第 1 段；重新解析后会按原文段落重建。
+func migratePDFParagraphs() {
+	_, _ = DB.Exec("ALTER TABLE pdf_sentences ADD COLUMN paragraph INTEGER NOT NULL DEFAULT 1")
 }

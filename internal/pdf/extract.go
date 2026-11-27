@@ -23,10 +23,12 @@ type Extracted struct {
 }
 
 // Sentence 是最终落库的朗读单元。Index 从 1 开始，跨页连续。
+// Paragraph 是段落序号，同一段的句子共享该值，用于前端按原段落排版。
 type Sentence struct {
-	Index int
-	Page  int
-	Text  string
+	Index     int
+	Page      int
+	Paragraph int
+	Text      string
 }
 
 // ExtractFile 使用纯 Go 解析器读取 PDF 文本。扫描版 PDF 没有文本层时返回明确错误，
@@ -98,20 +100,27 @@ func readPage(reader *pdfreader.Reader, pageNum int) (text string, ok bool) {
 	return value, true
 }
 
-// BuildSentences 把逐页文本切成连续的句子列表，并在页内保留页码。
+// BuildSentences 把逐页文本切成连续的句子列表，并在页内保留页码与段落号。
+// 段落号跨页连续，同一段的句子共享该值，供前端按原段落排版。
 func BuildSentences(pages []PageText) []Sentence {
 	sentences := make([]Sentence, 0, len(pages)*8)
 	index := 1
+	paragraphNo := 1
 	for _, page := range pages {
-		for _, text := range SplitSentences(page.Text) {
-			for _, part := range SplitLongSentence(text, 600) {
-				part = strings.TrimSpace(part)
-				if part == "" {
-					continue
+		for _, paragraph := range SplitParagraphSentences(page.Text) {
+			for _, text := range paragraph {
+				for _, part := range SplitLongSentence(text, 600) {
+					part = strings.TrimSpace(part)
+					if part == "" {
+						continue
+					}
+					sentences = append(sentences, Sentence{
+						Index: index, Page: page.Page, Paragraph: paragraphNo, Text: part,
+					})
+					index++
 				}
-				sentences = append(sentences, Sentence{Index: index, Page: page.Page, Text: part})
-				index++
 			}
+			paragraphNo++
 		}
 	}
 	return sentences

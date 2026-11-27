@@ -22,7 +22,8 @@ const (
 	edgeFailThreshold = 3 // 连续失败 N 次后才发降级事件，避免网络抖动频繁打扰。
 	edgeCooldown      = 30 * time.Second
 
-	localSynthTimeout = 20 * time.Second
+	// 整段朗读一次合成的文本较长，放宽本地合成超时。
+	localSynthTimeout = 45 * time.Second
 	installTimeout    = 15 * time.Minute
 )
 

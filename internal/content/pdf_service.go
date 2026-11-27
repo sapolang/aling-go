@@ -3,6 +3,7 @@ package content
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -72,6 +73,19 @@ func (s *PDFService) PDFLoad(path string) PDFLoadResult {
 		return PDFLoadResult{OK: false, Error: err.Error()}
 	}
 	return PDFLoadResult{OK: true, Document: indexed}
+}
+
+// PDFReadFile 返回原 PDF 文件的 base64 内容，供前端渲染未经重排的原始页面。
+func (s *PDFService) PDFReadFile(path string) PDFFileResult {
+	if err := validatePDFPath(path); err != nil {
+		return PDFFileResult{Error: err.Error()}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		loggerOf(s.app).Warn("pdf read file", "path", path, "error", err)
+		return PDFFileResult{Error: "读取 PDF 文件失败：" + err.Error()}
+	}
+	return PDFFileResult{OK: true, Data: base64.StdEncoding.EncodeToString(data)}
 }
 
 // PDFList 返回已索引的 PDF，最近更新的排在前面。
@@ -145,9 +159,10 @@ func (s *PDFService) loadDocument(path string) (PDFDocument, error) {
 	sentences := make([]PDFSentence, 0, len(rows))
 	for _, item := range rows {
 		sentences = append(sentences, PDFSentence{
-			Index: int(item.Idx) - 1,
-			Page:  int(item.Page),
-			Text:  item.Text,
+			Index:     int(item.Idx) - 1,
+			Page:      int(item.Page),
+			Paragraph: int(item.Paragraph),
+			Text:      item.Text,
 		})
 	}
 	return PDFDocument{
@@ -201,6 +216,7 @@ func importPDFFile(dataDir, path string) (PDFDocument, error) {
 		if err := txq.InsertPDFSentence(ctx, userdb.InsertPDFSentenceParams{
 			DocumentID: row.ID,
 			Page:       int64(sentence.Page),
+			Paragraph:  int64(sentence.Paragraph),
 			Idx:        int64(sentence.Index),
 			Text:       sentence.Text,
 		}); err != nil {
@@ -213,7 +229,10 @@ func importPDFFile(dataDir, path string) (PDFDocument, error) {
 
 	out := make([]PDFSentence, 0, len(sentences))
 	for _, sentence := range sentences {
-		out = append(out, PDFSentence{Index: sentence.Index - 1, Page: sentence.Page, Text: sentence.Text})
+		out = append(out, PDFSentence{
+			Index: sentence.Index - 1, Page: sentence.Page,
+			Paragraph: sentence.Paragraph, Text: sentence.Text,
+		})
 	}
 	return PDFDocument{
 		Path:          path,

@@ -1,10 +1,11 @@
 package content
 
-// PDFSentence 是 PDF 精听列表中的一句。
+// PDFSentence 是 PDF 阅读视图中的一个朗读句。
 type PDFSentence struct {
-	Index int    `json:"index"`
-	Page  int    `json:"page"`
-	Text  string `json:"text"`
+	Index     int    `json:"index"`
+	Page      int    `json:"page"`
+	Paragraph int    `json:"paragraph"`
+	Text      string `json:"text"`
 }
 
 // PDFDocument 是前端精听页需要的完整文档：元信息 + 句子列表。
@@ -42,4 +43,11 @@ type PDFLoadResult struct {
 	OK       bool        `json:"ok"`
 	Error    string      `json:"error"`
 	Document PDFDocument `json:"document"`
+}
+
+// PDFFileResult 携带原 PDF 文件的 base64 内容，供前端用 pdf.js 渲染原始页面。
+type PDFFileResult struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error"`
+	Data  string `json:"data"`
 }

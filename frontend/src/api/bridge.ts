@@ -73,6 +73,7 @@ import {
   PDFImport,
   PDFList,
   PDFLoad,
+  PDFReadFile,
   PDFRemove,
   PDFUpdateProgress,
 } from '../../bindings/aling-go/internal/content/pdfservice'
@@ -299,6 +300,7 @@ export function initBridge(): void {
     pdfImport: (path: string) => PDFImport(path),
     pdfList: () => PDFList().then((rows) => rows ?? []),
     pdfLoad: (path: string) => PDFLoad(path),
+    pdfReadFile: (path: string) => PDFReadFile(path),
     pdfRemove: (path: string) => PDFRemove(path),
     pdfUpdateProgress: (path: string, sentenceIndex: number) =>
       PDFUpdateProgress(path, sentenceIndex),

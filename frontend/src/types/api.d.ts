@@ -53,6 +53,7 @@ import type {
   PDFImportResult,
   PDFLoadResult,
   PDFSentence,
+  PDFFileResult,
 } from '../../bindings/aling-go/internal/content/models'
 import type {
   AIConfig,
@@ -126,6 +127,7 @@ export type {
   PDFImportResult,
   PDFLoadResult,
   PDFSentence,
+  PDFFileResult,
   AIConfig,
   AIConfigView,
   AIExplainResult,
@@ -254,6 +256,7 @@ export interface ElectronAPI {
   pdfImport: (path: string) => Promise<PDFImportResult>
   pdfList: () => Promise<PDFDocumentSummary[]>
   pdfLoad: (path: string) => Promise<PDFLoadResult>
+  pdfReadFile: (path: string) => Promise<PDFFileResult>
   pdfRemove: (path: string) => Promise<void>
   pdfUpdateProgress: (path: string, sentenceIndex: number) => Promise<void>
 

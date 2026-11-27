@@ -96,16 +96,28 @@ func CleanPageText(raw string) string {
 	return strings.TrimSpace(cleaned)
 }
 
-// SplitSentences 按 . ? ! 切分句子，并排除常见缩写、首字母缩写、小数点和省略号。
-// 段落空行视为强制边界，避免没有标点的标题粘到下一段。
-func SplitSentences(text string) []string {
-	var out []string
+// SplitParagraphSentences 按空行分段，段内再按 . ? ! 切句。
+// 返回的每个切片对应原文的一个段落，用于保留段落排版。
+func SplitParagraphSentences(text string) [][]string {
+	var paragraphs [][]string
 	for _, paragraph := range strings.Split(text, "\n\n") {
 		paragraph = strings.TrimSpace(paragraph)
 		if paragraph == "" {
 			continue
 		}
-		out = append(out, splitParagraph([]rune(paragraph))...)
+		if sentences := splitParagraph([]rune(paragraph)); len(sentences) > 0 {
+			paragraphs = append(paragraphs, sentences)
+		}
+	}
+	return paragraphs
+}
+
+// SplitSentences 按 . ? ! 切分句子，并排除常见缩写、首字母缩写、小数点和省略号。
+// 段落空行视为强制边界，避免没有标点的标题粘到下一段。
+func SplitSentences(text string) []string {
+	var out []string
+	for _, sentences := range SplitParagraphSentences(text) {
+		out = append(out, sentences...)
 	}
 	return out
 }

@@ -31,11 +31,11 @@ ORDER BY updated_at DESC;
 DELETE FROM pdf_sentences WHERE document_id = ?;
 
 -- name: InsertPDFSentence :exec
-INSERT INTO pdf_sentences (document_id, page, idx, text)
-VALUES (?, ?, ?, ?);
+INSERT INTO pdf_sentences (document_id, page, paragraph, idx, text)
+VALUES (?, ?, ?, ?, ?);
 
 -- name: ListPDFSentences :many
-SELECT id, document_id, page, idx, text
+SELECT id, document_id, page, paragraph, idx, text
 FROM pdf_sentences
 WHERE document_id = ?
 ORDER BY idx ASC;

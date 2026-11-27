@@ -25,7 +25,8 @@ const (
 
 	edgeConnectTimeout = 2 * time.Second
 	edgeFirstAudioWait = 2 * time.Second
-	edgeTotalTimeout   = 8 * time.Second
+	// 整段朗读一次合成的文本可能远长于单句，放宽总超时避免长段落误判为失败。
+	edgeTotalTimeout = 30 * time.Second
 	// 空闲连接超过该时长就直接丢弃，避免复用已被服务端回收的连接。
 	edgeIdleMaxAge = 10 * time.Second
 )

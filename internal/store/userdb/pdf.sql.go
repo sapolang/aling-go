@@ -72,13 +72,14 @@ func (q *Queries) GetPDFDocumentByPath(ctx context.Context, path string) (PdfDoc
 }
 
 const insertPDFSentence = `-- name: InsertPDFSentence :exec
-INSERT INTO pdf_sentences (document_id, page, idx, text)
-VALUES (?, ?, ?, ?)
+INSERT INTO pdf_sentences (document_id, page, paragraph, idx, text)
+VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertPDFSentenceParams struct {
 	DocumentID int64
 	Page       int64
+	Paragraph  int64
 	Idx        int64
 	Text       string
 }
@@ -87,6 +88,7 @@ func (q *Queries) InsertPDFSentence(ctx context.Context, arg InsertPDFSentencePa
 	_, err := q.db.ExecContext(ctx, insertPDFSentence,
 		arg.DocumentID,
 		arg.Page,
+		arg.Paragraph,
 		arg.Idx,
 		arg.Text,
 	)
@@ -132,7 +134,7 @@ func (q *Queries) ListPDFDocuments(ctx context.Context) ([]PdfDocument, error) {
 }
 
 const listPDFSentences = `-- name: ListPDFSentences :many
-SELECT id, document_id, page, idx, text
+SELECT id, document_id, page, paragraph, idx, text
 FROM pdf_sentences
 WHERE document_id = ?
 ORDER BY idx ASC
@@ -151,6 +153,7 @@ func (q *Queries) ListPDFSentences(ctx context.Context, documentID int64) ([]Pdf
 			&i.ID,
 			&i.DocumentID,
 			&i.Page,
+			&i.Paragraph,
 			&i.Idx,
 			&i.Text,
 		); err != nil {
