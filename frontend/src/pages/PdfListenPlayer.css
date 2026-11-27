@@ -7,6 +7,8 @@
   --pdf-accent: hsl(var(--primary));
   --pdf-accent-soft: hsl(var(--primary) / 0.1);
   --pdf-hover: hsl(var(--accent) / 0.58);
+  /* 正文字号缩放系数，由页面上的字号按钮调节并持久化 */
+  --pdf-font-scale: 1;
   min-height: 0;
   color: hsl(var(--foreground));
 }
@@ -78,6 +80,25 @@
   color: var(--pdf-accent);
 }
 
+.pdf-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-pill:disabled:hover {
+  background: transparent;
+  color: var(--pdf-muted);
+}
+
+.pdf-font-scale-value {
+  min-width: 40px;
+  color: var(--pdf-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+}
+
 .pdf-pill:focus-visible,
 .pdf-row-action:focus-visible {
   outline: 2px solid hsl(var(--ring));
@@ -135,7 +156,7 @@
 
 .pdf-sentence-text {
   min-width: 0;
-  font-size: 15px;
+  font-size: calc(17px * var(--pdf-font-scale));
   line-height: 1.72;
   overflow-wrap: anywhere;
   transition:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import {
@@ -54,6 +54,19 @@ import './PdfListenPlayer.css'
 const RATES = [0.6, 0.8, 1, 1.2, 1.5]
 const GAPS = [0, 1, 2]
 
+// 正文字号缩放：0.8~1.8，步进 0.1，与播放器的字幕字号手感一致
+const FONT_SCALE_KEY = 'aling.pdfFontScale'
+const FONT_SCALE_MIN = 0.8
+const FONT_SCALE_MAX = 1.8
+const FONT_SCALE_STEP = 0.1
+
+const loadFontScale = (): number => {
+  if (typeof localStorage === 'undefined') return 1
+  const value = parseFloat(localStorage.getItem(FONT_SCALE_KEY) ?? '')
+  if (!Number.isFinite(value)) return 1
+  return Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, value)) * 10) / 10
+}
+
 // 与 internal/tts/install.go 的 localVoiceCatalog 保持一致，
 // TTSStatus 只返回已安装模型，因此安装对话框需要这份可安装清单。
 const LOCAL_VOICES = [
@@ -98,6 +111,24 @@ export default function PdfListenPlayer() {
   const [installing, setInstalling] = useState(false)
   const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null)
   const [resumeIndex, setResumeIndex] = useState(0)
+  // 正文字号缩放系数，用户可调并持久化
+  const [fontScale, setFontScale] = useState(loadFontScale)
+
+  // 调整正文字号：立即生效并写入本地，下次打开保持
+  const adjustFontScale = useCallback((delta: number) => {
+    setFontScale((prev) => {
+      const next =
+        Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, prev + delta)) * 10) / 10
+      if (next !== prev) {
+        try {
+          localStorage.setItem(FONT_SCALE_KEY, String(next))
+        } catch {
+          // 隐私模式等场景写入会抛错，忽略即可
+        }
+      }
+      return next
+    })
+  }, [])
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -273,6 +304,18 @@ export default function PdfListenPlayer() {
     return () => clearTimeout(timer)
   }, [index, autoFollow, doc])
 
+  // 字号变化会让列表整体重排，滚动位置随之漂移；跟随模式下重新居中当前句，
+  // 避免用户调完字号后不知道读到哪了。
+  useEffect(() => {
+    if (!autoFollow) return
+    const timer = setTimeout(() => {
+      virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' })
+    }, 60)
+    return () => clearTimeout(timer)
+    // fontScale 变化才触发；index 变化由上面的 effect 负责
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontScale, autoFollow])
+
   // 安装进度事件由后端推送，页面关闭时取消订阅。
   useEffect(() => {
     return window.api.ttsOnInstallProgress((progress) => {
@@ -295,7 +338,7 @@ export default function PdfListenPlayer() {
     }
   }, [])
 
-  // 键盘快捷键：空格播放/暂停，左右切句，R 单句复读，B 盲听。
+  // 键盘快捷键：空格播放/暂停，左右切句，R 单句复读，B 盲听，+/- 调字号。
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -322,11 +365,18 @@ export default function PdfListenPlayer() {
       } else if (e.key.toLowerCase() === 'b') {
         e.preventDefault()
         setBlind((v) => !v)
+      } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+        e.preventDefault()
+        adjustFontScale(FONT_SCALE_STEP)
+      } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+        e.preventDefault()
+        adjustFontScale(-FONT_SCALE_STEP)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [
+    adjustFontScale,
     ai.aiExplain,
     ai.aiTarget,
     hover.showLookup,
@@ -447,7 +497,10 @@ export default function PdfListenPlayer() {
   }
 
   return (
-    <div className="pdf-listen-root flex h-[calc(100vh-3rem)] min-h-[520px] flex-col">
+    <div
+      className="pdf-listen-root flex h-[calc(100vh-3rem)] min-h-[520px] flex-col"
+      style={{ '--pdf-font-scale': fontScale } as CSSProperties}
+    >
       <header className="pdf-listen-header">
         <div className="flex min-w-0 items-start gap-3">
           <Button
@@ -604,6 +657,33 @@ export default function PdfListenPlayer() {
 
         <div className="pdf-listen-divider" />
 
+        <div className="flex items-center gap-1.5">
+          <span className="pdf-listen-label">字号</span>
+          <button
+            type="button"
+            className="pdf-pill"
+            title="减小正文字号（-）"
+            aria-label="减小正文字号"
+            disabled={fontScale <= FONT_SCALE_MIN}
+            onClick={() => adjustFontScale(-FONT_SCALE_STEP)}
+          >
+            A-
+          </button>
+          <span className="pdf-font-scale-value">{Math.round(fontScale * 100)}%</span>
+          <button
+            type="button"
+            className="pdf-pill"
+            title="增大正文字号（+）"
+            aria-label="增大正文字号"
+            disabled={fontScale >= FONT_SCALE_MAX}
+            onClick={() => adjustFontScale(FONT_SCALE_STEP)}
+          >
+            A+
+          </button>
+        </div>
+
+        <div className="pdf-listen-divider" />
+
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -697,7 +777,7 @@ export default function PdfListenPlayer() {
       </div>
 
       <p className="pdf-listen-hint">
-        空格播放/暂停 · ←/→ 切句 · R 单句复读 · B 盲听 · 点击句子从该句连播
+        空格播放/暂停 · ←/→ 切句 · R 单句复读 · B 盲听 · +/- 调字号 · 点击句子从该句连播
       </p>
 
       {hover.hover && (
