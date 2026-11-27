@@ -205,7 +205,7 @@ export function Layout({
                 {!collapsed && item.label}
                 {badge > 0 && (
                   <span
-                    className={`ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground ${collapsed ? 'absolute top-1 right-1 ml-0' : ''}`}
+                    className={`ml-auto rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground ${collapsed ? 'absolute top-1 right-1 ml-0' : ''}`}
                   >
                     {badge > 99 ? '99+' : badge}
                   </span>

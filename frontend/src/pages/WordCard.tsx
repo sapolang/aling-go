@@ -422,7 +422,7 @@ export default function WordCardPage() {
           >
             <span className="text-sm font-semibold">{opt.label}</span>
             <span className="text-xs opacity-80">{srsIntervalLabel(opt.grade, current)}</span>
-            <span className="text-[10px] opacity-60">({opt.key})</span>
+            <span className="text-[11px] opacity-60">({opt.key})</span>
           </Button>
         ))}
       </div>
@@ -458,7 +458,7 @@ export default function WordCardPage() {
           下一个 <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
       </div>
-      <p className="text-[10px] text-muted-foreground text-center -mt-2">
+      <p className="text-[11px] text-muted-foreground text-center -mt-2">
         ← → 或 Enter 切换单词 · Ctrl/⌘+Z 撤销
       </p>
     </div>

@@ -682,13 +682,13 @@ export default function PodcastPage() {
                               </div>
                             )}
                             {isVideo && (
-                              <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-1">
+                              <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-xs font-medium bg-black/60 text-white flex items-center gap-1">
                                 <PlayCircle className="h-3 w-3" />
                                 视频
                               </span>
                             )}
                             {ep.localPath && (
-                              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
+                              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-xs font-medium bg-primary/80 text-primary-foreground flex items-center gap-1">
                                 <Check className="h-3 w-3" />
                                 已下载
                               </span>

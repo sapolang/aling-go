@@ -181,7 +181,7 @@ export default function SettingsCapability() {
                   <span className="text-xs text-green-600 dark:text-green-400">已下载</span>
                 )}
                 {active && (
-                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
                     使用中
                   </span>
                 )}

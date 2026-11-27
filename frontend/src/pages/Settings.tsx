@@ -93,7 +93,7 @@ export default function SettingsPage() {
                     <span className="flex-1 truncate">{item.label}</span>
                     {item.path === 'shortcuts' && modifiedShortcutCount > 0 && (
                       <span
-                        className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums"
+                        className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium tabular-nums"
                         title={`已修改 ${modifiedShortcutCount} 项快捷键`}
                       >
                         {modifiedShortcutCount}

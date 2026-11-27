@@ -1195,7 +1195,7 @@ function GridFileCard({
       <div className="p-2 border-t">
         <p className="text-xs truncate">{file.name}</p>
         {lastPosition > 0 && (
-          <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+          <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
             <History className="h-2.5 w-2.5 shrink-0" />
             上次播放到 {formatTime(lastPosition)}
           </p>

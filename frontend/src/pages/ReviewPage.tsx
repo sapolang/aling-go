@@ -299,7 +299,7 @@ export default function ReviewPage() {
           disabled={!flipped}
         >
           <ThumbsDown className="h-5 w-5" /> 不认识{' '}
-          <span className="text-[10px] opacity-50 ml-1">(1)</span>
+          <span className="text-[11px] opacity-50 ml-1">(1)</span>
         </Button>
         <Button
           variant="outline"
@@ -309,7 +309,7 @@ export default function ReviewPage() {
           disabled={!flipped}
         >
           <ThumbsUp className="h-5 w-5" /> 认识{' '}
-          <span className="text-[10px] opacity-50 ml-1">(2)</span>
+          <span className="text-[11px] opacity-50 ml-1">(2)</span>
         </Button>
         {current && (
           <Button
@@ -320,7 +320,7 @@ export default function ReviewPage() {
             disabled={addedSet.has(current.word)}
           >
             <Plus className="h-5 w-5" /> {addedSet.has(current.word) ? '已入库' : '入库'}{' '}
-            <span className="text-[10px] opacity-50 ml-1">(3)</span>
+            <span className="text-[11px] opacity-50 ml-1">(3)</span>
           </Button>
         )}
       </div>
