@@ -32,6 +32,8 @@ export interface TtsQueuePlayerHandle {
   gap: number
   play: (from?: number) => void
   playAt: (index: number) => void
+  /** 只定位当前句、不启动播放（用于打开文档后停在上次进度） */
+  seek: (index: number) => void
   pause: () => void
   toggle: () => void
   next: () => void
@@ -344,6 +346,13 @@ export function useTtsQueuePlayer({
     [playAt],
   )
 
+  // 仅把游标移动到 target，不开始播放、不触发进度回调。
+  const seek = useCallback((target: number) => {
+    const next = clampIndex(target, sentencesRef.current.length)
+    indexRef.current = next
+    setIndex(next)
+  }, [])
+
   const pause = useCallback(() => {
     tokenRef.current++
     stopEverything()
@@ -429,6 +438,7 @@ export function useTtsQueuePlayer({
     gap,
     play,
     playAt,
+    seek,
     pause,
     toggle,
     next,

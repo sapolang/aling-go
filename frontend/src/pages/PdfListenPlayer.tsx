@@ -103,7 +103,7 @@ export default function PdfListenPlayer() {
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressIndexRef = useRef(0)
   const progressPathRef = useRef('')
-  const autoPlayedRef = useRef('')
+  const seekedRef = useRef('')
   const docPathRef = useRef('')
 
   const sentences = useMemo(() => doc?.sentences ?? [], [doc])
@@ -173,6 +173,7 @@ export default function PdfListenPlayer() {
     repeat,
     gap,
     playAt,
+    seek,
     toggle,
     next,
     prev,
@@ -194,7 +195,7 @@ export default function PdfListenPlayer() {
     let cancelled = false
     docPathRef.current = path
     progressPathRef.current = path
-    autoPlayedRef.current = ''
+    seekedRef.current = ''
     setDoc(null)
     setError('')
     setLoading(true)
@@ -254,22 +255,14 @@ export default function PdfListenPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
 
-  // 打开后从上次停下的句子继续，稍等排版稳定再自动播放。
-  // 用户先手动点了播放时，不再抢回上次的句子。
+  // 打开后把游标定位到上次停下的句子，但不自动播放——由用户手动点播放开始。
+  // seekedRef 保证同一文档只定位一次，切文档后随 doc 重置。
   useEffect(() => {
     if (!doc || sentences.length === 0) return
-    if (autoPlayedRef.current === doc.path) return
-    if (playing) {
-      autoPlayedRef.current = doc.path
-      return
-    }
-    const timer = setTimeout(() => {
-      if (autoPlayedRef.current === doc.path) return
-      autoPlayedRef.current = doc.path
-      playAt(doc.lastSentence)
-    }, 320)
-    return () => clearTimeout(timer)
-  }, [doc, playing, playAt, sentences])
+    if (seekedRef.current === doc.path) return
+    seekedRef.current = doc.path
+    seek(doc.lastSentence)
+  }, [doc, seek, sentences])
 
   // 当前句变化时跟随滚动；用户关闭跟随后只保留高亮。
   useEffect(() => {
