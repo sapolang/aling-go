@@ -39,7 +39,7 @@ type Config struct {
 
 // Run 完成全部启动步骤并阻塞到应用退出。
 func Run(cfg Config) {
-	dataDir, err := appDataDir()
+	dataDir, err := DataDir()
 	if err != nil {
 		fatal("get config dir: %v", err)
 	}
@@ -61,7 +61,8 @@ func Run(cfg Config) {
 	}
 }
 
-func appDataDir() (string, error) {
+// DataDir 返回应用数据目录，供 GUI 启动与 tool 子命令共用。
+func DataDir() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err

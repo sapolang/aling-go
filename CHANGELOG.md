@@ -15,6 +15,7 @@
 - 基础设施：CI 加固（govulncheck、npm audit、frontend lint、prettier check）
 - 基础设施：`.editorconfig`
 - 基础设施：SECURITY.md / CHANGELOG.md / Issue 模板
+- 新增 `aling-go tool` 子命令，可直接调用内置 ffmpeg / yt-dlp / whisper-sidecar；macOS 支持 `install-cli` / `uninstall-cli` 注册命令
 
 ### Changed
 - bundle identifier 统一为 `com.aling-go`，CFBundleName 统一为 `aling-go`，用户数据目录同步改名，升级用户首次启动自动迁移旧的 `aling-go/` 目录

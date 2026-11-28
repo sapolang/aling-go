@@ -11,10 +11,8 @@ import (
 	"html"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	goRuntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +20,7 @@ import (
 
 	"aling-go/internal/proc"
 	"aling-go/internal/system"
+	"aling-go/internal/tools"
 )
 
 // youtubeSubtitleLangPriority 字幕语言优先级，取第一个命中的轨道
@@ -36,39 +35,7 @@ var vttTagRe = regexp.MustCompile(`<[^>]+>`)
 
 // findYtDlp 保留 PATH 优先级，未安装到系统时回退到随应用发布或开发目录里的 sidecar。
 func findYtDlp(dataDir string) string {
-	if p, err := exec.LookPath("yt-dlp"); err == nil {
-		return p
-	}
-	return firstExisting(ytDlpCandidates(dataDir, executableDir(), bundleResources(), goRuntime.GOOS))
-}
-
-// ytDlpCandidates 返回除 PATH 之外的 yt-dlp 查找路径。
-// Windows 安装包把 yt-dlp.exe 放在 exe 同目录，因此 exe 目录排在相对路径之前。
-func ytDlpCandidates(dataDir, exeDir, bundlePath, goos string) []string {
-	if goos == "darwin" {
-		locations := []string{
-			"/opt/homebrew/bin/yt-dlp",
-			"/usr/local/bin/yt-dlp",
-			"/usr/bin/yt-dlp",
-			filepath.Join(dataDir, "sidecar", "yt-dlp"),
-			"sidecar/yt-dlp",
-			"./sidecar/yt-dlp",
-		}
-		locations = append([]string{"../sidecar/yt-dlp"}, locations...)
-		if bundlePath != "" {
-			locations = append([]string{filepath.Join(bundlePath, "yt-dlp")}, locations...)
-		}
-		return locations
-	}
-
-	locations := []string{filepath.Join(dataDir, "sidecar", "yt-dlp.exe")}
-	if exeDir != "" {
-		locations = append(locations, filepath.Join(exeDir, "yt-dlp.exe"))
-	}
-	return append(locations,
-		"sidecar/yt-dlp.exe",
-		"./sidecar/yt-dlp.exe",
-	)
+	return tools.FindYtDlp(dataDir)
 }
 
 // runYtDlp 执行 yt-dlp，代理复用订阅拉取的配置。
