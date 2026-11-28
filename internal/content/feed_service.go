@@ -16,6 +16,7 @@ import (
 	"aling-go/internal/config"
 	"aling-go/internal/core"
 	"aling-go/internal/store/userdb"
+	"aling-go/internal/system"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -207,7 +208,9 @@ func (s *FeedService) httpClient() *http.Client {
 		return s.client
 	}
 	transport := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
+		// 默认跟随系统代理（浏览器同款），GUI 启动无代理环境变量时也能拉取
+		// 需要代理的订阅源；用户在播客页手填的地址仍然优先。
+		Proxy:               system.ProxyFunc(),
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 8,
 		IdleConnTimeout:     90 * time.Second,
