@@ -67,6 +67,26 @@ type FeedEpisode struct {
 	CreatedAt   string
 }
 
+type PdfDocument struct {
+	ID            int64
+	Path          string
+	Title         string
+	PageCount     int64
+	SentenceCount int64
+	LastSentence  int64
+	CreatedAt     string
+	UpdatedAt     string
+}
+
+type PdfSentence struct {
+	ID         int64
+	DocumentID int64
+	Page       int64
+	Paragraph  int64
+	Idx        int64
+	Text       string
+}
+
 type PlayHistory struct {
 	MediaKey     string
 	Kind         string

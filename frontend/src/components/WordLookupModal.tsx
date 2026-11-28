@@ -3,8 +3,10 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { BookmarkPlus, Volume2, Check, Loader2 } from 'lucide-react'
+import { BookmarkPlus, Check, Loader2 } from 'lucide-react'
 import { speak } from '@/lib/tts'
+import { useIsSpeaking } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
 
 interface DictEntry {
   word: string
@@ -29,6 +31,11 @@ export default function WordLookupModal({ word, sentence, onClose, onAdded }: Pr
   const [manualDef, setManualDef] = useState('')
   const [manualPhonetic, setManualPhonetic] = useState('')
   const [added, setAdded] = useState(false)
+  const speakingWord = entry?.word || word
+  // 点选的原词与词典条目可能大小写/词形不同，两边都算命中
+  const wordSpeaking = useIsSpeaking(word)
+  const entrySpeaking = useIsSpeaking(entry?.word)
+  const speaking = wordSpeaking || entrySpeaking
 
   useEffect(() => {
     let cancelled = false
@@ -102,9 +109,9 @@ export default function WordLookupModal({ word, sentence, onClose, onAdded }: Pr
               <button
                 className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary"
                 title="发音"
-                onClick={() => speak(entry?.word || word)}
+                onClick={() => speak(speakingWord)}
               >
-                <Volume2 className="h-4 w-4" />
+                <SpeakerIcon speaking={speaking} className="h-4 w-4" />
               </button>
               {exists && !added && (
                 <Badge variant="secondary" className="ml-auto text-xs">

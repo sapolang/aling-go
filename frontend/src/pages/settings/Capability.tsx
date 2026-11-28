@@ -42,7 +42,7 @@ export default function SettingsCapability() {
     { name: string; file: string; size: string; downloaded: boolean }[]
   >([])
   const [selectedModel, setSelectedModel] = useState('tiny')
-  const [transcribeLang, setTranscribeLang] = useState('en')
+  const [transcribeLang, setTranscribeLang] = useState('auto')
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
 
@@ -144,7 +144,7 @@ export default function SettingsCapability() {
   return (
     <>
       <SettingsGroup title="语音转录" description="Whisper.cpp 本地模型">
-        <SettingsRow title="转录语言" description="默认使用 English，可按音频语言调整">
+        <SettingsRow title="转录语言" description="默认自动检测，也可按音频语言手动指定">
           <Select
             value={transcribeLang}
             onValueChange={(value) => {
@@ -181,7 +181,7 @@ export default function SettingsCapability() {
                   <span className="text-xs text-green-600 dark:text-green-400">已下载</span>
                 )}
                 {active && (
-                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
                     使用中
                   </span>
                 )}

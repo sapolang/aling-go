@@ -1,0 +1,199 @@
+/* PDF 朗读页：沿用全局主题令牌，阅读区直接渲染原始 PDF 页面 */
+
+.pdf-listen-root {
+  --pdf-line: hsl(var(--border));
+  --pdf-card: hsl(var(--card));
+  --pdf-muted: hsl(var(--muted-foreground));
+  --pdf-accent: hsl(var(--primary));
+  --pdf-accent-soft: hsl(var(--primary) / 0.12);
+  --pdf-hover: hsl(var(--accent) / 0.58);
+  min-height: 0;
+  color: hsl(var(--foreground));
+}
+
+.pdf-listen-header {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--pdf-line);
+}
+
+.pdf-listen-controls {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--pdf-line);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--pdf-card);
+}
+
+.pdf-listen-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--pdf-line);
+}
+
+.pdf-listen-label {
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--pdf-muted);
+}
+
+.pdf-pill {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pdf-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pdf-pill:hover {
+  background: var(--pdf-hover);
+  color: hsl(var(--foreground));
+}
+
+.pdf-pill.is-active {
+  border-color: hsl(var(--primary) / 0.35);
+  background: var(--pdf-accent-soft);
+  color: var(--pdf-accent);
+}
+
+.pdf-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-pill:disabled:hover {
+  background: transparent;
+  color: var(--pdf-muted);
+}
+
+.pdf-font-scale-value {
+  min-width: 40px;
+  color: var(--pdf-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+}
+
+.pdf-pill:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 原 PDF 页面滚动区 */
+.pdf-page-scroll {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 18px 12px 32px;
+  border: 1px solid var(--pdf-line);
+  border-radius: calc(var(--radius) + 2px);
+  background: hsl(var(--muted) / 0.35);
+}
+
+.pdf-no-text {
+  margin: 0 auto 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: hsl(var(--muted));
+  color: var(--pdf-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.pdf-page {
+  position: relative;
+  margin: 0 auto 20px;
+  background: #fff;
+  box-shadow: 0 2px 14px hsl(var(--foreground) / 0.14);
+}
+
+.pdf-page-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-page-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.pdf-page-number {
+  position: absolute;
+  right: -2px;
+  bottom: -18px;
+  color: var(--pdf-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 句子高亮层：与 canvas 同尺寸，透明覆盖在原文之上 */
+.pdf-page-highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-page-highlight {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.pdf-page-highlight:hover {
+  background: hsl(var(--primary) / 0.14);
+}
+
+.pdf-page-highlight.is-active {
+  background: hsl(var(--primary) / 0.3);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.42);
+}
+
+.pdf-page-highlight:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.pdf-listen-hint {
+  flex-shrink: 0;
+  padding-top: 6px;
+  color: var(--pdf-muted);
+  font-size: 11px;
+  text-align: center;
+}

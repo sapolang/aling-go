@@ -36,6 +36,13 @@ export function openResolvedMedia(
       historyKey: res.mediaKey,
       cover: res.cover,
       sourceUrl: `https://www.bilibili.com/video/${res.videoId}`,
+      biliParts: (res.parts || []).map((p) => ({
+        cid: p.cid,
+        page: p.page,
+        title: p.title,
+        duration: p.duration,
+      })),
+      biliCID: res.cid || 0,
     })
     if (res.duration > 0) player.setDuration(res.duration)
     navigate('/player', { state: { from } })

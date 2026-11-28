@@ -32,6 +32,7 @@ interface WordStore {
   searchQuery: string
   selectedTag: string
   loading: boolean
+  error: string | null
 
   loadWords: () => Promise<void>
   loadTags: () => Promise<void>
@@ -63,15 +64,26 @@ export const useWordStore = create<WordStore>((set, get) => ({
   searchQuery: '',
   selectedTag: '',
   loading: false,
+  error: null,
 
   loadWords: async () => {
-    set({ loading: true })
-    const words = await window.api.dbWordsList()
-    set({ words, loading: false })
+    set({ loading: true, error: null })
+    try {
+      const words = await window.api.dbWordsList()
+      set({ words })
+    } catch {
+      set({ error: '生词列表加载失败' })
+    } finally {
+      set({ loading: false })
+    }
   },
   loadTags: async () => {
-    const tags = await window.api.dbTagsList()
-    set({ tags })
+    try {
+      const tags = await window.api.dbTagsList()
+      set({ tags })
+    } catch {
+      // 标签是辅助筛选数据，加载失败时保留已有标签，不打断生词列表
+    }
   },
   loadReview: async () => {
     const all = await window.api.dbWordsGetReview()

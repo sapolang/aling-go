@@ -6,8 +6,8 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { Loader2, Pin, PinOff } from 'lucide-react'
-import { usePlayerStore } from '@/stores/playerStore'
+import { Captions, CaptionsOff, Loader2, Pin, PinOff } from 'lucide-react'
+import { usePlayerStore, type SubtitleDisplayMode } from '@/stores/playerStore'
 import type { ShortcutActionId } from '@/stores/shortcutStore'
 import { findCueIndexAt } from '@/lib/subtitles'
 import { PlayerHud } from '@/components/PlayerHud'
@@ -75,8 +75,9 @@ function VideoSubtitleOverlay({ renderWords }: VideoSubtitleOverlayProps) {
 
   const overlayHeight = Math.max(dragHeight ?? bandHeight, sub && text ? contentHeight : 0)
 
-  // 整个文件没有字幕时不显示底部遮罩；有了字幕后遮罩常驻，仅文字按句切换
-  if (subtitles.length === 0) return null
+  // 隐藏模式／整个文件没有字幕时不渲染浮层（含遮罩），避免盖住视频自带字幕；
+  // 有字幕时遮罩常驻，仅文字按句切换
+  if (displayMode === 'off' || subtitles.length === 0) return null
 
   return (
     <div
@@ -160,6 +161,13 @@ export default function VideoStage({
 }: VideoStageProps) {
   const playing = usePlayerStore((s) => s.playing)
   const sourceKind = usePlayerStore((s) => s.sourceKind)
+  const subtitleDisplayMode = usePlayerStore((s) => s.subtitleDisplayMode)
+  const hasSubtitles = usePlayerStore((s) => s.subtitles.length > 0)
+  // 记住关闭前的画面字幕模式，重新开启时恢复，而不是强制回到「全部」
+  const lastSubtitleModeRef = useRef<Exclude<SubtitleDisplayMode, 'off'>>('all')
+  useEffect(() => {
+    if (subtitleDisplayMode !== 'off') lastSubtitleModeRef.current = subtitleDisplayMode
+  }, [subtitleDisplayMode])
   // 缓冲中状态：原生视频卡顿时给出明确反馈，避免用户以为界面卡死
   const [buffering, setBuffering] = useState(false)
   const { pinned, controlsShown, showControls, holdControls, scheduleHide, togglePin } =
@@ -274,6 +282,29 @@ export default function VideoStage({
             onHelp={onHelp}
             aiActive={aiActive}
           />
+          {/* 画面字幕开关：独立于右侧字幕面板，只切换贴在视频下方的字幕 */}
+          <button
+            type="button"
+            className="pp-pin pp-caption-toggle"
+            title={subtitleDisplayMode === 'off' ? '显示画面字幕' : '隐藏画面字幕'}
+            aria-label={subtitleDisplayMode === 'off' ? '显示画面字幕' : '隐藏画面字幕'}
+            aria-pressed={subtitleDisplayMode !== 'off'}
+            disabled={!hasSubtitles}
+            onClick={(e) => {
+              e.stopPropagation()
+              usePlayerStore
+                .getState()
+                .setSubtitleDisplayMode(
+                  subtitleDisplayMode === 'off' ? lastSubtitleModeRef.current : 'off',
+                )
+            }}
+          >
+            {subtitleDisplayMode === 'off' ? (
+              <CaptionsOff className="h-4 w-4" />
+            ) : (
+              <Captions className="h-4 w-4" />
+            )}
+          </button>
           <button
             type="button"
             className="pp-pin"

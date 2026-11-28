@@ -15,17 +15,19 @@ import (
 // PlayURL 交给播放页作为 filePath，MediaKey 是播放历史里稳定的标识：
 // B站 的代理地址每次会话都会变，所以历史用 bili:<bvid>，YouTube 用 yt:<id>。
 type ResolvedMedia struct {
-	OK            bool    `json:"ok"`
-	Kind          string  `json:"kind"`     // bilibili | youtube | unsupported
-	MediaKey      string  `json:"mediaKey"` // 播放历史标识
-	PlayURL       string  `json:"playUrl"`  // 播放器地址
-	VideoID       string  `json:"videoId"`  // 平台原始 ID（BVxxx / 11 位）
-	Title         string  `json:"title"`
-	Cover         string  `json:"cover"`
-	Duration      float64 `json:"duration"`
-	NeedSubscribe bool    `json:"needSubscribe"`
-	FeedURL       string  `json:"feedUrl"`
-	Error         string  `json:"error"`
+	OK            bool             `json:"ok"`
+	Kind          string           `json:"kind"`     // bilibili | youtube | unsupported
+	MediaKey      string           `json:"mediaKey"` // 播放历史标识
+	PlayURL       string           `json:"playUrl"`  // 播放器地址
+	VideoID       string           `json:"videoId"`  // 平台原始 ID（BVxxx / 11 位）
+	Title         string           `json:"title"`
+	Cover         string           `json:"cover"`
+	Duration      float64          `json:"duration"`
+	CID           int64            `json:"cid"`
+	Parts         []BiliStreamPart `json:"parts"`
+	NeedSubscribe bool             `json:"needSubscribe"`
+	FeedURL       string           `json:"feedUrl"`
+	Error         string           `json:"error"`
 }
 
 var (
@@ -190,18 +192,24 @@ func (s *MediaService) resolveBilibili(u *url.URL, raw string) ResolvedMedia {
 }
 
 func (s *MediaService) bilibiliVideo(bvid string) ResolvedMedia {
-	res := s.GetBilibiliStream(bvid)
+	res := s.GetBilibiliStream(bvid, 0)
 	if !res.OK || res.URL == "" {
 		return ResolvedMedia{Kind: "unsupported", Error: biliResolveError(res.Error)}
+	}
+	mediaKey := "bili:" + bvid
+	if res.CID > 0 {
+		mediaKey = fmt.Sprintf("%s:%d", mediaKey, res.CID)
 	}
 	return ResolvedMedia{
 		OK:       true,
 		Kind:     "bilibili",
-		MediaKey: "bili:" + bvid,
+		MediaKey: mediaKey,
 		PlayURL:  res.URL,
 		VideoID:  bvid,
 		Title:    res.Title,
 		Cover:    res.Cover,
+		CID:      res.CID,
+		Parts:    res.Parts,
 		Duration: float64(res.Duration),
 	}
 }

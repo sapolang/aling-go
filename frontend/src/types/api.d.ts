@@ -43,10 +43,17 @@ import type {
   BiliStreamResult,
   BiliQRLoginResult,
   PodcastTranscribeResult,
+  WarmAudioResult,
   RSSConvertResult,
   CacheEntry,
   CacheStats,
   CacheClearResult,
+  PDFDocument,
+  PDFDocumentSummary,
+  PDFImportResult,
+  PDFLoadResult,
+  PDFSentence,
+  PDFFileResult,
 } from '../../bindings/aling-go/internal/content/models'
 import type {
   AIConfig,
@@ -60,6 +67,13 @@ import type {
   UpdateResult,
   UpdateState,
 } from '../../bindings/aling-go/internal/system/models'
+import type {
+  EngineStatus,
+  InstallProgress,
+  InstallResult,
+  SynthesizeResult,
+  Voice,
+} from '../../bindings/aling-go/internal/tts/models'
 
 export type {
   Word,
@@ -103,10 +117,17 @@ export type {
   BiliStreamResult,
   BiliQRLoginResult,
   PodcastTranscribeResult,
+  WarmAudioResult,
   RSSConvertResult,
   CacheEntry,
   CacheStats,
   CacheClearResult,
+  PDFDocument,
+  PDFDocumentSummary,
+  PDFImportResult,
+  PDFLoadResult,
+  PDFSentence,
+  PDFFileResult,
   AIConfig,
   AIConfigView,
   AIExplainResult,
@@ -117,6 +138,11 @@ export type {
   UpdateInfo,
   UpdateResult,
   UpdateState,
+  EngineStatus,
+  InstallProgress,
+  InstallResult,
+  SynthesizeResult,
+  Voice,
 }
 
 // 旧代码沿用的命名，语义与 bindings 一致
@@ -226,6 +252,20 @@ export interface ElectronAPI {
   folderDelete: (id: string) => Promise<Folder[]>
   folderRename: (id: string, name: string) => Promise<Folder[]>
 
+  // PDF 精听
+  pdfImport: (path: string) => Promise<PDFImportResult>
+  pdfList: () => Promise<PDFDocumentSummary[]>
+  pdfLoad: (path: string) => Promise<PDFLoadResult>
+  pdfReadFile: (path: string) => Promise<PDFFileResult>
+  pdfRemove: (path: string) => Promise<void>
+  pdfUpdateProgress: (path: string, sentenceIndex: number) => Promise<void>
+
+  // TTS
+  ttsSynthesize: (text: string, voice: string) => Promise<SynthesizeResult>
+  ttsStatus: () => Promise<EngineStatus>
+  installLocalTTS: (voice: string) => Promise<InstallResult>
+  ttsOnInstallProgress: (cb: (data: InstallProgress) => void) => () => void
+
   openExternal: (path: string) => Promise<void>
 
   // Articles
@@ -244,13 +284,13 @@ export interface ElectronAPI {
   feedAdd: (url: string) => Promise<ActionResult>
   feedRemove: (id: number, deleteDownloads: boolean) => Promise<ActionResult>
   feedRefresh: (id: number) => Promise<ActionResult>
-  feedEpisodes: (id: number, limit: number) => Promise<FeedEpisodesResult>
+  feedEpisodes: (id: number, limit: number, offset: number) => Promise<FeedEpisodesResult>
   episodeDownload: (id: number) => Promise<EpisodeDownloadResult>
   feedGetProxy: () => Promise<string>
   feedSetProxy: (proxy: string) => Promise<ActionResult>
   feedGetBilibiliCookie: () => Promise<string>
   feedSetBilibiliCookie: (cookie: string) => Promise<ActionResult>
-  getBilibiliStream: (bvid: string) => Promise<BiliStreamResult>
+  getBilibiliStream: (bvid: string, cid?: number) => Promise<BiliStreamResult>
   feedStartBilibiliQRLogin: () => Promise<BiliQRLoginResult>
   feedPollBilibiliQRLogin: (key: string) => Promise<BiliQRLoginResult>
   feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) => () => void
@@ -264,6 +304,12 @@ export interface ElectronAPI {
     sourceKind: string,
     videoID: string,
   ) => Promise<PlatformSubtitlesResult>
+  platformTranscribeBySource: (
+    sourceKind: string,
+    videoID: string,
+    force: boolean,
+  ) => Promise<PlatformSubtitlesResult>
+  platformWarmAudio: (sourceKind: string, videoID: string) => Promise<WarmAudioResult>
   platformTranscribePodcast: (episodeId: number, force: boolean) => Promise<PodcastTranscribeResult>
 
   // Favorites

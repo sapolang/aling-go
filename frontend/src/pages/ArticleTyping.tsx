@@ -5,10 +5,12 @@ import { useWordStore } from '@/stores/wordStore'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { showToast } from '@/components/feedback'
-import { Speaker, ArrowLeft, Pencil, Eye, Check, Volume2, Highlighter } from 'lucide-react'
+import { Speaker, ArrowLeft, Pencil, Eye, Check, Highlighter } from 'lucide-react'
 import WordHoverCard from '@/components/WordHoverCard'
 import WordLookupModal from '@/components/WordLookupModal'
 import { speak } from '@/lib/tts'
+import { useIsSpeaking } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
 import {
   isSavedWord as isSavedWordShared,
   splitSentences,
@@ -302,6 +304,7 @@ export default function ArticleTypingPage() {
     const line = lines.find((l) => pos < l.end) || lines[lines.length - 1]
     return line.text.trim()
   }, [lines, typed.length, text.length])
+  const speakingLine = useIsSpeaking(currentLineText)
 
   const charStates: CharState[] = useMemo(() => {
     return text.split('').map((char, i) => {
@@ -756,7 +759,7 @@ export default function ArticleTypingPage() {
           disabled={!currentLineText}
           onClick={() => currentLineText && speak(currentLineText)}
         >
-          <Volume2 className="h-4 w-4" />
+          <SpeakerIcon speaking={speakingLine} className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"

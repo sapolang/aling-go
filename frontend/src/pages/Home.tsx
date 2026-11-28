@@ -5,6 +5,7 @@ import { useWordStore } from '@/stores/wordStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { LoadingState, ErrorState } from '@/components/AsyncState'
 import {
   Dialog,
   DialogContent,
@@ -330,7 +331,8 @@ export default function HomePage() {
 
   const handleOpenFile = async (file: LibraryFile) => {
     if (file.type === 'pdf') {
-      await window.api.openExternal(file.path)
+      // PDF 不再交给系统阅读器，直接进入逐句 TTS 精听页
+      navigate('/pdf-listen', { state: { path: file.path, name: file.name } })
       return
     }
     // 记录来源页面，播放页的返回按钮回到这里而不是固定回文件库
@@ -795,8 +797,11 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
+      {store.loading && <LoadingState text="正在加载文件库…" />}
+      {store.error && <ErrorState message={store.error} onRetry={store.load} />}
+
       {/* Grid View */}
-      {store.viewMode === 'grid' && (
+      {!store.loading && !store.error && store.viewMode === 'grid' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {visibleFolders.map((folder) => (
             <GridFolderCard
@@ -833,7 +838,7 @@ export default function HomePage() {
       )}
 
       {/* List View */}
-      {store.viewMode === 'list' && (
+      {!store.loading && !store.error && store.viewMode === 'list' && (
         <div className="border rounded-lg overflow-hidden">
           <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
             <div className="col-span-6 sm:col-span-5">名称</div>
@@ -873,25 +878,33 @@ export default function HomePage() {
       )}
 
       {/* Empty state */}
-      {visibleFolders.length === 0 && visibleFiles.length === 0 && searchQuery !== '' && (
-        <div className="text-center py-20 text-muted-foreground">
-          <p className="text-lg mb-2">未找到匹配「{debouncedSearch.trim()}」的文件</p>
-          <p className="text-sm">试试其他关键词，或清除搜索</p>
-        </div>
-      )}
-      {visibleFolders.length === 0 && visibleFiles.length === 0 && searchQuery === '' && (
-        <div className="text-center py-20 text-muted-foreground">
-          <p className="text-lg mb-2">{currentFolder ? '此文件夹为空' : '暂无文件'}</p>
-          <p className="text-sm mb-4">
-            {currentFolder
-              ? '点击导入添加文件到此文件夹，或直接拖拽文件到窗口'
-              : '点击「导入」添加音视频或 PDF 文件，或直接拖拽文件到窗口'}
-          </p>
-          <Button size="sm" onClick={handleImport}>
-            <FileUp className="h-4 w-4 mr-1" /> 导入文件
-          </Button>
-        </div>
-      )}
+      {!store.loading &&
+        !store.error &&
+        visibleFolders.length === 0 &&
+        visibleFiles.length === 0 &&
+        searchQuery !== '' && (
+          <div className="text-center py-20 text-muted-foreground">
+            <p className="text-lg mb-2">未找到匹配「{debouncedSearch.trim()}」的文件</p>
+            <p className="text-sm">试试其他关键词，或清除搜索</p>
+          </div>
+        )}
+      {!store.loading &&
+        !store.error &&
+        visibleFolders.length === 0 &&
+        visibleFiles.length === 0 &&
+        searchQuery === '' && (
+          <div className="text-center py-20 text-muted-foreground">
+            <p className="text-lg mb-2">{currentFolder ? '此文件夹为空' : '暂无文件'}</p>
+            <p className="text-sm mb-4">
+              {currentFolder
+                ? '点击导入添加文件到此文件夹，或直接拖拽文件到窗口'
+                : '点击「导入」添加音视频或 PDF 文件，或直接拖拽文件到窗口'}
+            </p>
+            <Button size="sm" onClick={handleImport}>
+              <FileUp className="h-4 w-4 mr-1" /> 导入文件
+            </Button>
+          </div>
+        )}
 
       {/* Drag & drop overlay */}
       {dragActive && (
@@ -1182,7 +1195,7 @@ function GridFileCard({
       <div className="p-2 border-t">
         <p className="text-xs truncate">{file.name}</p>
         {lastPosition > 0 && (
-          <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+          <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
             <History className="h-2.5 w-2.5 shrink-0" />
             上次播放到 {formatTime(lastPosition)}
           </p>

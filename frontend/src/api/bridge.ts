@@ -70,6 +70,21 @@ import {
 } from '../../bindings/aling-go/internal/content/libraryservice'
 
 import {
+  PDFImport,
+  PDFList,
+  PDFLoad,
+  PDFReadFile,
+  PDFRemove,
+  PDFUpdateProgress,
+} from '../../bindings/aling-go/internal/content/pdfservice'
+
+import {
+  InstallLocalTTS,
+  SynthesizeSentence,
+  TTSStatus,
+} from '../../bindings/aling-go/internal/tts/service'
+
+import {
   GetWaveformData,
   GetMediaPort,
   GetBilibiliStream,
@@ -110,6 +125,8 @@ import {
   SetRSSHubURL,
   GetSubtitles,
   GetSubtitlesBySource,
+  TranscribeBySource as PlatformTranscribeBySource,
+  WarmAudio as PlatformWarmAudio,
   TranscribePodcast as PlatformTranscribePodcast,
 } from '../../bindings/aling-go/internal/content/platformservice'
 
@@ -233,14 +250,14 @@ export function initBridge(): void {
     feedAdd: (url: string) => FeedAdd(url),
     feedRemove: (id: number, deleteDownloads: boolean) => FeedRemove(id, deleteDownloads),
     feedRefresh: (id: number) => FeedRefresh(id),
-    feedEpisodes: (id: number, limit: number) =>
-      FeedEpisodes(id, limit).then((r) => ({ ...r, episodes: r.episodes ?? [] })),
+    feedEpisodes: (id: number, limit: number, offset: number) =>
+      FeedEpisodes(id, limit, offset).then((r) => ({ ...r, episodes: r.episodes ?? [] })),
     episodeDownload: (id: number) => EpisodeDownload(id),
     feedGetProxy: () => FeedGetProxy(),
     feedSetProxy: (proxy: string) => FeedSetProxy(proxy),
     feedGetBilibiliCookie: () => FeedGetBilibiliCookie(),
     feedSetBilibiliCookie: (cookie: string) => FeedSetBilibiliCookie(cookie),
-    getBilibiliStream: (bvid: string) => GetBilibiliStream(bvid),
+    getBilibiliStream: (bvid: string, cid?: number) => GetBilibiliStream(bvid, cid || 0),
     feedStartBilibiliQRLogin: () => FeedStartBilibiliQRLogin(),
     feedPollBilibiliQRLogin: (key: string) => FeedPollBilibiliQRLogin(key),
     feedOnProgress: (cb: (data: { episodeId: number; pct: number }) => void) =>
@@ -251,6 +268,10 @@ export function initBridge(): void {
     platformGetSubtitles: (episodeId: number) => GetSubtitles(episodeId),
     platformGetSubtitlesBySource: (sourceKind: string, videoID: string) =>
       GetSubtitlesBySource(sourceKind, videoID),
+    platformTranscribeBySource: (sourceKind: string, videoID: string, force: boolean) =>
+      PlatformTranscribeBySource(sourceKind, videoID, force),
+    platformWarmAudio: (sourceKind: string, videoID: string) =>
+      PlatformWarmAudio(sourceKind, videoID),
     platformTranscribePodcast: (episodeId: number, force: boolean) =>
       PlatformTranscribePodcast(episodeId, force),
 
@@ -275,6 +296,20 @@ export function initBridge(): void {
     folderDelete: (id: string) => FolderDelete(id).then((folders) => folders ?? []),
     folderRename: (id: string, name: string) =>
       FolderRename(id, name).then((folders) => folders ?? []),
+
+    pdfImport: (path: string) => PDFImport(path),
+    pdfList: () => PDFList().then((rows) => rows ?? []),
+    pdfLoad: (path: string) => PDFLoad(path),
+    pdfReadFile: (path: string) => PDFReadFile(path),
+    pdfRemove: (path: string) => PDFRemove(path),
+    pdfUpdateProgress: (path: string, sentenceIndex: number) =>
+      PDFUpdateProgress(path, sentenceIndex),
+
+    ttsSynthesize: (text: string, voice: string) => SynthesizeSentence(text, voice),
+    ttsStatus: () => TTSStatus(),
+    installLocalTTS: (voice: string) => InstallLocalTTS(voice),
+    ttsOnInstallProgress: (cb: (data: any) => void) =>
+      Events.On('tts:install-progress', (e: any) => cb(e.data)),
 
     openExternal: (path: string) => OpenExternal(path),
 

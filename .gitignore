@@ -20,4 +20,6 @@ whisper-model.txt
 subtitle-cache/
 library.json
 .task/
+.trae/
+.workbuddy/
 .DS_Store

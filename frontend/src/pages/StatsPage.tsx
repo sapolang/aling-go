@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -10,6 +10,7 @@ import {
   TypingTrendChart,
   type DistributionItem,
 } from '@/components/StatsCharts'
+import { LoadingState, ErrorState } from '@/components/AsyncState'
 
 const fmtInt = (n: number): string => n.toLocaleString('zh-CN')
 
@@ -37,26 +38,32 @@ export default function StatsPage() {
   const [stats, setStats] = useState<LearningStats | null>(null)
   const [extended, setExtended] = useState<ExtendedStats | null>(null)
   const [typing, setTyping] = useState({ bestWpm: 0, completed: 0 })
+  const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
 
-  useEffect(() => {
-    window.api
-      .learningStats()
-      .then(setStats)
-      .catch(() => undefined)
-    window.api
-      .extendedStats()
-      .then(setExtended)
-      .catch(() => undefined)
-    window.api
-      .getAllTypingProgress()
-      .then((list: TypingProgress[]) => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setFailed(false)
+    Promise.all([
+      window.api.learningStats(),
+      window.api.extendedStats(),
+      window.api.getAllTypingProgress(),
+    ])
+      .then(([s, e, list]: [LearningStats, ExtendedStats, TypingProgress[]]) => {
+        setStats(s)
+        setExtended(e)
         setTyping({
           bestWpm: list.reduce((max, item) => Math.max(max, item.bestWpm || 0), 0),
           completed: list.filter((item) => item.completed).length,
         })
       })
-      .catch(() => undefined)
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   const masteredRatio = stats && stats.totalWords > 0 ? stats.mastered / stats.totalWords : 0
 
@@ -95,63 +102,74 @@ export default function StatsPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="今日复习" value={fmtInt(stats?.todayReviews ?? 0)} />
-        <StatCard label="连续复习" value={`${fmtInt(stats?.streak ?? 0)} 天`} />
-        <StatCard label="累计复习" value={fmtInt(stats?.totalReviews ?? 0)} />
-        <StatCard
-          label="已掌握"
-          value={`${fmtInt(stats?.mastered ?? 0)} / ${fmtInt(stats?.totalWords ?? 0)}`}
-          sub={stats ? `掌握率 ${fmtPct(masteredRatio)}` : undefined}
-        />
-      </div>
-
-      <Card className="p-4">
-        <p className="text-sm font-medium">最近 30 天复习量</p>
-        <div className="mt-3">
-          <DailyReviewChart data={stats?.daily ?? []} />
-        </div>
-      </Card>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <Card className="p-4">
-          <p className="text-sm font-medium">复习评分分布</p>
-          <div className="mt-3">
-            <DistributionBars items={gradeItems} emptyText="还没有复习评分记录" />
+      {loading ? (
+        <LoadingState text="正在加载统计数据…" />
+      ) : failed ? (
+        <ErrorState message="统计数据加载失败" onRetry={load} />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard label="今日复习" value={fmtInt(stats?.todayReviews ?? 0)} />
+            <StatCard label="连续复习" value={`${fmtInt(stats?.streak ?? 0)} 天`} />
+            <StatCard label="累计复习" value={fmtInt(stats?.totalReviews ?? 0)} />
+            <StatCard
+              label="已掌握"
+              value={`${fmtInt(stats?.mastered ?? 0)} / ${fmtInt(stats?.totalWords ?? 0)}`}
+              sub={stats ? `掌握率 ${fmtPct(masteredRatio)}` : undefined}
+            />
           </div>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm font-medium">生词掌握度分布</p>
-          <div className="mt-3">
-            <DistributionBars items={levelItems} emptyText="生词库还是空的，先去添加一些生词吧" />
-          </div>
-        </Card>
-      </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card className="p-4">
-          <p className="text-sm font-medium">文章打字</p>
-          {typing.bestWpm > 0 || typing.completed > 0 ? (
-            <>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">
-                {fmtInt(Math.round(typing.bestWpm))}{' '}
-                <span className="text-sm font-normal text-muted-foreground">最佳 WPM</span>
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                已完成 {fmtInt(typing.completed)} 篇文章
-              </p>
-            </>
-          ) : (
-            <EmptyHint text="还没有打字练习记录" />
-          )}
-        </Card>
-        <Card className="p-4 md:col-span-2">
-          <p className="text-sm font-medium">最近 30 天打字练习趋势</p>
-          <div className="mt-3">
-            <TypingTrendChart data={extended?.typingDaily ?? []} />
+          <Card className="p-4">
+            <p className="text-sm font-medium">最近 30 天复习量</p>
+            <div className="mt-3">
+              <DailyReviewChart data={stats?.daily ?? []} />
+            </div>
+          </Card>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Card className="p-4">
+              <p className="text-sm font-medium">复习评分分布</p>
+              <div className="mt-3">
+                <DistributionBars items={gradeItems} emptyText="还没有复习评分记录" />
+              </div>
+            </Card>
+            <Card className="p-4">
+              <p className="text-sm font-medium">生词掌握度分布</p>
+              <div className="mt-3">
+                <DistributionBars
+                  items={levelItems}
+                  emptyText="生词库还是空的，先去添加一些生词吧"
+                />
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <Card className="p-4">
+              <p className="text-sm font-medium">文章打字</p>
+              {typing.bestWpm > 0 || typing.completed > 0 ? (
+                <>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">
+                    {fmtInt(Math.round(typing.bestWpm))}{' '}
+                    <span className="text-sm font-normal text-muted-foreground">最佳 WPM</span>
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    已完成 {fmtInt(typing.completed)} 篇文章
+                  </p>
+                </>
+              ) : (
+                <EmptyHint text="还没有打字练习记录" />
+              )}
+            </Card>
+            <Card className="p-4 md:col-span-2">
+              <p className="text-sm font-medium">最近 30 天打字练习趋势</p>
+              <div className="mt-3">
+                <TypingTrendChart data={extended?.typingDaily ?? []} />
+              </div>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   )
 }

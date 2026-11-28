@@ -3,6 +3,8 @@ module aling-go
 go 1.26.11
 
 require (
+	github.com/coder/websocket v1.8.14
+	github.com/dslipak/pdf v0.0.2
 	github.com/google/uuid v1.6.0
 	github.com/mmcdole/gofeed v1.5.0
 	github.com/sashabaranov/go-openai v1.43.0
@@ -11,7 +13,6 @@ require (
 )
 
 require (
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

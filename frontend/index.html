@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aling - 语练</title>
+    <script>
+      // Wails 3.1.0 的 JS runtime 与 pdf.js 都使用 getOrInsertComputed（ES2025），
+      // 但 macOS WKWebView 尚未实现：Wails 侧用 Map，pdf.js 渲染用 WeakMap。
+      // 缺失时首次 binding 调用会卸载整棵 React 树导致白屏，必须在模块加载前补齐。
+      for (const Ctor of [Map, WeakMap]) {
+        if (!Ctor.prototype.getOrInsertComputed) {
+          Ctor.prototype.getOrInsertComputed = function (key, callback) {
+            if (this.has(key)) return this.get(key)
+            const value = callback(key)
+            this.set(key, value)
+            return value
+          }
+        }
+      }
+    </script>
   </head>
   <body class="min-h-screen bg-background text-foreground">
     <div id="root"></div>

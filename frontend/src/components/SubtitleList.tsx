@@ -8,9 +8,11 @@ import {
   type ReactNode,
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import { Captions, Loader2, Star, Subtitles, Volume2 as Speaker } from 'lucide-react'
+import { Captions, Loader2, Star, Subtitles } from 'lucide-react'
 import type { SubtitleItem } from '@/types/api'
 import { findCueIndexAt, formatClockTime } from '@/lib/subtitles'
+import { useSpeakingText } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
 
 export type SubtitleCue = SubtitleItem & { displayText: string }
 
@@ -58,6 +60,8 @@ interface CueRowProps {
   /** 是否当前播放句：由父级统一算好后传入，避免播放进度导致每行重渲染 */
   isActive: boolean
   isPast: boolean
+  /** 该句是否正在朗读，用于喇叭播放动效 */
+  isSpeaking: boolean
   offset: number
   range: { start: number; end: number } | null
   fontScale: number
@@ -74,6 +78,7 @@ const CueRow = memo(function CueRow({
   index,
   isActive,
   isPast,
+  isSpeaking,
   offset,
   range,
   fontScale,
@@ -125,7 +130,7 @@ const CueRow = memo(function CueRow({
                 onSpeak(cue.displayText)
               }}
             >
-              <Speaker className="h-3 w-3" />
+              <SpeakerIcon speaking={isSpeaking} className="h-3 w-3" />
             </button>
             <button
               className="pp-cue-action"
@@ -180,6 +185,8 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
   const cursor = played - offset
   // 当前句只计算一次，避免每行各自比较播放时间
   const activeIndex = findCueIndexAt(cues, cursor, { inclusiveEnd: false })
+  // 正在朗读的字幕文本，用于给喇叭加播放动效
+  const speakingText = useSpeakingText()
 
   const scrollToIndex = useCallback((index: number) => {
     virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'smooth' })
@@ -295,6 +302,7 @@ const SubtitleList = forwardRef<SubtitleListHandle, SubtitleListProps>(function 
                 index={index}
                 isActive={index === activeIndex}
                 isPast={cursor > cue.endTime}
+                isSpeaking={cue.displayText.trim() === speakingText}
                 offset={offset}
                 range={range}
                 fontScale={fontScale}

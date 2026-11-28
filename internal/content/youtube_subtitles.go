@@ -245,7 +245,8 @@ func (s *PlatformService) transcribeYouTubeAudio(videoID string) ([]SubtitleCue,
 }
 
 // transcribeBilibiliAudio 通过临时 Netscape Cookie 文件携带登录态，避免把 Cookie 暴露在进程参数中。
-func (s *PlatformService) transcribeBilibiliAudio(bvid string) ([]SubtitleCue, error) {
+// cid 为 0 时不指定分 P（yt-dlp 默认下载 P1）；非 0 时下载对应分 P 的音轨。
+func (s *PlatformService) transcribeBilibiliAudio(bvid string, cid int64) ([]SubtitleCue, error) {
 	var extraArgs []string
 	cookiePath, err := bilibiliYtDlpCookieFile(s.feed.bilibiliCookie())
 	if err != nil {
@@ -256,7 +257,38 @@ func (s *PlatformService) transcribeBilibiliAudio(bvid string) ([]SubtitleCue, e
 		extraArgs = append(extraArgs, "--cookies", cookiePath)
 	}
 	url := "https://www.bilibili.com/video/" + bvid
-	return s.transcribeAudio(url, platformSubtitleEventKey(platformBilibili, bvid), extraArgs...)
+	if cid > 0 && s.feed != nil {
+		if page := s.feed.bilibiliPageOfCID(bvid, cid); page > 0 {
+			url = fmt.Sprintf("%s?p=%d", url, page)
+		}
+	}
+	id := bvid
+	if cid > 0 {
+		id = fmt.Sprintf("%s:%d", bvid, cid)
+	}
+	return s.transcribeAudio(url, platformSubtitleEventKey(platformBilibili, id), extraArgs...)
+}
+
+// bilibiliPageOfCID 在视频的分 P 列表里查 cid 对应的页码（从 1 开始），用于 yt-dlp 的 ?p= 参数。
+func (s *FeedService) bilibiliPageOfCID(bvid string, cid int64) int {
+	var view struct {
+		Data struct {
+			Pages []struct {
+				CID  int64 `json:"cid"`
+				Page int   `json:"page"`
+			} `json:"pages"`
+		} `json:"data"`
+	}
+	if err := fetchBiliJSON(s.httpClient(), s.bilibiliCookie(),
+		"https://api.bilibili.com/x/web-interface/view?bvid="+bvid, &view); err != nil {
+		return 0
+	}
+	for _, p := range view.Data.Pages {
+		if p.CID == cid {
+			return p.Page
+		}
+	}
+	return 0
 }
 
 func bilibiliYtDlpCookieFile(cookie string) (string, error) {
@@ -309,6 +341,15 @@ func (s *PlatformService) onlineAudioDir(eventKey string) string {
 	return filepath.Join(s.dataDir, "aling", "temp-audio", "online-"+md5Hash(eventKey))
 }
 
+// cachedOnlineWav 返回已转码完成的 16kHz WAV，不存在或为空时返回空串。
+func cachedOnlineWav(dir string) string {
+	path := filepath.Join(dir, "audio-16k.wav")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > 0 {
+		return path
+	}
+	return ""
+}
+
 // downloadedAudio 返回目录中已下载完成的音轨。yt-dlp 下载中写 .part，
 // 完成后才改名为最终文件，因此非 .part 且非空的文件即为完整下载结果。
 func downloadedAudio(dir string) string {
@@ -341,69 +382,118 @@ func (s *PlatformService) transcribeAudio(videoURL, eventKey string, extraArgs .
 		return nil, err
 	}
 
-	dir := s.onlineAudioDir(eventKey)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	wavPath, err := s.prepareOnlineAudio(videoURL, eventKey, extraArgs...)
+	if err != nil {
 		return nil, err
 	}
-
-	// 优先复用已转好的 WAV：重新转录时既不用再下载音频，也不用再分离音轨
-	wavPath := filepath.Join(dir, "audio-16k.wav")
-	if fi, err := os.Stat(wavPath); err != nil || fi.Size() == 0 {
-		rawPath := downloadedAudio(dir)
-		if rawPath == "" {
-			// Whisper 只需要 16kHz 单声道，优先选低码率音轨减少下载量；逐级回退保证总有东西可下。
-			// 不使用 --no-part，让 yt-dlp 在中断后用 .part 续传，且只有下载完整才改名为最终文件。
-			args := []string{
-				"-f", "bestaudio[abr<=64]/bestaudio[abr<=128]/bestaudio/best",
-				"-o", filepath.Join(dir, "audio.%(ext)s"),
-			}
-			args = append(args, extraArgs...)
-			args = append(args, videoURL)
-
-			// 下载阶段：把 yt-dlp 的百分比透传给前端，避免长时间无反馈
-			s.app.Event.Emit("whisper:progress", whisperProgress{Progress: 0, Status: "downloading"})
-			downloadCB := func(pct int) {
-				s.app.Event.Emit("whisper:progress", whisperProgress{Progress: pct, Status: "downloading"})
-			}
-			if err := s.runYtDlp(15*time.Minute, downloadCB, args...); err != nil {
-				return nil, err
-			}
-
-			if rawPath = downloadedAudio(dir); rawPath == "" {
-				return nil, fmt.Errorf("下载音频失败")
-			}
-		}
-
-		// 下载到的多为 webm/opus，内置 whisper 只带 miniaudio，解码不了这类封装
-		// 转码阶段很快（几秒），不单独发进度，统一标为准备转录
-		s.app.Event.Emit("whisper:progress", whisperProgress{Progress: 0, Status: "transcribing"})
-		if err := s.transcodeToWav(rawPath, wavPath); err != nil {
-			return nil, err
-		}
-	}
-
 	cues, err := s.transcribePreparedAudioFile(wavPath, eventKey)
 	if err != nil {
 		return nil, err
 	}
 	// 转录成功后删掉体积更大的原始音轨，保留 WAV 供「重新转录」复用
-	removeDownloadedAudio(dir)
+	removeDownloadedAudio(s.onlineAudioDir(eventKey))
 	return cues, nil
+}
+
+// prepareOnlineAudio 下载音轨并转成 Whisper 可直接读取的 16kHz WAV。
+// 打开播放器时的预热和真正转录都走这里：同一事件 key 并发时只执行一次，
+// 后续调用等待同一个结果，避免两个任务同时写 audio-16k.wav 和临时文件。
+func (s *PlatformService) prepareOnlineAudio(videoURL, eventKey string, extraArgs ...string) (string, error) {
+	dir := s.onlineAudioDir(eventKey)
+	if wavPath := cachedOnlineWav(dir); wavPath != "" {
+		// 刷新目录时间，让过期清理按「最近使用」而非「首次预热」判断
+		now := time.Now()
+		_ = os.Chtimes(dir, now, now)
+		return wavPath, nil
+	}
+	wavPath := filepath.Join(dir, "audio-16k.wav")
+
+	s.audioMu.Lock()
+	if flight, ok := s.audioFlights[eventKey]; ok {
+		s.audioMu.Unlock()
+		<-flight.done
+		return flight.wavPath, flight.err
+	}
+	flight := &audioFlight{done: make(chan struct{})}
+	if s.audioFlights == nil {
+		s.audioFlights = make(map[string]*audioFlight)
+	}
+	s.audioFlights[eventKey] = flight
+	s.audioMu.Unlock()
+
+	flight.wavPath, flight.err = s.prepareOnlineAudioNow(dir, wavPath, videoURL, extraArgs...)
+
+	s.audioMu.Lock()
+	delete(s.audioFlights, eventKey)
+	close(flight.done)
+	s.audioMu.Unlock()
+	return flight.wavPath, flight.err
+}
+
+// prepareOnlineAudioNow 执行真正的下载与转码。调用方需保证同一 eventKey 只有一个实例在跑。
+func (s *PlatformService) prepareOnlineAudioNow(dir, wavPath, videoURL string, extraArgs ...string) (string, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	rawPath := downloadedAudio(dir)
+	if rawPath == "" {
+		// Whisper 只需要 16kHz 单声道，优先选低码率音轨减少下载量；逐级回退保证总有东西可下。
+		// 不使用 --no-part，让 yt-dlp 在中断后用 .part 续传，且只有下载完整才改名为最终文件。
+		args := []string{
+			"-f", "bestaudio[abr<=64]/bestaudio[abr<=128]/bestaudio/best",
+			"-o", filepath.Join(dir, "audio.%(ext)s"),
+		}
+		args = append(args, extraArgs...)
+		args = append(args, videoURL)
+
+		// 下载阶段：把 yt-dlp 的百分比透传给前端，避免长时间无反馈
+		s.emitAudioProgress(0, "downloading")
+		downloadCB := func(pct int) { s.emitAudioProgress(pct, "downloading") }
+		if err := s.runYtDlp(15*time.Minute, downloadCB, args...); err != nil {
+			return "", err
+		}
+
+		if rawPath = downloadedAudio(dir); rawPath == "" {
+			return "", fmt.Errorf("下载音频失败")
+		}
+	}
+
+	// 下载到的多为 webm/opus，内置 whisper 只带 miniaudio，解码不了这类封装
+	// 转码阶段很快（几秒），不单独发进度，统一标为准备转录
+	s.emitAudioProgress(0, "transcribing")
+	if err := s.transcodeToWav(rawPath, wavPath); err != nil {
+		return "", err
+	}
+	return wavPath, nil
+}
+
+// emitAudioProgress 在测试未注入 app 时安全跳过事件推送。
+func (s *PlatformService) emitAudioProgress(pct int, status string) {
+	if s.app == nil || s.app.Event == nil {
+		return
+	}
+	s.app.Event.Emit("whisper:progress", whisperProgress{Progress: pct, Status: status})
 }
 
 // transcodeToWav 把下载到的音轨转成 whisper 需要的 16kHz 单声道 PCM。
 // 先写 .part 再改名，避免中断留下非空但不完整的 WAV 被下次当成缓存复用。
 func (s *PlatformService) transcodeToWav(input, output string) error {
-	ffmpeg := findFFmpeg(s.dataDir, s.app.Logger)
+	ffmpeg := findFFmpeg(s.dataDir, loggerOf(s.app))
 	if ffmpeg == "" {
 		return fmt.Errorf("缺少 ffmpeg，无法转码音轨")
 	}
+	return transcodeToWavWithFFmpeg(ffmpeg, input, output)
+}
+
+func transcodeToWavWithFFmpeg(ffmpeg, input, output string) error {
 	tmpPath := output + ".part"
 	defer func() { _ = os.Remove(tmpPath) }()
 	if err := os.Remove(output); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("清理旧音轨失败: %w", err)
 	}
-	cmd := proc.Command(ffmpeg, "-y", "-i", input, "-vn", "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", tmpPath)
+	// 必须显式指定 -f wav：临时文件以 .part 结尾，ffmpeg 无法从扩展名推断容器格式，
+	// 否则会报 "Error opening output files: Invalid argument"。
+	cmd := proc.Command(ffmpeg, "-y", "-i", input, "-vn", "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", "-f", "wav", tmpPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

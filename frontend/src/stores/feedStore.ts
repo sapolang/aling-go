@@ -33,6 +33,10 @@ interface FeedStore {
   selectedFeedId: number | null
   loadingFeeds: boolean
   loadingEpisodes: boolean
+  /** 节目列表是否还有下一页 */
+  hasMoreEpisodes: boolean
+  /** 正在追加加载下一页，防止重复点击 */
+  loadingMoreEpisodes: boolean
   /** null 未刷新，0 全部刷新，大于 0 为正在刷新的订阅源 ID */
   refreshing: number | null
   /** episodeId -> 下载进度百分比 */
@@ -44,6 +48,7 @@ interface FeedStore {
   refreshFeed: (id: number) => Promise<{ ok: boolean; message: string }>
   selectFeed: (id: number) => Promise<void>
   loadEpisodes: (id: number) => Promise<void>
+  loadMoreEpisodes: () => Promise<void>
   downloadEpisode: (id: number) => Promise<{ ok: boolean; message: string }>
   setDownloadProgress: (episodeId: number, pct: number) => void
   resetDownloadProgress: (episodeId: number) => void
@@ -55,6 +60,8 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
   selectedFeedId: null,
   loadingFeeds: false,
   loadingEpisodes: false,
+  hasMoreEpisodes: false,
+  loadingMoreEpisodes: false,
   refreshing: null,
   downloadProgress: {},
 
@@ -86,7 +93,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
     await window.api.feedRemove(id, deleteDownloads)
     const { selectedFeedId } = get()
     if (selectedFeedId === id) {
-      set({ selectedFeedId: null, episodes: [] })
+      set({ selectedFeedId: null, episodes: [], hasMoreEpisodes: false })
     }
     await get().loadFeeds()
   },
@@ -111,16 +118,42 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
   },
 
   loadEpisodes: async (id) => {
-    set({ loadingEpisodes: true })
+    set({ loadingEpisodes: true, hasMoreEpisodes: false })
     try {
-      const res = await window.api.feedEpisodes(id, 100)
+      const res = await window.api.feedEpisodes(id, 30, 0)
       // 请求返回时用户可能已经切到别的订阅源，丢弃过期结果
       if (get().selectedFeedId === id) {
-        set({ episodes: res?.episodes || [], loadingEpisodes: false })
+        set({
+          episodes: res?.episodes || [],
+          hasMoreEpisodes: !!res?.hasMore,
+          loadingEpisodes: false,
+        })
       }
     } catch (err) {
       console.error('[feed] loadEpisodes failed', err)
       set({ loadingEpisodes: false })
+    }
+  },
+
+  loadMoreEpisodes: async () => {
+    const { selectedFeedId, episodes, hasMoreEpisodes, loadingMoreEpisodes } = get()
+    if (selectedFeedId == null || !hasMoreEpisodes || loadingMoreEpisodes) return
+    set({ loadingMoreEpisodes: true })
+    try {
+      const res = await window.api.feedEpisodes(selectedFeedId, 30, episodes.length)
+      // 翻页期间切到别的订阅源时丢弃过期结果
+      if (get().selectedFeedId === selectedFeedId) {
+        set((s) => ({
+          episodes: [...s.episodes, ...(res?.episodes || [])],
+          hasMoreEpisodes: !!res?.hasMore,
+          loadingMoreEpisodes: false,
+        }))
+      } else {
+        set({ loadingMoreEpisodes: false })
+      }
+    } catch (err) {
+      console.error('[feed] loadMoreEpisodes failed', err)
+      set({ loadingMoreEpisodes: false })
     }
   },
 

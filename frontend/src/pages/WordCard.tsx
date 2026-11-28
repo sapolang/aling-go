@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { showToast } from '@/components/feedback'
 import { speak } from '@/lib/tts'
+import { useIsSpeaking } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
 import { gradeOptions, sm2, srsIntervalLabel } from '@/lib/srs'
-import { Speaker, ChevronLeft, ChevronRight, Pencil, Undo2, Settings2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, Undo2, Settings2 } from 'lucide-react'
 
 interface UndoEntry {
   word: Word
@@ -78,6 +80,7 @@ export default function WordCardPage() {
   }, [flipped])
 
   const current = reviewWords[currentIndex]
+  const speaking = useIsSpeaking(current?.word)
 
   const handleWrite = () => {
     if (!current || !writeInput.trim()) return
@@ -333,7 +336,7 @@ export default function WordCardPage() {
                     speak(current.word)
                   }}
                 >
-                  <Speaker className="h-4 w-4 mr-1" /> 朗读
+                  <SpeakerIcon speaking={speaking} className="mr-1 h-4 w-4" /> 朗读
                 </Button>
                 <p className="text-xs text-muted-foreground mt-6">空格翻面 · ← → Enter 导航</p>
               </CardContent>
@@ -419,7 +422,7 @@ export default function WordCardPage() {
           >
             <span className="text-sm font-semibold">{opt.label}</span>
             <span className="text-xs opacity-80">{srsIntervalLabel(opt.grade, current)}</span>
-            <span className="text-[10px] opacity-60">({opt.key})</span>
+            <span className="text-[11px] opacity-60">({opt.key})</span>
           </Button>
         ))}
       </div>
@@ -455,7 +458,7 @@ export default function WordCardPage() {
           下一个 <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
       </div>
-      <p className="text-[10px] text-muted-foreground text-center -mt-2">
+      <p className="text-[11px] text-muted-foreground text-center -mt-2">
         ← → 或 Enter 切换单词 · Ctrl/⌘+Z 撤销
       </p>
     </div>

@@ -216,6 +216,24 @@ func TestParseYtDlpProgress(t *testing.T) {
 	}
 }
 
+func TestNewWhisperServiceDefaultsToAutoLanguage(t *testing.T) {
+	dir := t.TempDir()
+	store := config.New(dir, nil)
+
+	s := NewWhisperService(nil, dir, store)
+	if got := s.GetWhisperLang(); got != "auto" {
+		t.Fatalf("默认转录语言 = %q, want auto", got)
+	}
+
+	// 用户显式选过的语言不能被默认值覆盖
+	if err := store.UpdateSettings(func(st *config.Settings) { st.WhisperLang = "zh" }); err != nil {
+		t.Fatal(err)
+	}
+	if got := NewWhisperService(nil, dir, store).GetWhisperLang(); got != "zh" {
+		t.Fatalf("已保存的转录语言 = %q, want zh", got)
+	}
+}
+
 func TestWhisperConfigConcurrentAccess(t *testing.T) {
 	dir := t.TempDir()
 	s := &WhisperService{

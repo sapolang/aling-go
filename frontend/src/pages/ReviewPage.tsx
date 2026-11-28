@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { confirmDialog } from '@/components/feedback'
 import { speak } from '@/lib/tts'
-import { ChevronLeft, ThumbsUp, ThumbsDown, Plus, BookOpen, Speaker, Pencil } from 'lucide-react'
+import { useIsSpeaking } from '@/hooks/useSpeaking'
+import SpeakerIcon from '@/components/SpeakerIcon'
+import { ChevronLeft, ThumbsUp, ThumbsDown, Plus, BookOpen, Pencil } from 'lucide-react'
 
 const tagLabels: Record<string, string> = {
   zk: '中考',
@@ -43,6 +45,7 @@ export default function ReviewPage() {
 
   const label = tagLabels[tag || ''] || (tag || '').toUpperCase()
   const current = words[currentIndex]
+  const speaking = useIsSpeaking(current?.word)
   const isDone = currentIndex >= words.length
 
   useEffect(() => {
@@ -208,7 +211,7 @@ export default function ReviewPage() {
                 speak(current?.word)
               }}
             >
-              <Speaker className="h-4 w-4 mr-1" /> 朗读
+              <SpeakerIcon speaking={speaking} className="mr-1 h-4 w-4" /> 朗读
             </Button>
           </div>
         ) : (
@@ -225,7 +228,7 @@ export default function ReviewPage() {
                 speak(current?.word)
               }}
             >
-              <Speaker className="h-4 w-4 mr-1" /> 朗读
+              <SpeakerIcon speaking={speaking} className="mr-1 h-4 w-4" /> 朗读
             </Button>
             <div className="text-lg">{current?.translation}</div>
             {current?.definition && (
@@ -296,7 +299,7 @@ export default function ReviewPage() {
           disabled={!flipped}
         >
           <ThumbsDown className="h-5 w-5" /> 不认识{' '}
-          <span className="text-[10px] opacity-50 ml-1">(1)</span>
+          <span className="text-[11px] opacity-50 ml-1">(1)</span>
         </Button>
         <Button
           variant="outline"
@@ -306,7 +309,7 @@ export default function ReviewPage() {
           disabled={!flipped}
         >
           <ThumbsUp className="h-5 w-5" /> 认识{' '}
-          <span className="text-[10px] opacity-50 ml-1">(2)</span>
+          <span className="text-[11px] opacity-50 ml-1">(2)</span>
         </Button>
         {current && (
           <Button
@@ -317,7 +320,7 @@ export default function ReviewPage() {
             disabled={addedSet.has(current.word)}
           >
             <Plus className="h-5 w-5" /> {addedSet.has(current.word) ? '已入库' : '入库'}{' '}
-            <span className="text-[10px] opacity-50 ml-1">(3)</span>
+            <span className="text-[11px] opacity-50 ml-1">(3)</span>
           </Button>
         )}
       </div>

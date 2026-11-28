@@ -7,6 +7,7 @@ import { useThemeStore } from '@/stores/themeStore'
 
 const Home = lazy(() => import('@/pages/Home'))
 const Player = lazy(() => import('@/pages/Player'))
+const PdfListenPlayer = lazy(() => import('@/pages/PdfListenPlayer'))
 const WordList = lazy(() => import('@/pages/WordList'))
 const WordCard = lazy(() => import('@/pages/WordCard'))
 const Settings = lazy(() => import('@/pages/Settings'))
@@ -111,6 +112,7 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
+          <Route path="/pdf-listen" element={<PdfListenPlayer />} />
           <Route path="/podcast" element={<Podcast />} />
           <Route path="/history" element={<History />} />
           {/* 旧在线播放页已并入 /player，保留路径做重定向 */}

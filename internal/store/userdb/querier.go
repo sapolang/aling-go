@@ -34,6 +34,8 @@ type Querier interface {
 	DeleteFeed(ctx context.Context, id int64) (int64, error)
 	DeleteFeedEpisodes(ctx context.Context, feedID int64) error
 	DeleteHistory(ctx context.Context, mediaKey string) error
+	DeletePDFDocument(ctx context.Context, id int64) error
+	DeletePDFSentences(ctx context.Context, documentID int64) error
 	DeleteTag(ctx context.Context, id int) error
 	DeleteWord(ctx context.Context, id int) error
 	DeleteWords(ctx context.Context, ids []int) error
@@ -47,10 +49,13 @@ type Querier interface {
 	GetFavoriteClipReviewCount(ctx context.Context, id int) (int, error)
 	GetFeedURL(ctx context.Context, id int64) (string, error)
 	GetHistory(ctx context.Context, mediaKey string) (PlayHistory, error)
+	GetPDFDocument(ctx context.Context, id int64) (PdfDocument, error)
+	GetPDFDocumentByPath(ctx context.Context, path string) (PdfDocument, error)
 	GetTypingProgress(ctx context.Context, arg GetTypingProgressParams) (TypingProgress, error)
 	GradeDistribution(ctx context.Context) ([]GradeDistributionRow, error)
 	ImportTag(ctx context.Context, arg ImportTagParams) error
 	ImportWord(ctx context.Context, arg ImportWordParams) error
+	InsertPDFSentence(ctx context.Context, arg InsertPDFSentenceParams) error
 	LevelDistribution(ctx context.Context) ([]LevelDistributionRow, error)
 	ListAllTypingProgress(ctx context.Context) ([]TypingProgress, error)
 	ListContinueLearning(ctx context.Context, lim int64) ([]PlayHistory, error)
@@ -62,6 +67,8 @@ type Querier interface {
 	ListFeedIDs(ctx context.Context) ([]int64, error)
 	ListFeeds(ctx context.Context) ([]ListFeedsRow, error)
 	ListHistory(ctx context.Context, arg ListHistoryParams) ([]PlayHistory, error)
+	ListPDFDocuments(ctx context.Context) ([]PdfDocument, error)
+	ListPDFSentences(ctx context.Context, documentID int64) ([]PdfSentence, error)
 	ListReviewDates(ctx context.Context) ([]string, error)
 	ListReviewWords(ctx context.Context, nextReview string) ([]Word, error)
 	ListTags(ctx context.Context) ([]Tag, error)
@@ -79,9 +86,11 @@ type Querier interface {
 	UpdateFavoriteClipTag(ctx context.Context, arg UpdateFavoriteClipTagParams) error
 	UpdateFeedMeta(ctx context.Context, arg UpdateFeedMetaParams) error
 	UpdateHistoryPosition(ctx context.Context, arg UpdateHistoryPositionParams) error
+	UpdatePDFProgress(ctx context.Context, arg UpdatePDFProgressParams) error
 	UpdateWord(ctx context.Context, arg UpdateWordParams) error
 	UpsertFeedEpisode(ctx context.Context, arg UpsertFeedEpisodeParams) error
 	UpsertHistory(ctx context.Context, arg UpsertHistoryParams) (PlayHistory, error)
+	UpsertPDFDocument(ctx context.Context, arg UpsertPDFDocumentParams) (PdfDocument, error)
 }
 
 var _ Querier = (*Queries)(nil)

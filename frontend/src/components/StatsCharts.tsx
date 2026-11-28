@@ -51,13 +51,13 @@ export function DailyReviewChart({ data }: { data: DailyReview[] }) {
         {data.map((day, i) => (
           <span
             key={day.date}
-            className="flex-1 overflow-hidden text-center text-[10px] text-muted-foreground"
+            className="flex-1 overflow-hidden text-center text-[11px] text-muted-foreground"
           >
             {i % labelEvery === 0 || i === data.length - 1 ? shortDate(day.date) : ''}
           </span>
         ))}
       </div>
-      <p className="mt-1 text-right text-[10px] text-muted-foreground">
+      <p className="mt-1 text-right text-[11px] text-muted-foreground">
         单日峰值 {fmtInt(maxCount)} 次 · 30 天共 {fmtInt(total)} 次
       </p>
     </div>
@@ -249,7 +249,7 @@ export function TypingTrendChart({ data }: { data: TypingDayStat[] }) {
           {fmtPct(hoverPoint.avgAccuracy)} · 平均 {hoverPoint.avgWpm.toFixed(0)} WPM
         </div>
       )}
-      <div className="mt-1 flex items-center justify-end gap-4 text-[10px] text-muted-foreground">
+      <div className="mt-1 flex items-center justify-end gap-4 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-sm bg-primary/60" /> 练习次数
         </span>

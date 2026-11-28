@@ -38,8 +38,9 @@ export interface AIPanelHandle {
   dismissExplain: () => void
 }
 
-/** 播放页 AI 当前句翻译/详解的请求与流式状态 */
-export function useAIPanel(): AIPanelHandle {
+/** 播放页 AI 当前句翻译/详解的请求与流式状态。
+ *  PDF 精听页可传入自己的 sourceKey，切文档时同样清空旧上下文。 */
+export function useAIPanel(sourceKey?: string): AIPanelHandle {
   const navigate = useNavigate()
   const [aiTarget, setAiTarget] = useState<AITarget | null>(null)
   const [aiTranslate, setAiTranslate] = useState<AITranslateState | null>(null)
@@ -47,14 +48,15 @@ export function useAIPanel(): AIPanelHandle {
   const aiReqRef = useRef(0)
   const aiActiveReq = useRef('')
   const filePath = usePlayerStore((s) => s.filePath)
+  const resetKey = sourceKey ?? filePath
 
-  // 切换播放源时清掉上一份素材的 AI 上下文，避免把旧句子带到新视频
+  // 切换播放源或 PDF 文档时清掉上一份素材的 AI 上下文，避免把旧句子带到新素材
   useEffect(() => {
     setAiTarget(null)
     setAiTranslate(null)
     setAiExplain(null)
     aiActiveReq.current = ''
-  }, [filePath])
+  }, [resetKey])
 
   useEffect(() => {
     const offChunk = window.api.aiOnChunk(({ reqId, delta }: any) => {

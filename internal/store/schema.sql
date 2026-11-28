@@ -123,3 +123,25 @@ CREATE TABLE IF NOT EXISTS play_history (
 );
 CREATE INDEX IF NOT EXISTS idx_play_history_last ON play_history(last_played_at DESC);
 CREATE INDEX IF NOT EXISTS idx_play_history_kind ON play_history(kind, last_played_at DESC);
+-- PDF 精听：导入时只保存切分后的句子，播放时按句实时合成音频，不落盘整本音频。
+CREATE TABLE IF NOT EXISTS pdf_documents (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	path TEXT NOT NULL UNIQUE,
+	title TEXT NOT NULL DEFAULT '',
+	page_count INTEGER NOT NULL DEFAULT 0,
+	sentence_count INTEGER NOT NULL DEFAULT 0,
+	last_sentence INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+	updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS pdf_sentences (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	document_id INTEGER NOT NULL,
+	page INTEGER NOT NULL DEFAULT 1,
+	paragraph INTEGER NOT NULL DEFAULT 1,
+	idx INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	UNIQUE(document_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_pdf_sentences_doc ON pdf_sentences(document_id, idx);
+CREATE INDEX IF NOT EXISTS idx_pdf_documents_updated ON pdf_documents(updated_at DESC);
