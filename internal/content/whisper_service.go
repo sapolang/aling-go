@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	goRuntime "runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"aling-go/internal/config"
 	"aling-go/internal/proc"
+	"aling-go/internal/tools"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -46,37 +46,6 @@ var whisperModelSources = []struct {
 }{
 	{"hf-mirror", "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main"},
 	{"huggingface", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"},
-}
-
-// executableDir 返回当前可执行文件所在目录，取不到时返回空字符串。
-func executableDir() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	return filepath.Dir(exe)
-}
-
-// firstExisting 返回第一个存在的路径，全部不存在时返回空字符串。
-func firstExisting(locations []string) string {
-	for _, p := range locations {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
-}
-
-func bundleResources() string {
-	exeDir := executableDir()
-	if exeDir == "" {
-		return ""
-	}
-	res := filepath.Join(filepath.Dir(exeDir), "Resources")
-	if _, err := os.Stat(res); err == nil {
-		return res
-	}
-	return ""
 }
 
 type WhisperModelInfo struct {
@@ -693,45 +662,11 @@ func (s *WhisperService) modelFileFor(name string) string {
 }
 
 func (s *WhisperService) findWhisperSidecar() string {
-	if p := firstExisting(whisperSidecarCandidates(s.dataDir, executableDir(), bundleResources(), goRuntime.GOOS)); p != "" {
+	p := tools.FindWhisper(s.dataDir)
+	if p != "" {
 		s.app.Logger.Debug("findWhisperSidecar found", "path", p)
-		return p
+	} else {
+		s.app.Logger.Debug("findWhisperSidecar not found")
 	}
-	s.app.Logger.Debug("findWhisperSidecar not found")
-	return ""
-}
-
-// whisperSidecarCandidates 返回 whisper sidecar 的查找路径。
-// Windows 安装包把 whisper-sidecar.exe 放在 exe 同目录，因此 exe 目录排在相对路径之前。
-func whisperSidecarCandidates(dataDir, exeDir, bundlePath, goos string) []string {
-	if goos == "darwin" {
-		locations := []string{
-			filepath.Join(dataDir, "sidecar", "whisper-sidecar"),
-			"sidecar/whisper-sidecar",
-			"./sidecar/whisper-sidecar",
-			filepath.Join(dataDir, "sidecar", "whisper-sidecar.exe"),
-		}
-		locations = append([]string{"../sidecar/whisper-sidecar"}, locations...)
-		if bundlePath != "" {
-			locations = append([]string{filepath.Join(bundlePath, "whisper-sidecar")}, locations...)
-		}
-		return locations
-	}
-
-	locations := []string{
-		filepath.Join(dataDir, "sidecar", "whisper-sidecar.exe"),
-		filepath.Join(dataDir, "sidecar", "whisper-sidecar"),
-	}
-	if exeDir != "" {
-		locations = append(locations,
-			filepath.Join(exeDir, "whisper-sidecar.exe"),
-			filepath.Join(exeDir, "whisper-sidecar"),
-		)
-	}
-	return append(locations,
-		"sidecar/whisper-sidecar.exe",
-		"sidecar/whisper-sidecar",
-		"./sidecar/whisper-sidecar.exe",
-		"./sidecar/whisper-sidecar",
-	)
+	return p
 }

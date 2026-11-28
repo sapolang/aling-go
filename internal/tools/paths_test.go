@@ -1,4 +1,4 @@
-package content
+package tools
 
 import (
 	"os"
@@ -21,7 +21,7 @@ func TestFFmpegCandidatesPreferExeDirOverRelativePaths(t *testing.T) {
 	exeDir := t.TempDir()
 	exePath := filepath.Join(exeDir, "ffmpeg.exe")
 
-	candidates := ffmpegCandidates("/data", exeDir, "", "windows")
+	candidates := FFmpegCandidates("/data", exeDir, "", "windows")
 	exeIdx := indexOfPath(candidates, exePath)
 	if exeIdx < 0 {
 		t.Fatalf("候选列表缺少 exe 目录路径 %q: %v", exePath, candidates)
@@ -42,22 +42,22 @@ func TestFirstExistingFindsFFmpegInExeDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := firstExisting(ffmpegCandidates(filepath.Join(t.TempDir(), "data"), exeDir, "", "windows"))
+	got := FirstExisting(FFmpegCandidates(filepath.Join(t.TempDir(), "data"), exeDir, "", "windows"))
 	if got != want {
-		t.Fatalf("firstExisting = %q, want %q", got, want)
+		t.Fatalf("FirstExisting = %q, want %q", got, want)
 	}
 }
 
-func TestWhisperSidecarCandidatesFindExeDir(t *testing.T) {
+func TestWhisperCandidatesFindExeDir(t *testing.T) {
 	exeDir := t.TempDir()
 	want := filepath.Join(exeDir, "whisper-sidecar.exe")
 	if err := os.WriteFile(want, []byte("fake"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	got := firstExisting(whisperSidecarCandidates(filepath.Join(t.TempDir(), "data"), exeDir, "", "windows"))
+	got := FirstExisting(WhisperCandidates(filepath.Join(t.TempDir(), "data"), exeDir, "", "windows"))
 	if got != want {
-		t.Fatalf("firstExisting = %q, want %q", got, want)
+		t.Fatalf("FirstExisting = %q, want %q", got, want)
 	}
 }
 
@@ -65,7 +65,7 @@ func TestYtDlpCandidatesPreferExeDirOverRelativePaths(t *testing.T) {
 	exeDir := t.TempDir()
 	exePath := filepath.Join(exeDir, "yt-dlp.exe")
 
-	candidates := ytDlpCandidates("/data", exeDir, "", "windows")
+	candidates := YtDlpCandidates("/data", exeDir, "", "windows")
 	exeIdx := indexOfPath(candidates, exePath)
 	if exeIdx < 0 {
 		t.Fatalf("候选列表缺少 exe 目录路径 %q: %v", exePath, candidates)
@@ -86,9 +86,9 @@ func TestFirstExistingFindsYtDlpInExeDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := firstExisting(ytDlpCandidates(filepath.Join(t.TempDir(), "data"), exeDir, "", "windows"))
+	got := FirstExisting(YtDlpCandidates(filepath.Join(t.TempDir(), "data"), exeDir, "", "windows"))
 	if got != want {
-		t.Fatalf("firstExisting = %q, want %q", got, want)
+		t.Fatalf("FirstExisting = %q, want %q", got, want)
 	}
 }
 
@@ -96,17 +96,17 @@ func TestFirstExistingFindsYtDlpInExeDir(t *testing.T) {
 func TestDarwinCandidatesKeepBundleResourcesFirst(t *testing.T) {
 	bundlePath := "/Applications/aling-go.app/Contents/Resources"
 
-	ffmpeg := ffmpegCandidates("/data", "/Applications/aling-go.app/Contents/MacOS", bundlePath, "darwin")
+	ffmpeg := FFmpegCandidates("/data", "/Applications/aling-go.app/Contents/MacOS", bundlePath, "darwin")
 	if want := filepath.Join(bundlePath, "ffmpeg"); ffmpeg[0] != want {
 		t.Fatalf("ffmpeg 候选首项 = %q, want %q", ffmpeg[0], want)
 	}
 
-	whisper := whisperSidecarCandidates("/data", "/Applications/aling-go.app/Contents/MacOS", bundlePath, "darwin")
+	whisper := WhisperCandidates("/data", "/Applications/aling-go.app/Contents/MacOS", bundlePath, "darwin")
 	if want := filepath.Join(bundlePath, "whisper-sidecar"); whisper[0] != want {
 		t.Fatalf("whisper 候选首项 = %q, want %q", whisper[0], want)
 	}
 
-	ytDlp := ytDlpCandidates("/data", "/Applications/aling-go.app/Contents/MacOS", bundlePath, "darwin")
+	ytDlp := YtDlpCandidates("/data", "/Applications/aling-go.app/Contents/MacOS", bundlePath, "darwin")
 	if want := filepath.Join(bundlePath, "yt-dlp"); ytDlp[0] != want {
 		t.Fatalf("yt-dlp 候选首项 = %q, want %q", ytDlp[0], want)
 	}
