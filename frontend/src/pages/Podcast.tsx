@@ -768,7 +768,7 @@ export default function PodcastPage() {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                支持标准 RSS 2.0 播客源；拉取失败时可在右上角「代理」中配置网络代理
+                支持标准 RSS 2.0 播客源；拉取失败时请检查系统代理，或在右上角「代理」中手动配置
               </p>
             </div>
             <div className="space-y-1.5">
@@ -862,7 +862,8 @@ export default function PodcastPage() {
               onChange={(e) => setProxy(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              仅用于拉取订阅源和下载节目音频，留空表示直连
+              仅用于拉取订阅源和下载节目音频；留空时自动使用系统代理（如
+              Clash），也可填写地址手动覆盖
             </p>
           </div>
           <div className="space-y-1.5">

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"aling-go/internal/proc"
+	"aling-go/internal/system"
 )
 
 // youtubeSubtitleLangPriority 字幕语言优先级，取第一个命中的轨道
@@ -83,7 +84,12 @@ func (s *PlatformService) runYtDlp(timeout time.Duration, onProgress func(int), 
 	}
 	// --newline 让 yt-dlp 每行输出一个进度，便于流式解析；--no-warnings 减少噪音
 	base := []string{"--no-warnings", "--no-playlist", "--no-mtime", "--newline"}
-	if proxy := strings.TrimSpace(s.feed.GetProxy()); proxy != "" {
+	// yt-dlp 不读 macOS 系统代理，手填配置优先，否则沿用系统代理
+	proxy := strings.TrimSpace(s.feed.GetProxy())
+	if proxy == "" {
+		proxy = system.SystemProxyURL()
+	}
+	if proxy != "" {
 		base = append(base, "--proxy", proxy)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -147,8 +153,8 @@ func (s *PlatformService) runYtDlp(timeout time.Duration, onProgress func(int), 
 		if msg == "" {
 			msg = err.Error()
 		}
-		if strings.TrimSpace(s.feed.GetProxy()) == "" {
-			msg += "（如网络受限，请在播客页配置代理）"
+		if proxy == "" {
+			msg += "（如网络受限，请检查系统代理或在播客页配置代理）"
 		}
 		return fmt.Errorf("yt-dlp 执行失败: %s", msg)
 	}

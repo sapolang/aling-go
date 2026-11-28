@@ -264,6 +264,30 @@ func TestSetProxyRebuildsHTTPClient(t *testing.T) {
 	}
 }
 
+func TestFeedHTTPClientUsesSystemProxyByDefault(t *testing.T) {
+	dir := t.TempDir()
+	svc := &FeedService{dataDir: dir, store: config.New(dir, nil)}
+
+	client := svc.httpClient()
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.Proxy == nil {
+		t.Fatal("default feed client should have a proxy function")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/feed.xml", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if r := svc.SetProxy("http://127.0.0.1:7890"); !r.OK {
+		t.Fatalf("SetProxy failed: %s", r.Error)
+	}
+	transport = svc.httpClient().Transport.(*http.Transport)
+	got, err := transport.Proxy(req)
+	if err != nil || got == nil || got.String() != "http://127.0.0.1:7890" {
+		t.Fatalf("proxy after SetProxy = %v, %v; want manually configured proxy", got, err)
+	}
+}
+
 func TestBilibiliProxyUsesServerSideStreamID(t *testing.T) {
 	s := &MediaService{mediaPort: 18080}
 	for _, raw := range []string{

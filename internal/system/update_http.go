@@ -15,6 +15,12 @@ func newUpdateHTTPClient(idleTimeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Prefer explicit env vars, then fall back to the OS proxy settings that
+	// browsers use (macOS SystemConfiguration / Windows WinINET). A GUI app
+	// launched from Finder does not inherit shell proxy env vars, so going
+	// through this instead of ProxyFromEnvironment alone avoids a direct,
+	// crawl-slow connection to GitHub.
+	transport.Proxy = ProxyFunc()
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		conn, err := dialer.DialContext(ctx, network, addr)
 		if err != nil {
