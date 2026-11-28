@@ -78,6 +78,34 @@ make sidecar            # 可选：构建 Whisper / FFmpeg，并获取 yt-dlp si
 make dev                # 开发模式（热重载）
 ```
 
+## 命令行工具（macOS）
+
+应用内置的 ffmpeg、yt-dlp 和 whisper-sidecar 可以通过 `aling-go tool` 调用，参数、标准输入输出和退出码都会原样透传，适合写脚本或配合管道使用。
+
+首次使用时，先注册 `aling-go` 命令（需要管理员授权，会在 `/usr/local/bin/aling-go` 创建软链）：
+
+```bash
+/Applications/aling-go.app/Contents/MacOS/aling-go install-cli
+```
+
+之后就可以在任意目录运行：
+
+```bash
+aling-go tool list                  # 查看内置工具及其路径
+aling-go tool ffmpeg -version       # 参数原样透传给 ffmpeg
+aling-go tool yt-dlp --version
+aling-go tool whisper --help        # whisper.cpp 的 whisper-cli 参数
+aling-go uninstall-cli              # 撤销注册
+```
+
+说明：
+
+- `ffmpeg` / `yt-dlp` 优先使用 `PATH` 中的版本，找不到时回退到应用内置的 sidecar；`whisper` 只使用应用内置的 `whisper-sidecar`。
+- `whisper` 不会自动选择模型，需要按 whisper.cpp 的用法自行传 `-m <模型文件>`；模型通常位于 `~/Library/Application Support/com.aling-go/whisper-models/`。
+- `tool` 子命令不会启动 GUI 或打开数据库；不带参数运行 `aling-go` 仍会正常打开应用。
+- 如果应用不在 `/Applications/aling-go.app`，请把注册命令里的路径换成实际位置。
+- 如果 `/usr/local/bin/aling-go` 已存在且不是软链，`install-cli` 会拒绝覆盖；`uninstall-cli` 也只删除软链，不会动普通文件。
+
 ## 构建
 
 ```bash

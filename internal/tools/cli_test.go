@@ -54,13 +54,16 @@ func TestRunUnknownTool(t *testing.T) {
 }
 
 func TestRunMissingBinary(t *testing.T) {
-	// 用空数据目录 + 去掉 PATH 的临时环境，确保三个工具都找不到。
+	// 用空数据目录、去掉 PATH 并切到临时工作目录，确保不会命中系统或仓库里的工具。
+	// 这里用 whisper 而不是 ffmpeg：ffmpeg 在 macOS 上还有 /opt/homebrew/bin 等
+	// 硬编码候选路径，测试会随开发机是否安装 ffmpeg 而变化。
 	t.Setenv("PATH", t.TempDir())
+	t.Chdir(t.TempDir())
 	var out, errOut bytes.Buffer
-	if code := Run(t.TempDir(), []string{"ffmpeg"}, &out, &errOut); code != 1 {
+	if code := Run(t.TempDir(), []string{"whisper"}, &out, &errOut); code != 1 {
 		t.Fatalf("缺少二进制退出码 = %d, want 1; stderr=%s", code, errOut.String())
 	}
-	if !strings.Contains(errOut.String(), "未找到 ffmpeg") {
+	if !strings.Contains(errOut.String(), "未找到 whisper") {
 		t.Fatalf("stderr 未提示未找到: %s", errOut.String())
 	}
 }
